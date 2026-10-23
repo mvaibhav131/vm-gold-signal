@@ -20,6 +20,15 @@ export const INDICATOR_DEFAULTS = {
   choppinessPeriod: 14,
   efficiencyPeriod: 20,
   parabolicSar: { step: 0.02, max: 0.2 },
+  rsiPeriod: 14,
+  stochRsi: { rsiPeriod: 14, stochPeriod: 14, kSmooth: 3, dSmooth: 3 },
+  macd: { fast: 12, slow: 26, signal: 9 },
+  rocPeriod: 10,
+  cciPeriod: 20,
+  williamsPeriod: 14,
+  awesome: { fast: 5, slow: 34 },
+  adxPeriod: 14,
+  ichimoku: { tenkan: 9, kijun: 26, spanB: 52, displacement: 26 },
 } as const;
 
 /**

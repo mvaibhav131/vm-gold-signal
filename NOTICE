@@ -4,5 +4,9 @@ Third-party notices
 TradingView Lightweight Charts (https://github.com/tradingview/lightweight-charts) draws the
 price chart of the dashboard. It is licensed under the Apache License 2.0 and its terms apply to
 this product. The attribution link that the chart shows must stay visible (docs/01_HLD.md, section
-on the stack, and docs/05_UI_Spec.md, section 1). The licence text and the upstream NOTICE ship
-with the package itself.
+on the stack, and docs/05_UI_Spec.md, section 1). The licence text ships with the package itself.
+
+The upstream NOTICE of the library, copied unchanged:
+
+TradingView Lightweight Charts™
+Copyright (с) 2025 TradingView, Inc. https://www.tradingview.com/

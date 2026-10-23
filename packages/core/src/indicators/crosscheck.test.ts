@@ -1,7 +1,33 @@
-import { ATR, BollingerBands, EMA, PSAR, SMA, TR, WMA } from 'trading-signals';
+import {
+  ADX,
+  AO,
+  ATR,
+  BollingerBands,
+  CCI,
+  EMA,
+  MACD,
+  PSAR,
+  ROC,
+  RSI,
+  SMA,
+  StochasticRSI,
+  TR,
+  WMA,
+  WilliamsR,
+} from 'trading-signals';
 import { describe, expect, it } from 'vitest';
 
 import { Ema, Sma, Wma } from './averages';
+import { Adx } from './directional';
+import {
+  AwesomeOscillator,
+  Cci,
+  Macd,
+  Roc,
+  Rsi,
+  StochRsi,
+  WilliamsR as OurWilliamsR,
+} from './momentum';
 import { randomBars } from './test-data';
 import { ParabolicSar } from './trend';
 import { type Bar, computeSeries } from './types';
@@ -164,5 +190,123 @@ describe('against trading-signals', () => {
     // One reversal in about twenty falls on a different candle in the two, because their stops
     // differed by a few cents just before it; all the others give the identical stop.
     expect(agree.length / reversals.length).toBeGreaterThan(0.9);
+  });
+});
+
+/** A property of the library's indicator that may be a plain number or a getter-like function. */
+function property(indicator: unknown, name: string): unknown {
+  try {
+    const value = (indicator as Record<string, unknown>)[name];
+    return typeof value === 'function' ? (value as () => unknown).call(indicator) : value;
+  } catch {
+    return null;
+  }
+}
+
+describe('against trading-signals (B5 momentum and directional indicators)', () => {
+  it('RSI(14) agrees once the seed has been forgotten', () => {
+    expectClose(
+      computeSeries(new Rsi(14), closes),
+      oracleSeries(() => new RSI(14), closes),
+      300,
+      1e-6,
+    );
+  });
+
+  it('MACD(12, 26, 9) line, signal and histogram agree once the seeds have been forgotten', () => {
+    const ours = computeSeries(new Macd(12, 26, 9), closes);
+    const theirs = oracleSeries(() => new MACD(new EMA(12), new EMA(26), new EMA(9)), closes);
+    for (const key of ['macd', 'signal', 'histogram'] as const) {
+      expectClose(
+        ours.map((v) => v?.[key] ?? null),
+        theirs.map((v) => (v as Record<string, unknown> | null)?.[key] ?? null),
+        300,
+        1e-6,
+      );
+    }
+  });
+
+  it('ROC(10) agrees (the library gives a fraction, we give percent)', () => {
+    const ours = computeSeries(new Roc(10), closes).map((v) => (v === null ? null : v / 100));
+    expectClose(
+      ours,
+      oracleSeries(() => new ROC(10), closes),
+      10,
+      1e-9,
+    );
+  });
+
+  it('CCI(20) agrees', () => {
+    expectClose(
+      computeSeries(new Cci(20), BARS),
+      oracleSeries(() => new CCI(20), BARS.map(candle)),
+      19,
+      1e-6,
+    );
+  });
+
+  it('Awesome oscillator(5, 34) agrees', () => {
+    expectClose(
+      computeSeries(new AwesomeOscillator(5, 34), BARS),
+      oracleSeries(() => new AO(5, 34), BARS.map(candle)),
+      33,
+      1e-9,
+    );
+  });
+
+  it('Williams %R(14) agrees', () => {
+    expectClose(
+      computeSeries(new OurWilliamsR(14), BARS),
+      oracleSeries(() => new WilliamsR(14), BARS.map(candle)),
+      13,
+      1e-9,
+    );
+  });
+
+  it('ADX(14) with +DI and -DI agrees once the seeds have been forgotten', () => {
+    const ours = computeSeries(new Adx(14), BARS);
+    const indicator = new ADX(14);
+    const adx: unknown[] = [];
+    const plus: unknown[] = [];
+    const minus: unknown[] = [];
+    for (const input of BARS.map(candle)) {
+      feed(indicator, input);
+      adx.push(read(indicator));
+      plus.push(property(indicator, 'pdi'));
+      minus.push(property(indicator, 'mdi'));
+    }
+    // The library reports ADX in percent like us, but +DI and -DI as fractions.
+    const fraction = (pick: (v: NonNullable<(typeof ours)[number]>) => number) =>
+      ours.map((v) => (v === null ? null : pick(v) / 100));
+    expectClose(
+      ours.map((v) => v?.adx ?? null),
+      adx,
+      300,
+      1e-6,
+    );
+    expectClose(
+      fraction((v) => v.plusDI),
+      plus,
+      300,
+      1e-8,
+    );
+    expectClose(
+      fraction((v) => v.minusDI),
+      minus,
+      300,
+      1e-8,
+    );
+  });
+
+  it('stochastic RSI (raw) agrees once the RSI seed has been forgotten (the library gives a fraction)', () => {
+    const ours = computeSeries(new StochRsi(14, 14, 1, 1), closes).map((v) =>
+      v === null ? null : v.raw / 100,
+    );
+    expectClose(
+      ours,
+      oracleSeries(() => new StochasticRSI(14), closes),
+      300,
+      1e-6,
+    );
   });
 });
