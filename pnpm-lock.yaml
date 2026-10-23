@@ -133,7 +133,11 @@ importers:
         specifier: 'catalog:'
         version: 4.6.7
 
-  packages/core: {}
+  packages/core:
+    devDependencies:
+      trading-signals:
+        specifier: 8.3.0
+        version: 8.3.0
 
   packages/db:
     dependencies:
@@ -2084,6 +2088,9 @@ packages:
   tr46@7.0.0:
     resolution: {integrity: sha512-BcDSDW+SIGWVOns1Zm6Yg91q9AEj7eaID0QDY9oIqJD1A8dscNwMcl9Sms2DeuWCNov1X0/oXanHGYQBSLwZsg==}
     engines: {node: ^22.14.0 || >=24.0.0}
+
+  trading-signals@8.3.0:
+    resolution: {integrity: sha512-C2DigYcuaBmTfLJ4KkCgM6TPZwKoFYz9Tyj2BWnTgMVMb3u21udF80oGPhqGyyd57RPJnrst3pc0ShA09XVUAw==}
 
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
@@ -4200,6 +4207,8 @@ snapshots:
   tr46@7.0.0:
     dependencies:
       punycode: 2.3.1
+
+  trading-signals@8.3.0: {}
 
   ts-api-utils@2.5.0(typescript@6.0.3):
     dependencies:

@@ -59,6 +59,18 @@ Deliberately not included: volume profile, order flow, depth of market and footp
 
 Evidence note. Academic work (Lo, Mamaysky and Wang, Journal of Finance 2000) found that several chart patterns, detected with a systematic algorithm, carried incremental information in US stocks from 1962 to 1996. That is a different market, horizon and period from intraday gold, and it says nothing about trading costs. Its methodological lesson is what this design follows: patterns and trendlines are detected by fixed, testable rules (section 4), never by eye. Every indicator, trendline and pattern must prove itself on out-of-sample gold data after costs before it is trusted.
 
+### 3.1 Indicator conventions (implemented in `packages/core/src/indicators`, phase B4)
+
+Every indicator is a streaming class (`update(candle)` returns the value for that candle or `null` during warm-up), so the worker, the backtester and the chart run the same code and a batch run is a loop over `update`. A bad number (NaN, infinite) throws instead of poisoning later values. Values are plain floating point numbers; rounding is a display matter.
+
+- **SMA**: mean of the last n values. **EMA**: alpha = 2/(n+1), seeded with the SMA of the first n values (first value at input n). **WMA**: weights 1..n, newest heaviest. **Hull(n)**: WMA(round(sqrt n)) of 2 x WMA(floor(n/2)) - WMA(n).
+- **ATR**: Wilder smoothing, seeded with the average of the first n true ranges; the first candle's true range is its own range. ATR(14) unless stated. **Keltner**: EMA(20) of the close plus and minus 1.5 x ATR(14).
+- **Bollinger**: SMA plus and minus k population standard deviations (divide by n); bandwidth = (upper - lower) / middle. **Squeeze**: Bollinger(20, 2) strictly inside Keltner(20, 1.5 x ATR); it reports its duration, the release candle and the candles since the release.
+- **Donchian(n)**: highest high and lowest low of the last n candles including this one, plus the same for the n candles before this one (`priorUpper`, `priorLower`): a breakout is a close beyond the prior value, so the candle never counts itself.
+- **Supertrend(10, 3)**: Wilder ATR around the midpoint; the first value starts UP when the close is at or above the midpoint. **Parabolic SAR(0.02, 0.2)**: Wilder's rules, the SAR may not enter the range of the previous two candles; the first trend is UP when the second candle closes at or above the first. **Aroon(n)**: window of n+1 candles, the most recent extreme wins a tie. **Heikin-Ashi**: standard formulas, first open (o+c)/2, plus the streak of one colour. **Choppiness(n)**: 100 x log10(sum TR / range) / log10(n), 100 when the range is zero.
+- **Efficiency ratio(n)**: net move of n closes over the path they travelled, 0 when the path is zero. **Linear regression(n)**: least squares on the last n values, with slope per candle, endpoint and R-squared (0 for a flat series). **Percent rank(n)**: share of the previous n values at or below the newest, 0 to 100.
+- Verification: hand-calculated vectors for every indicator, equality of incremental and batch runs, truncated history equals the start of the full run (no look-ahead), naive whole-array reference implementations on random candles, and an independent cross-check against `trading-signals` for SMA, WMA, EMA, true range, ATR and Bollinger (exact or after the seed has been forgotten). Parabolic SAR differs from that library only in looking at one previous candle instead of two for its limit, so it is checked by hand vectors and at its reversals.
+
 ## 4. Primitives (formal definitions)
 
 All use closed candles. `ATR` is ATR(14) of the same timeframe unless stated.

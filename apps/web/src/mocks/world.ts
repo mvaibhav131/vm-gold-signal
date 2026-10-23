@@ -1,6 +1,9 @@
 import {
+  Ema,
+  Supertrend,
   bucketEnd,
   bucketStart,
+  computeSeries,
   sessionWindowAt,
   tradingDayOf,
   type Session,
@@ -100,64 +103,21 @@ function closedCandles(tf: Timeframe, count: number, nowMs: number): StampedCand
   }));
 }
 
-/** Exponential moving average seeded with the simple average of the first `period` values. */
+/** EMA from `packages/core`, rounded to 3 decimals: the chart and the engine use the same code. */
 export function ema(values: readonly number[], period: number): (number | null)[] {
-  const out: (number | null)[] = values.map(() => null);
-  if (values.length < period) return out;
-  const k = 2 / (period + 1);
-  let current = values.slice(0, period).reduce((sum, v) => sum + v, 0) / period;
-  out[period - 1] = round3(current);
-  for (let i = period; i < values.length; i += 1) {
-    current = (values[i] ?? current) * k + current * (1 - k);
-    out[i] = round3(current);
-  }
-  return out;
+  return computeSeries(new Ema(period), values).map((v) => (v === null ? null : round3(v)));
 }
 
-/** Supertrend(10, 3): the trailing band that flips when the close crosses it. */
+/** Supertrend(10, 3) from `packages/core`: the trailing band that flips when the close crosses it. */
 export function supertrend(
   candles: readonly Ohlc[],
   period = 10,
   multiplier = 3,
 ): (number | null)[] {
-  const out: (number | null)[] = candles.map(() => null);
-  if (candles.length <= period) return out;
-  const trueRange = (i: number): number => {
-    const c = candles[i];
-    const previous = candles[i - 1];
-    if (!c) return 0;
-    return previous
-      ? Math.max(c.h - c.l, Math.abs(c.h - previous.c), Math.abs(c.l - previous.c))
-      : c.h - c.l;
-  };
-  let atr = 0;
-  for (let i = 1; i <= period; i += 1) atr += trueRange(i);
-  atr /= period;
-  let upper = 0;
-  let lower = 0;
-  let trendUp = true;
-  for (let i = period; i < candles.length; i += 1) {
-    const c = candles[i];
-    const previous = candles[i - 1];
-    if (!c || !previous) continue;
-    if (i > period) atr = (atr * (period - 1) + trueRange(i)) / period;
-    const mid = (c.h + c.l) / 2;
-    const basicUpper = mid + multiplier * atr;
-    const basicLower = mid - multiplier * atr;
-    if (i === period) {
-      upper = basicUpper;
-      lower = basicLower;
-    } else {
-      upper = basicUpper < upper || previous.c > upper ? basicUpper : upper;
-      lower = basicLower > lower || previous.c < lower ? basicLower : lower;
-      if (trendUp && c.c < lower) trendUp = false;
-      else if (!trendUp && c.c > upper) trendUp = true;
-    }
-    out[i] = round3(trendUp ? lower : upper);
-  }
-  return out;
+  return computeSeries(new Supertrend(period, multiplier), candles).map((v) =>
+    v === null ? null : round3(v.value),
+  );
 }
-
 interface Pivot {
   readonly index: number;
   readonly price: number;
