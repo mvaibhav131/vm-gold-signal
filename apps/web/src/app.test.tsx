@@ -1,7 +1,9 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { sessionAt } from '@vmgs/core';
 import { describe, expect, it } from 'vitest';
 
+import { labelOf } from './format/format';
 import { MOCK_PASSWORD, MOCK_USERNAME, createMockClient } from './mocks/mockClient';
 import { memoryStorage, renderApp } from './test-utils';
 
@@ -95,9 +97,14 @@ describe('status bar (scenario E2)', () => {
   it('shows price, spread, feed, session, regime, engine, mode and strategy status as text', async () => {
     await openDashboard();
     const bar = screen.getByRole('region', { name: 'Market status' });
+    // The mock derives the session from the real clock (B3 sessions), so the test does too.
+    const sessionText = () => labelOf(sessionAt(Date.now()));
+    const before = sessionText();
     await waitFor(() => {
-      expect(within(bar).getByTestId('status-session')).toHaveTextContent('LONDON');
+      expect(within(bar).getByTestId('status-session')).not.toHaveTextContent('…');
     });
+    const shown = within(bar).getByTestId('status-session').textContent;
+    expect([before, sessionText()]).toContain(shown);
     expect(within(bar).getByTestId('status-price')).toHaveTextContent(
       /^\d{4}\.\d{3} \(bid \d{4}\.\d{3} \/ ask \d{4}\.\d{3}\)$/,
     );

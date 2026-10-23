@@ -14,7 +14,10 @@ test.describe('E2 status bar', () => {
     );
     await expect(bar.getByTestId('status-spread')).toHaveText(/^\d\.\d{3}$/);
     await expect(bar.getByTestId('status-freshness')).toHaveText(/^FRESH \d\.\d s$/);
-    await expect(bar.getByTestId('status-session')).toHaveText('LONDON');
+    // The simulated session follows the real clock (the B3 session function), so any of the five.
+    await expect(bar.getByTestId('status-session')).toHaveText(
+      /^(ASIA|LONDON|OVERLAP|NEW YORK|ROLLOVER)$/,
+    );
     await expect(bar.getByTestId('status-regime')).toHaveText('TREND UP');
     await expect(bar.getByTestId('status-engine')).toHaveText('RUNNING');
     await expect(bar.getByTestId('status-mode')).toHaveText('SIMULATED');

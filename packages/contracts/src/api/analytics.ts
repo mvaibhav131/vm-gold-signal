@@ -130,8 +130,8 @@ export const overviewResponseSchema = z
     });
     checkRateInsideInterval(ctx, v.winRate, v.ci95, 'winRate');
   });
-
-/** month is the first day of the month in UTC, as YYYY-MM. */
+export type OverviewResponse = z.infer<typeof overviewResponseSchema>;
+export type OverviewQuery = z.input<typeof overviewQuerySchema>;
 export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM');
 
 export const monthlyQuerySchema = z.strictObject({

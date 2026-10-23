@@ -64,8 +64,15 @@ export function freshnessChip(feedState: string, ageMs: number, warmupPct: numbe
   }
 }
 
-export function engineChip(engine: EngineSnapshot): Chip {
+/**
+ * The engine chip. A feed that is stale or down blocks new signals even though the engine itself
+ * is running, so the chip says so (scenario E3: "engine shows blocked").
+ */
+export function engineChip(engine: EngineSnapshot, feedState?: string): Chip {
   if (engine.status === 'PAUSED') return { text: 'PAUSED', tone: 'warning' };
+  if (feedState === 'STALE' || feedState === 'DISCONNECTED') {
+    return { text: 'BLOCKED: NO DATA', tone: 'negative' };
+  }
   if (!engine.warmup.ready) return { text: 'WARMING UP', tone: 'warning' };
   return { text: 'RUNNING', tone: 'positive' };
 }

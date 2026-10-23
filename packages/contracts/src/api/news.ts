@@ -23,6 +23,7 @@ export const macroEventSchema = z.strictObject({
   previous: z.number().nullable(),
   revisedPrevious: z.number().nullable(),
 });
+export type MacroEvent = z.infer<typeof macroEventSchema>;
 
 export const newsStateResponseSchema = z.strictObject({
   state: newsStateSchema,
@@ -30,6 +31,7 @@ export const newsStateResponseSchema = z.strictObject({
   last: macroEventSchema.nullable(),
   sourceAgeS: countSchema.nullable(),
 });
+export type NewsStateResponse = z.infer<typeof newsStateResponseSchema>;
 
 export const newsEventsQuerySchema = z
   .strictObject({ ...rangeShape, importance: macroImportanceSchema.optional() })
@@ -55,6 +57,7 @@ export const headlineSchema = z.strictObject({
   url: httpUrlSchema,
   goldMoveSincePublish: z.strictObject({ usd: z.number(), atr: z.number() }).nullable(),
 });
+export type Headline = z.infer<typeof headlineSchema>;
 
 export const newsSourceHealthSchema = z.strictObject({
   key: z.string().min(1),
@@ -80,6 +83,8 @@ export const headlinesResponseSchema = z.strictObject({
   nextCursor: z.string().min(1).nullable(),
   sources: z.array(newsSourceHealthSchema),
 });
+export type HeadlinesResponse = z.infer<typeof headlinesResponseSchema>;
+export type HeadlinesQuery = z.input<typeof headlinesQuerySchema>;
 
 /** The frozen copy of a headline stored with a market move is defined in ../news. */
 export const marketMoveSchema = z.strictObject({
