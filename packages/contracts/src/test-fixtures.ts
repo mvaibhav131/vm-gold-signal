@@ -76,6 +76,7 @@ export function explanation(): Explanation {
     weak: ['1h momentum flat'],
     researchOnly: [{ label: 'DXY 15m', value: '-0.2%' }],
     macro: { state: 'CLEAR', next: { name: 'CPI', at: '2026-10-23T12:30:00Z' } },
+    news: { feed: 'AVAILABLE', headlines: [] },
     warnings: [],
     open: { count: 0, riskR: 0 },
     evidence: evidence(),

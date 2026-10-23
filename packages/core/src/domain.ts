@@ -17,8 +17,8 @@ export const TIMEFRAME_MS: Readonly<Record<Timeframe, number>> = {
   '1d': 86_400_000,
 };
 
-/** OFF covers the hours that belong to none of the named sessions. */
-export const SESSIONS = ['ASIA', 'LONDON', 'OVERLAP', 'NEW_YORK', 'OFF'] as const;
+/** ROLLOVER (21:45-23:15 UTC) is a session of its own in the status bar (05_UI_Spec section 3). */
+export const SESSIONS = ['ASIA', 'LONDON', 'OVERLAP', 'NEW_YORK', 'ROLLOVER'] as const;
 export type Session = (typeof SESSIONS)[number];
 
 export const REGIMES = [
@@ -211,6 +211,10 @@ export type NewsTopic = (typeof NEWS_TOPICS)[number];
 
 export const NEWS_IMPACTS = ['LOW', 'MEDIUM', 'HIGH'] as const;
 export type NewsImpact = (typeof NEWS_IMPACTS)[number];
+
+/** "Headline feed unavailable" must look different from "no headlines" (02_Signal_Engine section 16). */
+export const NEWS_FEED_STATES = ['AVAILABLE', 'UNAVAILABLE'] as const;
+export type NewsFeedState = (typeof NEWS_FEED_STATES)[number];
 
 export const MARKET_EVENT_KINDS = ['SPIKE_UP', 'SPIKE_DOWN'] as const;
 export type MarketEventKind = (typeof MARKET_EVENT_KINDS)[number];
