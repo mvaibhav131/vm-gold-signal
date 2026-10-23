@@ -14,6 +14,7 @@ export const strategyInfoSchema = z.strictObject({
   lastSignalAt: timestampSchema.nullable(),
   evidence: evidenceSchema.nullable(),
 });
+export type StrategyInfo = z.infer<typeof strategyInfoSchema>;
 
 /** PATCH /strategies/:key. Only the two owner switches can change; at least one must be sent. */
 export const strategyPatchSchema = z

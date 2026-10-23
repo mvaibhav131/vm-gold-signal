@@ -29,6 +29,7 @@ export const quoteEventSchema = z.strictObject({
     feedState: feedStateSchema,
   }),
 });
+export type QuoteData = z.infer<typeof quoteEventSchema>['data'];
 
 /** Only the id: the client fetches the canonical row. */
 export const signalEventPayloadSchema = z.strictObject({

@@ -30,3 +30,6 @@ export const sessionInfoSchema = z.strictObject({
   expiresAt: timestampSchema,
   current: z.boolean(),
 });
+
+export type LoginRequest = z.infer<typeof loginRequestSchema>;
+export type MeResponse = z.infer<typeof meResponseSchema>;
