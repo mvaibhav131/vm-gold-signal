@@ -1,0 +1,19 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.pnpm-store/
+
+# secrets and local config
+.env
+.env.*
+!.env.example
+
+# test output
+playwright-report/
+test-results/
+
+# logs and OS files
+*.log
+.DS_Store
+Thumbs.db

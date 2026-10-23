@@ -1,0 +1,29 @@
+{
+  "name": "vm-gold-signal",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json && pnpm -r --workspace-concurrency=1 --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "audit:prod": "pnpm audit --prod",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm audit:prod"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "24.19.2",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.72.0",
+    "vitest": "5.0.5"
+  }
+}
