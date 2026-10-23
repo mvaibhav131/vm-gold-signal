@@ -1,4 +1,9 @@
-import { createTheme, type MantineColorsTuple } from '@mantine/core';
+import {
+  Anchor,
+  createTheme,
+  type CSSVariablesResolver,
+  type MantineColorsTuple,
+} from '@mantine/core';
 
 // Visual tokens of 05_UI_Spec section 10. Gold is the brand accent only; green and red are used
 // for direction and result, amber for warnings, grey for market closed.
@@ -67,6 +72,8 @@ export const theme = createTheme({
     'Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   fontFamilyMonospace: 'ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace',
   headings: { fontWeight: '650' },
+  // Links are always underlined: they never rely on colour alone to be recognised.
+  components: { Anchor: Anchor.extend({ defaultProps: { underline: 'always' } }) },
   colors: {
     dark,
     gold: shades(TOKENS.gold),
@@ -74,6 +81,27 @@ export const theme = createTheme({
     negative: shades(TOKENS.negative),
     warning: shades(TOKENS.warning),
     info: shades(TOKENS.info),
+  },
+});
+
+const SEMANTIC_COLORS = ['gold', 'positive', 'negative', 'warning', 'info'] as const;
+
+/**
+ * Light theme contrast. The palettes put the bright token colour at index 6, which suits the dark
+ * theme. On white, text and outlines need the darker shades, and the muted text needs more weight.
+ */
+export const cssVariablesResolver: CSSVariablesResolver = () => ({
+  variables: {},
+  dark: {},
+  light: {
+    '--mantine-color-dimmed': 'var(--mantine-color-gray-7)',
+    '--mantine-color-anchor': 'var(--mantine-color-gold-9)',
+    ...Object.fromEntries(
+      SEMANTIC_COLORS.flatMap((name) => [
+        [`--mantine-color-${name}-light-color`, `var(--mantine-color-${name}-9)`],
+        [`--mantine-color-${name}-outline`, `var(--mantine-color-${name}-8)`],
+      ]),
+    ),
   },
 });
 

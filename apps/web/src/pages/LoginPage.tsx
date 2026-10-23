@@ -21,6 +21,7 @@ import { emptyLoginForm, toLoginRequest, validateLoginForm } from '../auth/login
 import { safeRedirectTarget } from '../auth/redirect';
 import { ME_KEY } from '../auth/RequireAuth';
 import { usePageTitle } from '../hooks';
+import { ThemeToggle } from '../layout/ThemeToggle';
 
 const GENERIC_ERROR = 'Login failed. Check your details and try again.';
 const THROTTLED_ERROR = 'Too many attempts. Please wait a few minutes and try again.';
@@ -52,11 +53,14 @@ export function LoginPage() {
     login.error instanceof ApiError && login.error.status === 429 ? THROTTLED_ERROR : GENERIC_ERROR;
 
   return (
-    <Box component="main" mih="100vh" py="xl">
+    <Box component="main" mih="100vh" py="xl" pos="relative">
+      <Box pos="absolute" top={16} right={16}>
+        <ThemeToggle />
+      </Box>
       <Container size={420}>
         <Stack gap="lg">
           <Stack gap={4}>
-            <Title order={1} size="h2" c="gold.5">
+            <Title order={1} size="h2" className="brand">
               VM Gold Signal
             </Title>
             <Text c="dimmed">Private XAU/USD decision support. Log in to continue.</Text>

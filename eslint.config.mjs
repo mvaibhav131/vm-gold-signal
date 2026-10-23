@@ -6,7 +6,15 @@ import tseslint from 'typescript-eslint';
 const impure = 'packages/core is pure: inject a clock, randomness or IO from the caller.';
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**', 'docs/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      'docs/**',
+      'apps/web/public/**',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.strictTypeChecked,
   tseslint.configs.stylisticTypeChecked,

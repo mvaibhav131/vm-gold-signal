@@ -1,6 +1,7 @@
 import { AppShell, Box, Group, Stack, Text } from '@mantine/core';
 import { NavLink, Outlet } from 'react-router';
 
+import { useApi } from '../api/context';
 import { NAV_ENTRIES } from './nav';
 import { StatusBar } from './StatusBar';
 
@@ -9,36 +10,52 @@ import { StatusBar } from './StatusBar';
  * bottom. The status bar stays on top of the content in both (05_UI_Spec section 2).
  */
 export function AppLayout() {
+  const api = useApi();
+
   return (
     <AppShell
-      navbar={{ width: 132, breakpoint: 'sm', collapsed: { mobile: true } }}
-      footer={{ height: { base: 64, sm: 0 } }}
+      navbar={{ width: { sm: 200, lg: 232 }, breakpoint: 'sm', collapsed: { mobile: true } }}
+      footer={{ height: { base: 68, sm: 0 } }}
       padding="md"
     >
       <a className="skip-link" href="#page">
         Skip to content
       </a>
 
-      <AppShell.Navbar p="xs" visibleFrom="sm">
-        <Stack gap="md">
-          <Text fw={700} c="gold.5" px="xs" pt="xs">
-            VM Gold Signal
-          </Text>
-          <nav aria-label="Main navigation">
-            <Stack gap={4}>
-              {NAV_ENTRIES.map((entry) => (
-                <NavLink key={entry.to} to={entry.to} end={entry.end ?? false} className="nav-item">
-                  {entry.label}
-                </NavLink>
-              ))}
-            </Stack>
-          </nav>
+      <AppShell.Navbar p="md" visibleFrom="sm">
+        <Stack gap="xl" h="100%" justify="space-between">
+          <Stack gap="lg">
+            <div className="brand-block">
+              <span className="brand">VM Gold Signal</span>
+              <span className="brand-caption">XAU/USD decision support</span>
+            </div>
+            <nav aria-label="Main navigation">
+              <Stack gap={4}>
+                {NAV_ENTRIES.map((entry) => (
+                  <NavLink
+                    key={entry.to}
+                    to={entry.to}
+                    end={entry.end ?? false}
+                    className="nav-item"
+                  >
+                    <span className="nav-icon">{entry.icon}</span>
+                    <span>{entry.label}</span>
+                  </NavLink>
+                ))}
+              </Stack>
+            </nav>
+          </Stack>
+          {api.kind === 'mock' && (
+            <Text size="xs" c="dimmed">
+              Preview mode: every number on screen is simulated.
+            </Text>
+          )}
         </Stack>
       </AppShell.Navbar>
 
       <AppShell.Main>
         <StatusBar />
-        <Box id="page" tabIndex={-1}>
+        <Box id="page" tabIndex={-1} className="page">
           <Outlet />
         </Box>
       </AppShell.Main>
@@ -48,7 +65,8 @@ export function AppLayout() {
           <Group grow gap={2} wrap="nowrap">
             {NAV_ENTRIES.map((entry) => (
               <NavLink key={entry.to} to={entry.to} end={entry.end ?? false} className="tab-item">
-                {entry.label}
+                <span className="nav-icon">{entry.icon}</span>
+                <span>{entry.label}</span>
               </NavLink>
             ))}
           </Group>
