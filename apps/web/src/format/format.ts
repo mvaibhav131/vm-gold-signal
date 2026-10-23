@@ -8,29 +8,34 @@ export interface Chip {
 }
 
 /**
- * Rounds half away from zero to two decimals. `toFixed(2)` goes wrong on values such as 4017.285
- * (binary floats): a price must never show a cent off. Inputs have at most 3 decimals, so the
- * rounding is done on whole thousandths.
+ * Rounds half away from zero to 0 to 3 decimals. `toFixed` goes wrong on values such as 4017.285
+ * at two decimals (binary floats): a price must never show a digit off. Inputs have at most 3
+ * decimals (the stored precision), so the rounding is done on whole thousandths.
  */
-export function formatFixed2(value: number): string {
+export function formatFixed(value: number, decimals: 0 | 1 | 2 | 3): string {
   const thousandths = Math.round(Math.abs(value) * 1000);
-  const hundredths = Math.round(thousandths / 10);
-  const sign = value < 0 && hundredths > 0 ? '-' : '';
-  const whole = Math.trunc(hundredths / 100);
-  return `${sign}${String(whole)}.${String(hundredths % 100).padStart(2, '0')}`;
+  const units = Math.round(thousandths / 10 ** (3 - decimals));
+  const scale = 10 ** decimals;
+  const sign = value < 0 && units > 0 ? '-' : '';
+  const whole = String(Math.trunc(units / scale));
+  return decimals === 0
+    ? `${sign}${whole}`
+    : `${sign}${whole}.${String(units % scale).padStart(decimals, '0')}`;
 }
 
-/** Prices are stored with 3 decimals and shown with 2, like a trading screen. */
+/** Prices and spreads are shown with the 3 decimals they are stored with (owner decision). */
 export function formatPrice(value: number): string {
-  return formatFixed2(value);
+  return formatFixed(value, 3);
 }
 
 export function formatSpread(value: number): string {
-  return formatFixed2(value);
+  return formatFixed(value, 3);
 }
 
+/** The mid price, rounded half up to 3 decimals on whole thousandths (no float drift). */
 export function midOf(bid: number, ask: number): number {
-  return (bid + ask) / 2;
+  const sum = Math.round(bid * 1000) + Math.round(ask * 1000);
+  return Math.round(sum / 2) / 1000;
 }
 
 /** `NEW_YORK` becomes `NEW YORK`: labels are upper case words with spaces. */
