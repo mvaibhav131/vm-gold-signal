@@ -1,0 +1,18 @@
+{
+  "name": "@vmgs/config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@vmgs/contracts": "workspace:*",
+    "@vmgs/core": "workspace:*",
+    "zod": "catalog:"
+  }
+}
