@@ -52,7 +52,7 @@ const engine = {
   status: 'RUNNING',
   openCount: 0,
   openRiskR: 0,
-  warmup: { ready: true, progressPct: 100 },
+  warmup: { ready: true, progressPct: 100, missingTimeframes: [] },
   waitReasons: [{ code: 'NO_SETUP', label: 'No setup yet' }],
   evaluatedAt: '2026-10-23T06:10:00Z',
 };
@@ -193,6 +193,23 @@ describe('market snapshot', () => {
       ok(marketSnapshotSchema, {
         ...snapshot,
         engine: { ...engine, pausedSince: '2026-10-23T06:00:00Z' },
+      }),
+    ).toBe(false);
+  });
+
+  it('names the missing timeframes while warming up and none once ready', () => {
+    const warming = { ready: false, progressPct: 40, missingTimeframes: ['1h', '4h'] };
+    expect(ok(marketSnapshotSchema, { ...snapshot, engine: { ...engine, warmup: warming } })).toBe(
+      true,
+    );
+    const contradiction = { ...warming, ready: true };
+    expect(
+      ok(marketSnapshotSchema, { ...snapshot, engine: { ...engine, warmup: contradiction } }),
+    ).toBe(false);
+    expect(
+      ok(marketSnapshotSchema, {
+        ...snapshot,
+        engine: { ...engine, warmup: { ready: false, progressPct: 40 } },
       }),
     ).toBe(false);
   });

@@ -2,6 +2,8 @@ import { AppShell, Box, Group, Stack, Text } from '@mantine/core';
 import { NavLink, Outlet } from 'react-router';
 
 import { useApi } from '../api/context';
+import { useStreamBridge } from '../data/stream';
+import { FeedBanner } from './FeedBanner';
 import { NAV_ENTRIES } from './nav';
 import { StatusBar } from './StatusBar';
 
@@ -11,6 +13,7 @@ import { StatusBar } from './StatusBar';
  */
 export function AppLayout() {
   const api = useApi();
+  useStreamBridge();
 
   return (
     <AppShell
@@ -55,6 +58,7 @@ export function AppLayout() {
 
       <AppShell.Main>
         <StatusBar />
+        <FeedBanner />
         <Box id="page" tabIndex={-1} className="page">
           <Outlet />
         </Box>

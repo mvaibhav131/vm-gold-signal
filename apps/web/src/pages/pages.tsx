@@ -4,22 +4,7 @@ import { Link, useParams } from 'react-router';
 import { usePageTitle } from '../hooks';
 import { PlaceholderPage } from './PlaceholderPage';
 
-export function DashboardPage() {
-  return (
-    <PlaceholderPage
-      testId="page-dashboard"
-      title="Dashboard"
-      phase="U1"
-      summary="Live state at a glance: is the data fresh, is there a signal and why, and what is the evidence."
-      planned={[
-        'Chart with EMA, levels, trendlines, zones and patterns, and signal markers',
-        'One card per open signal: levels, live R, why this signal, evidence',
-        'Why there is no signal now (WAIT reasons in plain words)',
-        'Today and month counters, recent signals, events and top headlines',
-      ]}
-    />
-  );
-}
+export { DashboardPage } from '../dashboard/DashboardPage';
 
 export function SignalsPage() {
   return (

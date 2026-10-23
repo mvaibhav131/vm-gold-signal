@@ -28,6 +28,7 @@ export const waitReasonSchema = z.strictObject({
   code: z.string().min(1),
   label: z.string().min(1),
 });
+export type WaitReason = z.infer<typeof waitReasonSchema>;
 
 export const engineSnapshotSchema = z
   .strictObject({
@@ -35,19 +36,28 @@ export const engineSnapshotSchema = z
     pausedSince: timestampSchema.optional(),
     openCount: countSchema,
     openRiskR: r2Schema.pipe(z.number().nonnegative()),
-    warmup: z.strictObject({ ready: z.boolean(), progressPct: z.number().min(0).max(100) }),
+    // While warming up, the timeframes that still lack candles (05_UI_Spec section 4, WARMING_UP).
+    warmup: z.strictObject({
+      ready: z.boolean(),
+      progressPct: z.number().min(0).max(100),
+      missingTimeframes: z.array(timeframeSchema),
+    }),
     waitReasons: z.array(waitReasonSchema),
     evaluatedAt: timestampSchema,
   })
   .check((ctx) => {
-    const { status, pausedSince } = ctx.value;
+    const { status, pausedSince, warmup } = ctx.value;
     if (status === 'PAUSED' && pausedSince === undefined) {
       addIssue(ctx, 'PAUSED needs pausedSince', ['pausedSince']);
     }
     if (status === 'RUNNING' && pausedSince !== undefined) {
       addIssue(ctx, 'RUNNING has no pausedSince', ['pausedSince']);
     }
+    if (warmup.ready && warmup.missingTimeframes.length > 0) {
+      addIssue(ctx, 'a warmed-up engine misses no timeframe', ['warmup', 'missingTimeframes']);
+    }
   });
+export type EngineSnapshot = z.infer<typeof engineSnapshotSchema>;
 
 /** GET /market/snapshot. mid is rounded to 3 decimals, so it may differ from (bid+ask)/2 by up to 0.0005. */
 export const marketSnapshotSchema = z
@@ -91,6 +101,7 @@ export const levelSchema = z.strictObject({
   label: z.string().min(1),
   price: priceSchema,
 });
+export type Level = z.infer<typeof levelSchema>;
 
 export const candlesResponseSchema = z.strictObject({
   candles: z.array(chartCandleSchema),
@@ -98,6 +109,8 @@ export const candlesResponseSchema = z.strictObject({
   levels: z.array(levelSchema),
   objects: z.array(chartObjectSchema),
 });
+export type CandlesResponse = z.infer<typeof candlesResponseSchema>;
+export type CandlesQuery = z.input<typeof candlesQuerySchema>;
 
 export const pauseRequestSchema = z.strictObject({
   minutes: z.int().min(1).max(10_080).optional(),

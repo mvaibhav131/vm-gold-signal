@@ -1,11 +1,12 @@
 import { Badge, Button, Group, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
 import { useApi } from '../api/context';
 import { ME_KEY } from '../auth/RequireAuth';
+import { useQuote, useSnapshot, useStrategies } from '../data/queries';
 import {
   engineChip,
   formatPrice,
@@ -18,7 +19,6 @@ import {
   type Chip,
   type Tone,
 } from '../format/format';
-import { useQuote } from '../hooks';
 import { ThemeToggle } from './ThemeToggle';
 
 const TONE_COLOR: Record<Tone, string> = {
@@ -61,12 +61,8 @@ export function StatusBar() {
   const queryClient = useQueryClient();
   const isPhone = useMediaQuery('(max-width: 47.99em)');
   const quote = useQuote();
-  const snapshot = useQuery({
-    queryKey: ['snapshot'],
-    queryFn: () => api.getSnapshot(),
-    refetchInterval: 5000,
-  });
-  const strategies = useQuery({ queryKey: ['strategies'], queryFn: () => api.getStrategies() });
+  const snapshot = useSnapshot();
+  const strategies = useStrategies();
   const logout = useMutation({
     mutationFn: () => api.logout(),
     onSuccess: () => {
@@ -138,7 +134,10 @@ export function StatusBar() {
             />
           </Stat>
           <Stat label="Engine">
-            <ChipBadge testId="status-engine" chip={data ? engineChip(data.engine) : PENDING} />
+            <ChipBadge
+              testId="status-engine"
+              chip={data ? engineChip(data.engine, feedState) : PENDING}
+            />
           </Stat>
           <Stat label="Mode">
             <ChipBadge testId="status-mode" chip={data ? modeChip(data.mode) : PENDING} />

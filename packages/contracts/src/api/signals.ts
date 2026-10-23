@@ -37,7 +37,7 @@ import {
   signalSchema,
   signalStateSchema,
 } from '../signal';
-import { checkRange, pageQueryShape, rangeShape } from './common';
+import { checkRange, pageQueryShape, pageSchema, rangeShape } from './common';
 
 export const openSignalLiveSchema = z.strictObject({
   status: z.enum(['ACTIVE', 'TP1_HIT']),
@@ -53,6 +53,7 @@ export const openSignalSchema = z.strictObject({
   signal: signalSchema,
   live: openSignalLiveSchema,
 });
+export type OpenSignal = z.infer<typeof openSignalSchema>;
 
 /** GET /signals/open. There can be several open signals at once. */
 export const openSignalsResponseSchema = z
@@ -66,6 +67,7 @@ export const openSignalsResponseSchema = z
       addIssue(ctx, 'openCount must equal the number of items', ['openCount']);
     }
   });
+export type OpenSignalsResponse = z.infer<typeof openSignalsResponseSchema>;
 
 /** One row of signal_history_v. Outcome columns are null while the signal is still open. */
 export const signalHistoryRowSchema = z.strictObject({
@@ -111,6 +113,9 @@ export const signalHistoryRowSchema = z.strictObject({
 });
 export type SignalHistoryRow = z.infer<typeof signalHistoryRowSchema>;
 
+export const signalHistoryPageSchema = pageSchema(signalHistoryRowSchema);
+export type SignalHistoryPage = z.infer<typeof signalHistoryPageSchema>;
+
 export const signalHistoryQuerySchema = z
   .strictObject({
     ...rangeShape,
@@ -126,6 +131,7 @@ export const signalHistoryQuerySchema = z
   .check((ctx) => {
     checkRange(ctx);
   });
+export type SignalHistoryQuery = z.input<typeof signalHistoryQuerySchema>;
 
 /** GET /signals/:id. An open signal has state and no outcome; a closed one has an outcome and no state. */
 export const signalDetailSchema = z

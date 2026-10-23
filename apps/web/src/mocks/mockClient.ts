@@ -1,30 +1,58 @@
-import { STRATEGY_KEYS, type StrategyKey } from '@vmgs/core';
+import { STRATEGY_KEYS, sessionAt, type StrategyKey } from '@vmgs/core';
 import {
+  candlesQuerySchema,
+  candlesResponseSchema,
+  headlinesQuerySchema,
   loginRequestSchema,
   marketSnapshotSchema,
   meResponseSchema,
+  openSignalsResponseSchema,
+  overviewQuerySchema,
+  settingsSchema,
+  signalHistoryPageSchema,
+  signalHistoryQuerySchema,
   strategyInfoSchema,
+  type CandlesQuery,
+  type CandlesResponse,
+  type HeadlinesQuery,
+  type HeadlinesResponse,
   type LoginRequest,
   type MarketSnapshot,
   type MeResponse,
+  type NewsStateResponse,
+  type OpenSignalsResponse,
+  type OverviewQuery,
+  type OverviewResponse,
   type QuoteData,
+  type Settings,
+  type SignalHistoryPage,
+  type SignalHistoryQuery,
+  type SseEvent,
   type StrategyInfo,
 } from '@vmgs/contracts';
 
 import { ApiError, type ApiClient } from '../api/client';
+import { midOf } from '../format/format';
+import { headlinesAt, newsStateAt } from './news';
+import { overviewFor, recentRows } from './history';
+import { SCENARIOS, scenarioById, type Scenario } from './scenarios';
+import { buildSimSignal, currentPrice, unrealisedR, type SimSignal } from './signals';
+import { candlesResponse, priceAt, round3 } from './world';
 
 /** Credentials of the preview. They only exist in the mock; the live API never sees them. */
 export const MOCK_USERNAME = 'owner';
 export const MOCK_PASSWORD = 'preview';
 
 const SESSION_KEY = 'vmgs-mock-session';
+const SCENARIO_KEY = 'vmgs-mock-scenario';
 const SESSION_HOURS = 12;
-const START_MID = 4017.285;
+const MINUTE_MS = 60_000;
+const DAY_MS = 86_400_000;
 
 /** Strategies A, B and C alert by default; D and E stay in shadow mode until their backtest report. */
 const ALERTS_ON: readonly StrategyKey[] = ['trend_pullback', 'sweep_reversal', 'squeeze_retest'];
 
-/** Small deterministic generator: the preview shows the same prices on every run. */
+/** Small deterministic generator: the preview shows the same numbers on every run. */
 export function seededRandom(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
@@ -36,10 +64,6 @@ export function seededRandom(seed: number): () => number {
   };
 }
 
-function round3(value: number): number {
-  return Math.round(value * 1000) / 1000;
-}
-
 export interface MockClientOptions {
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
   now?: () => Date;
@@ -47,6 +71,61 @@ export interface MockClientOptions {
   /** Delay of every call, to feel like a network. Tests pass 0. */
   latencyMs?: number;
   quoteIntervalMs?: number;
+  /** The real stream sends `signal_update` at most once per 5 s per open signal. */
+  signalUpdateIntervalMs?: number;
+  /** The state to start in. Defaults to `?scenario=` of the address bar, then the one the owner picked last. */
+  scenario?: string;
+}
+
+interface PauseState {
+  since: number;
+  until: number | null;
+}
+
+function defaultSettings(): Settings {
+  return settingsSchema.parse({
+    displayTz: 'Asia/Kolkata',
+    locale: 'en',
+    alerts: {
+      telegram: {
+        enabled: true,
+        minGrade: 'Moderate',
+        kinds: ['SIGNAL_NEW', 'SIGNAL_TP1', 'SIGNAL_CLOSED', 'SIGNAL_CANCELLED', 'SYSTEM_DEGRADED'],
+      },
+      webpush: { enabled: false, minGrade: 'Strong' },
+    },
+    advisoryGates: { newsWindow: 'warn', rollover: 'warn', offHours: 'warn', nearLevel: 'warn' },
+    strategyAlerts: Object.fromEntries(
+      STRATEGY_KEYS.map((key) => [key, ALERTS_ON.includes(key) ? 'on' : 'off']),
+    ),
+    newsAlerts: {
+      minImpact: 'HIGH',
+      topics: {
+        FED_RATES: 'on',
+        USD_DOLLAR: 'on',
+        INFLATION_JOBS: 'on',
+        GEOPOLITICS_WAR: 'on',
+        TRUMP_POLICY: 'on',
+        CENTRAL_BANK_GOLD: 'on',
+        GOLD_DIRECT: 'on',
+        RISK_OFF: 'on',
+      },
+      marketMoves: 'on',
+    },
+  });
+}
+
+function startingScenario(
+  options: MockClientOptions,
+  storage: MockClientOptions['storage'],
+): string {
+  if (options.scenario) return scenarioById(options.scenario).id;
+  const fromUrl =
+    typeof window === 'undefined'
+      ? null
+      : new URLSearchParams(window.location.search).get('scenario');
+  if (fromUrl) return scenarioById(fromUrl).id;
+  return scenarioById(storage?.getItem(SCENARIO_KEY)).id;
 }
 
 export function createMockClient(options: MockClientOptions = {}): ApiClient {
@@ -54,13 +133,39 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
   const now = options.now ?? (() => new Date());
   const latencyMs = options.latencyMs ?? 120;
   const quoteIntervalMs = options.quoteIntervalMs ?? 1000;
+  const updateIntervalMs = options.signalUpdateIntervalMs ?? 5000;
   const random = seededRandom(options.seed ?? 20261023);
+  const listeners = new Set<(event: SseEvent) => void>();
 
-  let mid = START_MID;
-  let lastQuote = nextQuote();
+  let scenario: Scenario = scenarioById(startingScenario(options, storage));
+  let activatedAt = now().getTime();
+  let open: SimSignal[] = [];
+  let pause: PauseState | null = null;
+  let frozen: QuoteData | null = null;
+  let lastQuote: QuoteData;
+
+  function activate(next: Scenario): void {
+    scenario = next;
+    activatedAt = now().getTime();
+    open = next.signals.map((key) => buildSimSignal(key, activatedAt));
+    pause = next.paused ? { since: activatedAt - 12 * MINUTE_MS, until: null } : null;
+    // A stale, disconnected or closed feed keeps the last tick it saw; only its age grows.
+    frozen = null;
+    frozen = nextQuote();
+    lastQuote = feedIsMoving() ? frozen : nextQuote();
+  }
+
+  /** The feed is alive: quotes follow the simulated price. Otherwise the last tick stays and its age grows. */
+  function feedIsMoving(): boolean {
+    return scenario.tickAgeMs === null;
+  }
 
   function nextQuote(): QuoteData {
-    mid = round3(Math.min(4060, Math.max(3980, mid + (random() - 0.5) * 0.6)));
+    const at = now().getTime();
+    if (!feedIsMoving() && frozen) {
+      return { ...frozen, ageMs: (scenario.tickAgeMs ?? 0) + (at - activatedAt) };
+    }
+    const mid = round3(priceAt(at) + (random() - 0.5) * 0.2);
     const spread = 0.15 + Math.round(random() * 10) / 100;
     const bid = round3(mid - spread / 2);
     const ask = round3(bid + spread);
@@ -69,8 +174,49 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       ask,
       spread: round3(ask - bid),
       ageMs: 300 + Math.floor(random() * 400),
-      feedState: 'LIVE',
+      feedState: scenario.feedState,
     };
+  }
+
+  function emit(event: SseEvent): void {
+    for (const listener of listeners) listener(event);
+  }
+
+  function engineSnapshot(): MarketSnapshot['engine'] {
+    const at = now();
+    if (pause?.until != null && at.getTime() >= pause.until) pause = null;
+    const paused = pause !== null;
+    return {
+      status: paused ? 'PAUSED' : 'RUNNING',
+      ...(pause ? { pausedSince: new Date(pause.since).toISOString() } : {}),
+      openCount: open.length,
+      // Every simulated signal risks 1R.
+      openRiskR: open.length,
+      warmup: { ...scenario.warmup, missingTimeframes: [...scenario.warmup.missingTimeframes] },
+      waitReasons: paused
+        ? [{ code: 'PAUSED', label: 'Paused by you: no new signals until you resume' }]
+        : scenario.waitReasons.map((reason) => ({ ...reason })),
+      evaluatedAt: at.toISOString(),
+    };
+  }
+
+  function emitEngine(): void {
+    const engine = engineSnapshot();
+    emit({
+      event: 'engine',
+      data: {
+        status: engine.status,
+        waitReasons: engine.waitReasons,
+        regime: scenario.regime,
+        session: sessionAt(now().getTime()),
+      },
+    });
+  }
+
+  function track(sim: SimSignal): void {
+    const r = unrealisedR(sim.signal, lastQuote);
+    sim.mfeR = Math.max(sim.mfeR, r);
+    sim.maeR = Math.min(sim.maeR, r);
   }
 
   function wait(): Promise<void> {
@@ -81,9 +227,21 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
         });
   }
 
+  activate(scenario);
+
   return {
     kind: 'mock',
     preview: { username: MOCK_USERNAME, password: MOCK_PASSWORD },
+    scenarios: {
+      scenarios: SCENARIOS.map(({ id, label }) => ({ id, label })),
+      current: () => scenario.id,
+      set(id) {
+        activate(scenarioById(id));
+        storage.setItem(SCENARIO_KEY, scenario.id);
+        // The real API sends `resync` when the client must reload its state over REST.
+        emit({ event: 'resync', data: {} });
+      },
+    },
 
     async login(request: LoginRequest) {
       await wait();
@@ -119,30 +277,29 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       });
     },
 
+    async getSettings(): Promise<Settings> {
+      await wait();
+      return defaultSettings();
+    },
+
     async getSnapshot(): Promise<MarketSnapshot> {
       await wait();
-      const at = now().toISOString();
+      const at = now().getTime();
+      const sourceMs = at - lastQuote.ageMs;
       return marketSnapshotSchema.parse({
         symbol: 'XAUUSD',
         bid: lastQuote.bid,
         ask: lastQuote.ask,
-        mid: round3((lastQuote.bid + lastQuote.ask) / 2),
+        mid: midOf(lastQuote.bid, lastQuote.ask),
         spread: lastQuote.spread,
-        sourceAt: at,
-        receivedAt: at,
+        sourceAt: new Date(sourceMs).toISOString(),
+        receivedAt: new Date(sourceMs + 250).toISOString(),
         ageMs: lastQuote.ageMs,
-        feedState: 'LIVE',
-        session: 'LONDON',
-        regime: 'TREND_UP',
+        feedState: lastQuote.feedState,
+        session: sessionAt(at),
+        regime: scenario.regime,
         mode: 'SIMULATED',
-        engine: {
-          status: 'RUNNING',
-          openCount: 0,
-          openRiskR: 0,
-          warmup: { ready: true, progressPct: 100 },
-          waitReasons: [{ code: 'NO_SETUP', label: 'No setup right now' }],
-          evaluatedAt: at,
-        },
+        engine: engineSnapshot(),
       });
     },
 
@@ -161,14 +318,121 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       );
     },
 
-    subscribeQuotes(listener) {
-      listener(lastQuote);
-      const timer = setInterval(() => {
+    async getCandles(query: CandlesQuery): Promise<CandlesResponse> {
+      await wait();
+      const parsed = candlesQuerySchema.parse(query);
+      return candlesResponseSchema.parse(
+        candlesResponse(
+          {
+            tf: parsed.tf,
+            limit: parsed.limit,
+            overlays: parsed.overlays,
+            objects: parsed.objects,
+          },
+          now().getTime(),
+        ),
+      );
+    },
+
+    async getOpenSignals(): Promise<OpenSignalsResponse> {
+      await wait();
+      const at = now().getTime();
+      return openSignalsResponseSchema.parse({
+        items: [...open]
+          .sort((a, b) => b.signal.seq - a.signal.seq)
+          .map((sim) => ({
+            signal: sim.signal,
+            live: {
+              status: sim.status,
+              currentPrice: currentPrice(sim.signal, lastQuote),
+              unrealisedR: unrealisedR(sim.signal, lastQuote),
+              mfeR: Math.round(sim.mfeR * 100) / 100,
+              maeR: Math.round(sim.maeR * 100) / 100,
+              stopLossCurrent: sim.stop,
+              timeToTimeStopS: Math.max(
+                0,
+                Math.round((Date.parse(sim.signal.timeStopAt) - at) / 1000),
+              ),
+            },
+          })),
+        openCount: open.length,
+        openRiskR: open.length,
+      });
+    },
+
+    async getSignals(query: SignalHistoryQuery): Promise<SignalHistoryPage> {
+      await wait();
+      const parsed = signalHistoryQuerySchema.parse(query);
+      return signalHistoryPageSchema.parse({
+        items: recentRows(open, now().getTime(), parsed.limit),
+        nextCursor: null,
+      });
+    },
+
+    async getOverview(query: OverviewQuery): Promise<OverviewResponse> {
+      await wait();
+      const parsed = overviewQuerySchema.parse(query);
+      const days =
+        parsed.from !== undefined && parsed.to !== undefined
+          ? (Date.parse(parsed.to) - Date.parse(parsed.from)) / DAY_MS
+          : 30;
+      return overviewFor(days, open.length);
+    },
+
+    async getNewsState(): Promise<NewsStateResponse> {
+      await wait();
+      return newsStateAt(scenario.news, now().getTime());
+    },
+
+    async getHeadlines(query: HeadlinesQuery): Promise<HeadlinesResponse> {
+      await wait();
+      const parsed = headlinesQuerySchema.parse(query);
+      return headlinesAt(now().getTime(), parsed.limit);
+    },
+
+    async pauseEngine(request) {
+      await wait();
+      const at = now().getTime();
+      pause = {
+        since: at,
+        until: request.minutes === undefined ? null : at + request.minutes * MINUTE_MS,
+      };
+      emitEngine();
+    },
+
+    async resumeEngine() {
+      await wait();
+      pause = null;
+      emitEngine();
+    },
+
+    subscribe(listener) {
+      listeners.add(listener);
+      listener({ event: 'quote', data: lastQuote });
+      // Each subscriber gets its own quote and update timers; only state changes are broadcast.
+      const quoteTimer = setInterval(() => {
         lastQuote = nextQuote();
-        listener(lastQuote);
+        listener({ event: 'quote', data: lastQuote });
       }, quoteIntervalMs);
+      const updateTimer = setInterval(() => {
+        if (!feedIsMoving()) return;
+        for (const sim of open) {
+          track(sim);
+          listener({
+            event: 'signal_update',
+            data: {
+              id: sim.signal.id,
+              status: sim.status,
+              unrealisedR: unrealisedR(sim.signal, lastQuote),
+              stop: sim.stop,
+            },
+          });
+        }
+      }, updateIntervalMs);
       return () => {
-        clearInterval(timer);
+        listeners.delete(listener);
+        clearInterval(quoteTimer);
+        clearInterval(updateTimer);
       };
     },
   };

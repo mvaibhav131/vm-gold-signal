@@ -8,9 +8,12 @@ export async function fillLogin(page: Page, password: string = OWNER.password): 
   await page.getByRole('button', { name: 'Log in' }).click();
 }
 
-/** Logs in through the real login screen and waits until the status bar has its data. */
-export async function logIn(page: Page): Promise<void> {
-  await page.goto('/login');
+/**
+ * Logs in through the real login screen and waits until the status bar has its data. The preview
+ * state of the simulated market can be chosen with `scenario` (see the picker on the dashboard).
+ */
+export async function logIn(page: Page, options: { scenario?: string } = {}): Promise<void> {
+  await page.goto(options.scenario ? `/login?scenario=${options.scenario}` : '/login');
   await fillLogin(page);
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
   await expect(page.getByTestId('status-mode')).toHaveText('SIMULATED');

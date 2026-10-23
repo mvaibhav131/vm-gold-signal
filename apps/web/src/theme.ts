@@ -66,6 +66,9 @@ export const theme = createTheme({
   primaryColor: 'gold',
   primaryShade: 6,
   autoContrast: true,
+  // The default threshold (0.3) gives white text on the red of a SELL badge (3.6:1, too low);
+  // with 0.2 the text on red, green and gold is dark, which axe accepts.
+  luminanceThreshold: 0.2,
   defaultRadius: 'md',
   // System fonts only: nothing is downloaded, the app works offline and costs nothing.
   fontFamily:

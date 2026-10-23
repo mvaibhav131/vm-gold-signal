@@ -17,7 +17,7 @@ const engine: EngineSnapshot = {
   status: 'RUNNING',
   openCount: 0,
   openRiskR: 0,
-  warmup: { ready: true, progressPct: 100 },
+  warmup: { ready: true, progressPct: 100, missingTimeframes: [] },
   waitReasons: [],
   evaluatedAt: '2026-10-23T06:10:00Z',
 };
@@ -111,10 +111,25 @@ describe('engineChip', () => {
       text: 'PAUSED',
       tone: 'warning',
     });
-    expect(engineChip({ ...engine, warmup: { ready: false, progressPct: 20 } })).toEqual({
+    expect(
+      engineChip({
+        ...engine,
+        warmup: { ready: false, progressPct: 20, missingTimeframes: ['1h'] },
+      }),
+    ).toEqual({
       text: 'WARMING UP',
       tone: 'warning',
     });
+  });
+
+  it('says blocked while the feed is stale or disconnected, and the owner pause comes first', () => {
+    expect(engineChip(engine, 'STALE')).toEqual({ text: 'BLOCKED: NO DATA', tone: 'negative' });
+    expect(engineChip(engine, 'DISCONNECTED').text).toBe('BLOCKED: NO DATA');
+    expect(engineChip(engine, 'LIVE').text).toBe('RUNNING');
+    expect(
+      engineChip({ ...engine, status: 'PAUSED', pausedSince: '2026-10-23T06:00:00Z' }, 'STALE')
+        .text,
+    ).toBe('PAUSED');
   });
 });
 

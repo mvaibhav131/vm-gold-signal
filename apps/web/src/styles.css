@@ -248,3 +248,115 @@ body {
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* ---- text colours that stay readable in both themes ---- */
+
+:root[data-mantine-color-scheme='dark'] {
+  --vm-text-positive: var(--mantine-color-positive-5);
+  --vm-text-negative: var(--mantine-color-negative-4);
+}
+
+:root[data-mantine-color-scheme='light'] {
+  --vm-text-positive: var(--mantine-color-positive-9);
+  --vm-text-negative: var(--mantine-color-negative-9);
+}
+
+.text-positive {
+  color: var(--vm-text-positive);
+}
+
+.text-negative {
+  color: var(--vm-text-negative);
+}
+
+/* ---- dashboard (05_UI_Spec section 4) ---- */
+
+/* The document order is the phone order; the wide layout moves the chart to the left. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'signals'
+    'chart'
+    'counters'
+    'bottom';
+  gap: 16px;
+}
+
+.dash-signals {
+  grid-area: signals;
+  min-width: 0;
+}
+
+.dash-chart {
+  grid-area: chart;
+  min-width: 0;
+}
+
+.dash-counters {
+  grid-area: counters;
+  min-width: 0;
+}
+
+.dash-bottom {
+  grid-area: bottom;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (min-width: 62em) {
+  .dash-bottom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 75em) {
+  .dash-grid {
+    grid-template-columns: minmax(0, 3fr) minmax(380px, 2fr);
+    grid-template-areas:
+      'chart signals'
+      'counters counters'
+      'bottom bottom';
+    align-items: start;
+  }
+
+  .dash-bottom {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .dash-recent {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .dash-events {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dash-why-no {
+    grid-column: 3;
+    grid-row: 1;
+  }
+}
+
+.chart-box {
+  position: relative;
+  height: 420px;
+}
+
+@media (max-width: 47.99em) {
+  .chart-box {
+    height: 300px;
+  }
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.paused-card {
+  border-color: var(--mantine-color-warning-6);
+}
