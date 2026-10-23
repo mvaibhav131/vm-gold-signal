@@ -11,3 +11,4 @@ export * from './levels';
 export * from './quality';
 export * from './structure';
 export * from './time';
+export * from './trendlines';
