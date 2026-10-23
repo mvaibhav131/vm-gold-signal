@@ -8,4 +8,5 @@ export * from './domain';
 export * from './evidence';
 export * from './indicators';
 export * from './quality';
+export * from './structure';
 export * from './time';
