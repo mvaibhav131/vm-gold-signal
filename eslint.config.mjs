@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 const impure = 'packages/core is pure: inject a clock, randomness or IO from the caller.';
@@ -25,6 +26,25 @@ export default defineConfig(
     },
   },
   { files: ['**/*.{js,mjs,cjs}'], extends: [tseslint.configs.disableTypeChecked] },
+  {
+    // Build and CI scripts run on Node and report through stdout and the exit code.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly' } },
+  },
+  {
+    // The web app: hooks rules, and no raw HTML injection (05_UI_Spec section 9.5).
+    files: ['apps/web/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat.recommended],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'Never inject raw HTML: feed text is rendered as plain text.',
+        },
+      ],
+    },
+  },
   {
     // The engine must be reproducible: no clock, no randomness, no IO.
     files: ['packages/core/src/**/*.ts'],

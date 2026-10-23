@@ -14,13 +14,18 @@ Private XAU/USD decision-support system (manual execution). Design lives in [`do
 pnpm install
 pnpm check          # typecheck + lint + format check + tests + audit of production dependencies
 pnpm test:watch
+pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (login: owner / preview)
+pnpm e2e:install    # once: downloads Chromium for the e2e tests
+pnpm e2e            # builds the web app and runs the Playwright scenarios (DOM and axe checks, no screenshots)
+pnpm web:budget     # after a build: the initial route must stay under 400 KB gzip
 ```
 
 ## Layout
 
 ```text
-apps/       web, api, worker (added in their phases)
-packages/   core (pure domain code), contracts (Zod schemas), db, feed, ...
+apps/       web (React + Mantine; mock data until phase U5), api and worker (added in their phases)
+packages/   core (pure domain code), contracts (Zod schemas), config (env and strategy config), db, feed, ...
 tools/      research and admin CLIs
+e2e/        Playwright scenarios
 docs/       architecture, specs, plan
 ```
