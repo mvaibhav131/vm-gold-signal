@@ -1,4 +1,4 @@
-import { Badge, Group, List, Paper, Stack, Text, Title } from '@mantine/core';
+import { Badge, Group, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 
 import { usePageTitle } from '../hooks';
 
@@ -16,26 +16,33 @@ export interface PlaceholderProps {
 export function PlaceholderPage({ title, phase, summary, planned, testId }: PlaceholderProps) {
   usePageTitle(title);
   return (
-    <Stack gap="md" data-testid={testId}>
-      <Group gap="sm" align="center">
-        <Title order={1} size="h2">
-          {title}
-        </Title>
-        <Badge variant="light" color="gray">
-          Built in {phase}
-        </Badge>
-      </Group>
-      <Text c="dimmed">{summary}</Text>
-      <Paper withBorder p="md" radius="md">
-        <Text fw={600} mb="xs">
-          What will be here
+    <Stack gap="lg" data-testid={testId}>
+      <Stack gap={6}>
+        <Group gap="sm" align="center">
+          <Title order={1} size="h2">
+            {title}
+          </Title>
+          <Badge variant="light" color="gold">
+            Built in {phase}
+          </Badge>
+        </Group>
+        <Text c="dimmed" maw={720}>
+          {summary}
         </Text>
-        <List size="sm" spacing={4}>
-          {planned.map((item) => (
-            <List.Item key={item}>{item}</List.Item>
+      </Stack>
+      <Stack gap="sm">
+        <Text fw={600}>What will be here</Text>
+        <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+          {planned.map((item, index) => (
+            <div key={item} className="plan-card">
+              <span className="plan-number" aria-hidden="true">
+                {index + 1}
+              </span>
+              <Text size="sm">{item}</Text>
+            </div>
           ))}
-        </List>
-      </Paper>
+        </SimpleGrid>
+      </Stack>
     </Stack>
   );
 }

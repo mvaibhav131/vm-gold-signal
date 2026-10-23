@@ -118,6 +118,25 @@ describe('status bar (scenario E2)', () => {
   });
 });
 
+describe('theme switch', () => {
+  it('starts dark, switches to light and back, and remembers the choice', async () => {
+    const user = userEvent.setup();
+    window.localStorage.clear();
+    renderApp({ route: '/login' });
+    const toggle = await screen.findByRole('button', { name: 'Switch to light theme' });
+    expect(document.documentElement).toHaveAttribute('data-mantine-color-scheme', 'dark');
+
+    await user.click(toggle);
+    expect(await screen.findByRole('button', { name: 'Switch to dark theme' })).toBeInTheDocument();
+    expect(document.documentElement).toHaveAttribute('data-mantine-color-scheme', 'light');
+    expect(window.localStorage.getItem('mantine-color-scheme-value')).toBe('light');
+
+    await user.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
+    expect(document.documentElement).toHaveAttribute('data-mantine-color-scheme', 'dark');
+    window.localStorage.clear();
+  });
+});
+
 describe('navigation', () => {
   it('opens every main screen from the navigation and marks the current one', async () => {
     const user = userEvent.setup();

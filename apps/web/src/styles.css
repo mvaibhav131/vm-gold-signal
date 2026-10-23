@@ -1,4 +1,27 @@
-/* Global rules. Colours come from the Mantine theme (src/theme.ts). */
+/* Global rules. Colours come from the Mantine theme (src/theme.ts); the variables below pick the
+   right shade for the dark and the light theme. */
+
+:root[data-mantine-color-scheme='dark'] {
+  --vm-bar-bg: var(--mantine-color-dark-6);
+  --vm-bar-border: var(--mantine-color-dark-4);
+  --vm-hover-bg: var(--mantine-color-dark-5);
+  --vm-active-bg: var(--mantine-color-dark-5);
+  --vm-active-fg: var(--mantine-color-gold-4);
+  --vm-brand: var(--mantine-color-gold-5);
+  --vm-card-bg: var(--mantine-color-dark-6);
+  --vm-card-border: var(--mantine-color-dark-4);
+}
+
+:root[data-mantine-color-scheme='light'] {
+  --vm-bar-bg: var(--mantine-color-gray-0);
+  --vm-bar-border: var(--mantine-color-gray-3);
+  --vm-hover-bg: var(--mantine-color-gray-1);
+  --vm-active-bg: var(--mantine-color-gold-0);
+  --vm-active-fg: var(--mantine-color-gold-9);
+  --vm-brand: var(--mantine-color-gold-8);
+  --vm-card-bg: var(--mantine-color-white);
+  --vm-card-border: var(--mantine-color-gray-3);
+}
 
 html,
 body,
@@ -10,6 +33,13 @@ body {
   margin: 0;
   /* Tabular numerals keep prices and R values aligned as they change. */
   font-variant-numeric: tabular-nums;
+}
+
+/* Keeps the content readable on very wide screens. */
+.page {
+  max-width: 1400px;
+  margin-inline: auto;
+  outline: none;
 }
 
 .skip-link {
@@ -29,44 +59,154 @@ body {
   top: 8px;
 }
 
+/* ---- brand ---- */
+
+.brand-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px 0;
+}
+
+.brand {
+  color: var(--vm-brand);
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.brand-caption {
+  color: var(--mantine-color-dimmed);
+  font-size: 0.75rem;
+}
+
+/* ---- status bar ---- */
+
 .status-bar {
   position: sticky;
   top: 0;
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: calc(var(--app-shell-padding, 16px) * -1) calc(var(--app-shell-padding, 16px) * -1)
     var(--app-shell-padding, 16px);
-  padding: 8px var(--app-shell-padding, 16px);
-  background: var(--mantine-color-dark-6);
-  border-bottom: 1px solid var(--mantine-color-dark-4);
+  padding: 10px var(--app-shell-padding, 16px);
+  background: var(--vm-bar-bg);
+  border-bottom: 1px solid var(--vm-bar-border);
 }
+
+.status-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 32px;
+}
+
+.status-row-chips {
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.status-chips {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px 28px;
+  min-width: 0;
+}
+
+.status-actions {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.status-stat {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+}
+
+.status-label {
+  color: var(--mantine-color-dimmed);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Phones: the chips scroll inside their own box and the price detail moves to its own line. */
+@media (max-width: 47.99em) {
+  .status-row {
+    gap: 8px 20px;
+  }
+
+  .status-chips {
+    flex-wrap: nowrap;
+    gap: 16px;
+    padding-bottom: 4px;
+    overflow-x: auto;
+  }
+
+  .status-detail {
+    display: block;
+    white-space: nowrap;
+  }
+}
+
+/* ---- navigation ---- */
 
 .nav-item,
 .tab-item {
-  display: block;
+  display: flex;
+  align-items: center;
   box-sizing: border-box;
-  padding: 10px 12px;
-  border-radius: var(--mantine-radius-md);
-  color: var(--mantine-color-dark-1);
+  color: var(--mantine-color-text);
   font-weight: 500;
   text-decoration: none;
 }
 
+.nav-item {
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--mantine-radius-md);
+}
+
 .tab-item {
-  padding: 10px 4px;
-  text-align: center;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 2px;
+  border-radius: var(--mantine-radius-md);
   font-size: var(--mantine-font-size-xs);
+}
+
+.nav-icon {
+  display: inline-flex;
 }
 
 .nav-item:hover,
 .tab-item:hover {
-  background: var(--mantine-color-dark-5);
+  background: var(--vm-hover-bg);
 }
 
 .nav-item[aria-current='page'],
 .tab-item[aria-current='page'] {
-  background: var(--mantine-color-dark-5);
-  color: var(--mantine-color-gold-4);
-  box-shadow: inset 0 -3px 0 var(--mantine-color-gold-6);
+  background: var(--vm-active-bg);
+  color: var(--vm-active-fg);
+}
+
+.nav-item[aria-current='page'] {
+  box-shadow: inset 3px 0 0 var(--mantine-color-gold-6);
+}
+
+.tab-item[aria-current='page'] {
+  box-shadow: inset 0 3px 0 var(--mantine-color-gold-6);
 }
 
 .nav-item:focus-visible,
@@ -74,6 +214,33 @@ body {
 .skip-link:focus-visible {
   outline: 2px solid var(--mantine-color-gold-5);
   outline-offset: 2px;
+}
+
+/* ---- cards of the placeholder screens ---- */
+
+.plan-card {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  height: 100%;
+  padding: 16px;
+  background: var(--vm-card-bg);
+  border: 1px solid var(--vm-card-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.plan-number {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--mantine-color-gold-6);
+  color: #0b0f14;
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
 /* No horizontal scrolling on phones: wide content scrolls inside its own box. */
