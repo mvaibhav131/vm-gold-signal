@@ -6,5 +6,6 @@ export const PRICE_DECIMALS = 3;
 export * from './candles';
 export * from './domain';
 export * from './evidence';
+export * from './indicators';
 export * from './quality';
 export * from './time';
