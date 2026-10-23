@@ -9,6 +9,7 @@ The UI is a private single-user dashboard. Priorities: (1) is the data fresh, (2
 - Every number comes from the API. Nothing is hard-coded. Placeholder data is never shown as live: replay data shows a permanent `SIMULATED` badge.
 - Honest wording: "Historical setup win rate", "Sample", "95% CI", "Paper test". Never "guaranteed", "sure", "AI probability".
 - Times are shown in the display time zone (default IST) with UTC in a tooltip.
+- Prices and spreads are shown with 3 decimals, as they are stored (owner decision, 2026-10-23); R values with 2. The wireframes below use shorter numbers for readability.
 - Accessibility: semantic landmarks, labelled controls, keyboard navigation, no information by colour alone (every status has text), contrast checked by automated axe tests.
 - Stack: React 19, Vite, Mantine 9 (`core`, `hooks`, `form`, `notifications`, `dates`, `charts`), `mantine-datatable`, TanStack Query, `react-router`, `lightweight-charts`, `vite-plugin-pwa`. No Tailwind.
 - Performance: the initial route (Dashboard) stays under 400 KB gzip (JS plus CSS). A full eager build of the planned libraries measured 458 KB JS plus 44 KB CSS, so Analytics, the data table and the charts are lazy-loaded. A CI script fails the build if the budget is exceeded.

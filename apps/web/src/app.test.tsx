@@ -99,9 +99,9 @@ describe('status bar (scenario E2)', () => {
       expect(within(bar).getByTestId('status-session')).toHaveTextContent('LONDON');
     });
     expect(within(bar).getByTestId('status-price')).toHaveTextContent(
-      /^\d{4}\.\d{2} \(bid \d{4}\.\d{2} \/ ask \d{4}\.\d{2}\)$/,
+      /^\d{4}\.\d{3} \(bid \d{4}\.\d{3} \/ ask \d{4}\.\d{3}\)$/,
     );
-    expect(within(bar).getByTestId('status-spread')).toHaveTextContent(/^\d\.\d{2}$/);
+    expect(within(bar).getByTestId('status-spread')).toHaveTextContent(/^\d\.\d{3}$/);
     expect(within(bar).getByTestId('status-freshness')).toHaveTextContent(/^FRESH \d\.\d s$/);
     expect(within(bar).getByTestId('status-regime')).toHaveTextContent('TREND UP');
     expect(within(bar).getByTestId('status-engine')).toHaveTextContent('RUNNING');

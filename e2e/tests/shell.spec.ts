@@ -10,9 +10,9 @@ test.describe('E2 status bar', () => {
     await logIn(page);
     const bar = page.getByRole('region', { name: 'Market status' });
     await expect(bar.getByTestId('status-price')).toHaveText(
-      /^\d{4}\.\d{2} \(bid \d{4}\.\d{2} \/ ask \d{4}\.\d{2}\)$/,
+      /^\d{4}\.\d{3} \(bid \d{4}\.\d{3} \/ ask \d{4}\.\d{3}\)$/,
     );
-    await expect(bar.getByTestId('status-spread')).toHaveText(/^\d\.\d{2}$/);
+    await expect(bar.getByTestId('status-spread')).toHaveText(/^\d\.\d{3}$/);
     await expect(bar.getByTestId('status-freshness')).toHaveText(/^FRESH \d\.\d s$/);
     await expect(bar.getByTestId('status-session')).toHaveText('LONDON');
     await expect(bar.getByTestId('status-regime')).toHaveText('TREND UP');
