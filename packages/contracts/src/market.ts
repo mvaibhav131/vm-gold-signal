@@ -1,4 +1,4 @@
-import { TIMEFRAME_MS } from '@vmgs/core';
+import { type MarketCandle, TIMEFRAME_MS, type TickInput } from '@vmgs/core';
 import { z } from 'zod';
 
 import { candleSourceSchema, timeframeSchema } from './enums';
@@ -57,6 +57,32 @@ export const candleSchema = z
     }
   });
 export type Candle = z.infer<typeof candleSchema>;
+
+/** Core candles carry epoch milliseconds; the contract and the database carry ISO timestamps. */
+export function candleToContract(candle: MarketCandle): Candle {
+  return {
+    symbol: candle.symbol,
+    tf: candle.tf,
+    openTime: new Date(candle.openTime).toISOString(),
+    o: candle.o,
+    h: candle.h,
+    l: candle.l,
+    c: candle.c,
+    spreadAvg: candle.spreadAvg,
+    spreadMax: candle.spreadMax,
+    tickCount: candle.tickCount,
+    complete: candle.complete,
+    source: candle.source,
+  };
+}
+
+export function candleFromContract(candle: Candle): MarketCandle {
+  return { ...candle, openTime: epochMs(candle.openTime) };
+}
+
+export function tickFromContract(tick: Tick): TickInput {
+  return { ...tick, ts: epochMs(tick.ts), rxAt: epochMs(tick.rxAt) };
+}
 
 /** Candle as sent to the chart: time and mid OHLC only. */
 export const chartCandleSchema = z
