@@ -177,6 +177,26 @@ export type FeedProvider = (typeof FEED_PROVIDERS)[number];
 export const NOTIFICATION_CHANNELS = ['telegram', 'webpush'] as const;
 export type NotificationChannel = (typeof NOTIFICATION_CHANNELS)[number];
 
+export const NOTIFICATION_STATUSES = [
+  'PENDING',
+  'SENDING',
+  'SENT',
+  'FAILED',
+  'DEAD',
+  'EXPIRED',
+] as const;
+export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
+
+export const FEED_INCIDENT_KINDS = [
+  'DISCONNECT',
+  'STALE',
+  'GAP',
+  'CLOCK_SKEW',
+  'SPREAD_SPIKE',
+  'MARKET_STATE',
+] as const;
+export type FeedIncidentKind = (typeof FEED_INCIDENT_KINDS)[number];
+
 export const NOTIFICATION_KINDS = [
   'SIGNAL_NEW',
   'SIGNAL_TP1',

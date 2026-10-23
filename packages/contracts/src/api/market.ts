@@ -102,3 +102,15 @@ export const candlesResponseSchema = z.strictObject({
 export const pauseRequestSchema = z.strictObject({
   minutes: z.int().min(1).max(10_080).optional(),
 });
+
+/** The owner's pause state, stored in app_settings under the key `engine`. */
+export const engineStateSchema = z.discriminatedUnion('status', [
+  z.strictObject({ status: z.literal('RUNNING') }),
+  z.strictObject({
+    status: z.literal('PAUSED'),
+    pausedSince: timestampSchema,
+    /** Null until the owner resumes. */
+    pausedUntil: timestampSchema.nullable(),
+  }),
+]);
+export type EngineState = z.infer<typeof engineStateSchema>;

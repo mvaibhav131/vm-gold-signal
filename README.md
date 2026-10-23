@@ -6,13 +6,16 @@ Private XAU/USD decision-support system (manual execution). Design lives in [`do
 
 - Node 24 LTS (see `.nvmrc`; Node 22.22+ also works for development)
 - pnpm 10 (`packageManager` in `package.json`)
-- Docker (database integration tests, from phase B2)
+- Docker (database integration tests, from phase B2; Testcontainers starts its own throw-away `pgvector/pgvector:pg17` container on a random port and does not touch other containers)
 
 ## Commands
 
 ```text
 pnpm install
-pnpm check          # typecheck + lint + format check + tests + audit of production dependencies
+pnpm check          # typecheck + lint + format check + tests (unit and database integration) + audit of production dependencies
+pnpm test:unit      # fast tests only, no Docker
+pnpm test:int       # database integration tests (needs Docker)
+pnpm --filter @vmgs/db codegen   # regenerate packages/db/src/types.generated.ts after a migration change
 pnpm test:watch
 pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (login: owner / preview)
 pnpm e2e:install    # once: downloads Chromium for the e2e tests

@@ -13,6 +13,7 @@ export default defineConfig(
       '**/node_modules/**',
       'docs/**',
       'apps/web/public/**',
+      'packages/db/src/types.generated.ts',
     ],
   },
   js.configs.recommended,

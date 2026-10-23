@@ -12,6 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:unit": "vitest run --project unit --project web",
+    "test:int": "vitest run --project int",
     "test:watch": "vitest",
     "web:dev": "pnpm --filter @vmgs/web dev",
     "web:build": "pnpm --filter @vmgs/web build",
