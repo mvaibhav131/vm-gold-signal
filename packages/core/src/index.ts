@@ -4,6 +4,8 @@ export const TRADED_SYMBOL = 'XAUUSD';
 export const PRICE_DECIMALS = 3;
 
 export * from './candles';
+export * from './candlesticks';
+export * from './divergence';
 export * from './domain';
 export * from './evidence';
 export * from './indicators';
