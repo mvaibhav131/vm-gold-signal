@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { Ema, Hull, Sma, Wma } from './averages';
+import { Adx, Ichimoku } from './directional';
+import { AwesomeOscillator, Cci, Change, Macd, Roc, Rsi, StochRsi, WilliamsR } from './momentum';
+import { AnchoredMean, GarmanKlass, RealisedVolatility } from './statistical';
 import { closes, randomBars } from './test-data';
 import {
   Aroon,
@@ -25,7 +28,7 @@ import {
 interface Case {
   readonly name: string;
   readonly make: () => Indicator<never, unknown>;
-  readonly input: 'bar' | 'close';
+  readonly input: 'bar' | 'close' | 'weighted';
 }
 
 // Every indicator, with the settings the engine uses.
@@ -49,11 +52,27 @@ const CASES: readonly Case[] = [
   { name: 'HeikinAshi', make: () => new HeikinAshi(), input: 'bar' },
   { name: 'EfficiencyRatio(20)', make: () => new EfficiencyRatio(), input: 'close' },
   { name: 'LinearRegression(20)', make: () => new LinearRegression(20), input: 'close' },
+  { name: 'Rsi(14)', make: () => new Rsi(), input: 'close' },
+  { name: 'StochRsi(14, 14, 3, 3)', make: () => new StochRsi(), input: 'close' },
+  { name: 'Macd(12, 26, 9)', make: () => new Macd(), input: 'close' },
+  { name: 'Roc(10)', make: () => new Roc(), input: 'close' },
+  { name: 'Change(5)', make: () => new Change(5), input: 'close' },
+  { name: 'Cci(20)', make: () => new Cci(), input: 'bar' },
+  { name: 'WilliamsR(14)', make: () => new WilliamsR(), input: 'bar' },
+  { name: 'AwesomeOscillator(5, 34)', make: () => new AwesomeOscillator(), input: 'bar' },
+  { name: 'Adx(14)', make: () => new Adx(), input: 'bar' },
+  { name: 'Ichimoku(9, 26, 52, 26)', make: () => new Ichimoku(), input: 'bar' },
+  { name: 'RealisedVolatility(20)', make: () => new RealisedVolatility(20), input: 'close' },
+  { name: 'GarmanKlass(20)', make: () => new GarmanKlass(20), input: 'bar' },
+  { name: 'AnchoredMean', make: () => new AnchoredMean(), input: 'weighted' },
 ];
 
 const BARS = randomBars(2026, 700);
 
 function inputsOf(kind: Case['input'], bars: readonly Bar[]): never[] {
+  if (kind === 'weighted') {
+    return bars.map((b, i) => ({ h: b.h, l: b.l, c: b.c, weight: 1 + (i % 7) })) as never[];
+  }
   return (kind === 'bar' ? bars : closes(bars)) as never[];
 }
 
@@ -93,7 +112,12 @@ describe.each(CASES)('$name', (testCase) => {
 
   it('refuses a candle or value that is not a finite number', () => {
     const indicator = testCase.make();
-    const bad = testCase.input === 'bar' ? { o: 1, h: Number.NaN, l: 1, c: 1 } : Number.NaN;
+    const bad =
+      testCase.input === 'bar'
+        ? { o: 1, h: Number.NaN, l: 1, c: 1 }
+        : testCase.input === 'weighted'
+          ? { h: Number.NaN, l: 1, c: 1, weight: 1 }
+          : Number.NaN;
     expect(() => (indicator as Indicator<unknown, unknown>).update(bad)).toThrow(RangeError);
   });
 });
