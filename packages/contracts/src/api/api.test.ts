@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import {
   breakdownQuerySchema,
+  breakdownRowSchema,
   calibrationRowSchema,
   candlesQuerySchema,
   candlesResponseSchema,
   driftRowSchema,
   engineEventSchema,
   featureSnapshotResponseSchema,
-  frozenHeadlineSchema,
+  groupEffectivenessRowSchema,
   headlineSchema,
   healthReadySchema,
   loginRequestSchema,
@@ -35,6 +36,7 @@ import {
   strategyPatchSchema,
   systemLatencySchema,
 } from './index';
+import { frozenHeadlineSchema } from '../news';
 import { evidence, outcome, signal, signalState, SIGNAL_ID } from '../test-fixtures';
 import { z } from 'zod';
 
@@ -193,6 +195,13 @@ describe('market snapshot', () => {
         engine: { ...engine, pausedSince: '2026-10-23T06:00:00Z' },
       }),
     ).toBe(false);
+  });
+
+  it('accepts every session of the status bar, including ROLLOVER', () => {
+    for (const session of ['ASIA', 'LONDON', 'OVERLAP', 'NEW_YORK', 'ROLLOVER']) {
+      expect(ok(marketSnapshotSchema, { ...snapshot, session })).toBe(true);
+    }
+    expect(ok(marketSnapshotSchema, { ...snapshot, session: 'OFF' })).toBe(false);
   });
 
   it('rejects an unknown feed state', () => {
@@ -424,7 +433,14 @@ describe('analytics', () => {
   });
 
   it('rejects a calibration band that runs backwards', () => {
-    const band = { bandFrom: 65, bandTo: 74, n: 21, winRate: 0.43, ci95: [0.24, 0.65] };
+    const band = {
+      bandFrom: 65,
+      bandTo: 74,
+      n: 40,
+      wins: 17,
+      winRate: 0.43,
+      ci95: [0.28, 0.59],
+    };
     expect(ok(calibrationRowSchema, band)).toBe(true);
     expect(ok(calibrationRowSchema, { ...band, bandFrom: 80 })).toBe(false);
   });
@@ -440,22 +456,148 @@ describe('analytics', () => {
     };
     expect(ok(driftRowSchema, row)).toBe(true);
     expect(ok(driftRowSchema, { ...row, status: 'PANIC' })).toBe(false);
+    expect(ok(driftRowSchema, { ...row, n: 51 })).toBe(false);
   });
 
-  it('keeps the news-impact share paired with its interval', () => {
+  it('reports drift as insufficient data below 30 trades, with no rate', () => {
+    const row = {
+      strategy: 'trend_pullback',
+      window: 50,
+      n: 12,
+      rollingWinRate: null,
+      evidenceCi95: null,
+      status: 'INSUFFICIENT_DATA',
+    };
+    expect(ok(driftRowSchema, row)).toBe(true);
+    expect(ok(driftRowSchema, { ...row, rollingWinRate: 0.5 })).toBe(false);
+    expect(ok(driftRowSchema, { ...row, status: 'WITHIN_RANGE' })).toBe(false);
+  });
+
+  describe('news impact', () => {
     const row = {
       topic: 'GEOPOLITICS_WAR',
       impact: 'HIGH',
       n: 52,
+      moved: 20,
       movedShare: 0.38,
       movedCi95: [0.26, 0.52],
       avgAbsMoveAtr: 0.9,
       baselineShare: 0.14,
       lift: 2.7,
-      lowSample: false,
+      lowSample: true,
     };
-    expect(ok(newsImpactRowSchema, row)).toBe(true);
-    expect(ok(newsImpactRowSchema, { ...row, movedCi95: null })).toBe(false);
+
+    it('accepts the documented example (38% of 52 headlines, low sample)', () => {
+      expect(ok(newsImpactRowSchema, row)).toBe(true);
+    });
+
+    it('keeps the share paired with its interval and the low-sample marker honest', () => {
+      expect(ok(newsImpactRowSchema, { ...row, movedCi95: null })).toBe(false);
+      expect(ok(newsImpactRowSchema, { ...row, lowSample: false })).toBe(false);
+      expect(ok(newsImpactRowSchema, { ...row, n: 150, moved: 57, lowSample: false })).toBe(true);
+    });
+
+    it('says "not enough data yet" below 30 samples by sending no share', () => {
+      const few = { ...row, n: 18, moved: 7, movedShare: null, movedCi95: null };
+      expect(ok(newsImpactRowSchema, few)).toBe(true);
+      expect(ok(newsImpactRowSchema, { ...few, movedShare: 0.39 })).toBe(false);
+    });
+  });
+
+  describe('no percentage below 30 trades (rule C6, scenario E10)', () => {
+    const zeros = {
+      generated: 12,
+      resolvedValid: 10,
+      wins: 4,
+      partials: 1,
+      losses: 4,
+      timeExits: 1,
+      cancelled: 1,
+      dataInvalid: 1,
+    };
+
+    it('hides the overview rates and carries only counts', () => {
+      const few = {
+        ...zeros,
+        winRate: null,
+        ci95: null,
+        netR: 0.8,
+        expectancyR: 0.08,
+        profitFactor: 1.1,
+        maxDrawdownR: 2,
+        avgDurationS: 1800,
+        tp1Rate: null,
+        tp2Rate: null,
+        currentStreak: { type: 'WIN', length: 1 },
+      };
+      expect(ok(overviewResponseSchema, few)).toBe(true);
+      expect(ok(overviewResponseSchema, { ...few, winRate: 0.5, ci95: [0.2, 0.8] })).toBe(false);
+      expect(ok(overviewResponseSchema, { ...few, tp1Rate: 0.6 })).toBe(false);
+    });
+
+    it('requires the overview rates once n reaches 30', () => {
+      expect(ok(overviewResponseSchema, { ...overview, winRate: null, ci95: null })).toBe(false);
+      expect(ok(overviewResponseSchema, { ...overview, tp1Rate: null })).toBe(false);
+    });
+
+    it('hides a monthly win rate below 30 valid results', () => {
+      const month = {
+        month: '2026-09',
+        ...zeros,
+        winRate: null,
+        netR: 0.8,
+        profitFactor: null,
+      };
+      expect(ok(monthlyRowSchema, month)).toBe(true);
+      expect(ok(monthlyRowSchema, { ...month, winRate: 0.5 })).toBe(false);
+    });
+
+    it('hides breakdown and group percentages below 30 and checks the low-sample marker', () => {
+      const row = {
+        key: 'LONDON',
+        n: 21,
+        wins: 9,
+        winRate: null,
+        ci95: null,
+        expectancyR: 0.1,
+        profitFactor: 1.2,
+        lowSample: true,
+      };
+      expect(ok(breakdownRowSchema, row)).toBe(true);
+      expect(ok(breakdownRowSchema, { ...row, winRate: 0.43, ci95: [0.24, 0.65] })).toBe(false);
+      expect(ok(breakdownRowSchema, { ...row, lowSample: false })).toBe(false);
+      const enough = {
+        ...row,
+        n: 120,
+        wins: 66,
+        winRate: 0.55,
+        ci95: [0.46, 0.64],
+        lowSample: false,
+      };
+      expect(ok(breakdownRowSchema, enough)).toBe(true);
+      expect(ok(breakdownRowSchema, { ...enough, wins: 121 })).toBe(false);
+
+      const group = {
+        strategy: 'trend_pullback',
+        group: 'trend',
+        state: 'STRONG',
+        n: 12,
+        wins: 8,
+        winRate: null,
+        ci95: null,
+        expectancyR: 0.4,
+      };
+      expect(ok(groupEffectivenessRowSchema, group)).toBe(true);
+      expect(ok(groupEffectivenessRowSchema, { ...group, winRate: 0.66, ci95: [0.4, 0.85] })).toBe(
+        false,
+      );
+    });
+
+    it('hides a calibration band below 30', () => {
+      const band = { bandFrom: 65, bandTo: 74, n: 21, wins: 9, winRate: 0.43, ci95: [0.24, 0.65] };
+      expect(ok(calibrationRowSchema, band)).toBe(false);
+      expect(ok(calibrationRowSchema, { ...band, winRate: null, ci95: null })).toBe(true);
+    });
   });
 
   it('reports latency percentiles in order', () => {

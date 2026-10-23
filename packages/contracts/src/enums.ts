@@ -14,6 +14,7 @@ import {
   LOCALES,
   MACRO_IMPORTANCE,
   MARKET_EVENT_KINDS,
+  NEWS_FEED_STATES,
   NEWS_IMPACTS,
   NEWS_STATES,
   NEWS_TOPICS,
@@ -65,6 +66,7 @@ export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
 export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);
 export const newsTopicSchema = z.enum(NEWS_TOPICS);
 export const newsImpactSchema = z.enum(NEWS_IMPACTS);
+export const newsFeedStateSchema = z.enum(NEWS_FEED_STATES);
 export const macroImportanceSchema = z.enum(MACRO_IMPORTANCE);
 export const marketEventKindSchema = z.enum(MARKET_EVENT_KINDS);
 export const localeSchema = z.enum(LOCALES);

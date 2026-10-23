@@ -79,4 +79,41 @@ describe('explanationSchema', () => {
   it('rejects unknown fields', () => {
     expect(explanationSchema.safeParse({ ...explanation(), extra: 1 }).success).toBe(false);
   });
+
+  describe('frozen news', () => {
+    const headline = {
+      title: 'Missile strike reported',
+      sources: ['BBC News'],
+      publishedAt: '2026-10-23T05:50:00Z',
+      impact: 'HIGH',
+      topics: ['GEOPOLITICS_WAR'],
+      url: 'https://www.bbc.com/news/example',
+      classified: true,
+    };
+
+    it('freezes up to three headlines into the explanation', () => {
+      const news = { feed: 'AVAILABLE', headlines: [headline, headline, headline] };
+      expect(explanationSchema.safeParse({ ...explanation(), news }).success).toBe(true);
+      const tooMany = { feed: 'AVAILABLE', headlines: [headline, headline, headline, headline] };
+      expect(explanationSchema.safeParse({ ...explanation(), news: tooMany }).success).toBe(false);
+    });
+
+    it('tells "no headlines" apart from "headline feed unavailable"', () => {
+      const none = { feed: 'AVAILABLE', headlines: [] };
+      const down = { feed: 'UNAVAILABLE', headlines: [] };
+      expect(explanationSchema.safeParse({ ...explanation(), news: none }).success).toBe(true);
+      expect(explanationSchema.safeParse({ ...explanation(), news: down }).success).toBe(true);
+      const contradiction = { feed: 'UNAVAILABLE', headlines: [headline] };
+      expect(explanationSchema.safeParse({ ...explanation(), news: contradiction }).success).toBe(
+        false,
+      );
+    });
+
+    it('requires the news block and only http(s) links', () => {
+      const { news: _news, ...without } = explanation();
+      expect(explanationSchema.safeParse(without).success).toBe(false);
+      const bad = { feed: 'AVAILABLE', headlines: [{ ...headline, url: 'javascript:alert(1)' }] };
+      expect(explanationSchema.safeParse({ ...explanation(), news: bad }).success).toBe(false);
+    });
+  });
 });

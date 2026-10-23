@@ -7,18 +7,9 @@ import {
   newsStateSchema,
   newsTopicSchema,
 } from '../enums';
-import {
-  addIssue,
-  countSchema,
-  priceSchema,
-  spreadSchema,
-  timestampSchema,
-  uuidSchema,
-} from '../primitives';
+import { countSchema, priceSchema, spreadSchema, timestampSchema, uuidSchema } from '../primitives';
+import { frozenHeadlineSchema, httpUrlSchema } from '../news';
 import { checkRange, pageQueryShape, rangeShape } from './common';
-
-/** Only http(s) links are accepted, so a feed can never smuggle a `javascript:` link into the UI. */
-export const httpUrlSchema = z.url({ protocol: /^https?$/ }).max(2048);
 
 export const macroEventSchema = z.strictObject({
   id: uuidSchema,
@@ -90,26 +81,7 @@ export const headlinesResponseSchema = z.strictObject({
   sources: z.array(newsSourceHealthSchema),
 });
 
-/** The frozen copy of a headline stored with a market move. Unclassified items are labelled "timing only". */
-export const frozenHeadlineSchema = z
-  .strictObject({
-    title: z.string().min(1).max(500),
-    sources: z.array(z.string().min(1)).min(1),
-    publishedAt: timestampSchema.nullable(),
-    impact: newsImpactSchema.nullable(),
-    topics: z.array(newsTopicSchema),
-    url: httpUrlSchema,
-    classified: z.boolean(),
-  })
-  .check((ctx) => {
-    const { classified, impact, topics } = ctx.value;
-    if (!classified && (impact !== null || topics.length > 0)) {
-      addIssue(ctx, 'an unclassified headline has no impact or topics', ['classified']);
-    }
-    if (classified && impact === null)
-      addIssue(ctx, 'a classified headline has an impact', ['impact']);
-  });
-
+/** The frozen copy of a headline stored with a market move is defined in ../news. */
 export const marketMoveSchema = z.strictObject({
   id: z.int().positive(),
   detectedAt: timestampSchema,

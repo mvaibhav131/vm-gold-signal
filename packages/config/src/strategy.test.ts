@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   STRATEGY_CONFIG_VERSION,
+  advisoryConfigSchema,
   defaultStrategyConfig,
   gatesConfigSchema,
+  policyConfigSchema,
   qualityConfigSchema,
   riskConfigSchema,
+  statsConfigSchema,
   strategyConfigHash,
   strategyConfigSchema,
 } from './strategy';
@@ -26,29 +29,43 @@ describe('default strategy configs (v0.1.0)', () => {
   it('returns a fresh copy every time', () => {
     const a = defaultStrategyConfig('trend_pullback');
     a.gates.maxSpreadUsd = 99;
-    expect(defaultStrategyConfig('trend_pullback').gates.maxSpreadUsd).toBe(0.6);
+    a.gates.newsWindow.currency.push('EUR');
+    const b = defaultStrategyConfig('trend_pullback');
+    expect(b.gates.maxSpreadUsd).toBe(0.6);
+    expect(b.gates.newsWindow.currency).toEqual(['USD']);
   });
 
-  it('carries the documented gate and risk numbers', () => {
+  it('matches the config excerpt of 02_Signal_Engine section 17, key for key', () => {
+    expect(defaultStrategyConfig('trend_pullback')).toMatchObject({
+      timeframes: { entry: '5m', context: '15m', bias: '1h' },
+      gates: {
+        maxTickAgeSec: 10,
+        maxSpreadUsd: 0.6,
+        maxSpreadToStop: 0.12,
+        stopAtr: [0.8, 2.0],
+        tp1MaxAtr: 2.5,
+        newsWindow: { before: 45, after: 20, impact: ['high'], currency: ['USD'] },
+      },
+      quality: { min: 65, minCoverage: 0.7 },
+      policy: { throttles: 'none', dedupe: 'per_setup_instance' },
+      advisory: { newsWindow: 'warn', rollover: 'warn', offHours: 'warn', nearLevel: 'warn' },
+      risk: {
+        simSlippageUsd: 0.05,
+        entryValidSec: 180,
+        maxChaseAtr: 0.15,
+        exitProfile: 'EP1_PARTIAL',
+        timeStopMin: 120,
+      },
+      stats: { minN: 30, lowSampleBelow: 100 },
+    });
+  });
+
+  it('carries the other documented numbers (clock skew, gap recovery, commission, entry chase cap)', () => {
     const { gates, risk } = defaultStrategyConfig('trend_pullback');
-    expect(gates).toEqual({
-      dataFreshSec: 10,
-      clockSkewSec: 5,
-      maxSpreadUsd: 0.6,
-      maxSpreadStopFraction: 0.12,
-      gapRecoveryCandles: 12,
-      stopAtrMin: 0.8,
-      stopAtrMax: 2.0,
-      tp1AtrMax: 2.5,
-      minQuality: 65,
-    });
-    expect(risk).toMatchObject({
-      exitProfile: 'EP1_PARTIAL',
-      simSlippageUsd: 0.05,
-      commissionUsdPerOz: 0,
-      entryValidSec: 180,
-      timeStopMin: 120,
-    });
+    expect(gates.maxClockSkewSec).toBe(5);
+    expect(gates.gapRecoveryCandles).toBe(12);
+    expect(risk.commissionUsdPerOz).toBe(0);
+    expect(risk.maxChaseRiskFraction).toBe(0.25);
   });
 
   it('uses the documented quality weights', () => {
@@ -78,6 +95,23 @@ describe('default strategy configs (v0.1.0)', () => {
   it('uses the structure exit profile for the pattern strategy only', () => {
     expect(defaultStrategyConfig('pattern_breakout').risk.exitProfile).toBe('EP3_STRUCTURE');
     expect(defaultStrategyConfig('trendline_retest').risk.exitProfile).toBe('EP1_PARTIAL');
+  });
+
+  it('carries the strategy rules of section 7', () => {
+    expect(defaultStrategyConfig('trend_pullback').params).toMatchObject({
+      rsiPullbackMax: 45,
+      rsiLookbackCandles: 12,
+      macdRisingCandles: 2,
+      stopBufferAtr: 0.25,
+    });
+    expect(defaultStrategyConfig('trendline_retest').params).toMatchObject({
+      minTouches: 3,
+      maxAdx1hAgainst: 30,
+      retestMinRsi: 45,
+    });
+    expect(defaultStrategyConfig('pattern_breakout').params).toMatchObject({
+      minMeasuredMoveR: 1.5,
+    });
   });
 });
 
@@ -122,34 +156,63 @@ describe('strategyConfigSchema rejections', () => {
       false,
     );
   });
+
+  it('requires timeframes to grow from entry to context to bias', () => {
+    const c = base();
+    expect(
+      ok(strategyConfigSchema, { ...c, timeframes: { entry: '15m', context: '5m', bias: '1h' } }),
+    ).toBe(false);
+    expect(
+      ok(strategyConfigSchema, { ...c, timeframes: { entry: '5m', context: '5m', bias: '1h' } }),
+    ).toBe(false);
+    expect(
+      ok(strategyConfigSchema, { ...c, timeframes: { entry: '5m', context: '1h', bias: '4h' } }),
+    ).toBe(true);
+  });
 });
 
-describe('gates, risk and quality', () => {
+describe('gates', () => {
   const gates = defaultStrategyConfig('trend_pullback').gates;
-  const risk = defaultStrategyConfig('trend_pullback').risk;
-  const quality = defaultStrategyConfig('trend_pullback').quality;
 
-  it('requires the stop band to be ordered', () => {
-    expect(ok(gatesConfigSchema, { ...gates, stopAtrMin: 2.0, stopAtrMax: 0.8 })).toBe(false);
-    expect(ok(gatesConfigSchema, { ...gates, stopAtrMin: 1, stopAtrMax: 1 })).toBe(false);
+  it('requires the stop band to be [min, max] in order', () => {
+    expect(ok(gatesConfigSchema, { ...gates, stopAtr: [2.0, 0.8] })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, stopAtr: [1, 1] })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, stopAtr: [0.8] })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, stopAtr: [0.5, 3] })).toBe(true);
   });
+
+  it('rejects a zero or negative spread limit and a spread share above 1', () => {
+    expect(ok(gatesConfigSchema, { ...gates, maxSpreadUsd: 0 })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, maxSpreadToStop: 1.5 })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, maxTickAgeSec: -1 })).toBe(false);
+  });
+
+  it('validates the news window', () => {
+    const w = gates.newsWindow;
+    expect(ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, before: -5 } })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, impact: [] } })).toBe(false);
+    expect(ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, impact: ['critical'] } })).toBe(
+      false,
+    );
+    expect(ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, currency: ['usd'] } })).toBe(
+      false,
+    );
+    expect(
+      ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, currency: ['USD', 'EUR'] } }),
+    ).toBe(true);
+  });
+});
+
+describe('quality, policy, advisory, risk and stats', () => {
+  const config = defaultStrategyConfig('trend_pullback');
+  const quality = config.quality;
+  const risk = config.risk;
 
   it('does not allow a quality threshold below the lowest grade', () => {
-    expect(ok(gatesConfigSchema, { ...gates, minQuality: 64 })).toBe(false);
-    expect(ok(gatesConfigSchema, { ...gates, minQuality: 70 })).toBe(true);
-    expect(ok(gatesConfigSchema, { ...gates, minQuality: 101 })).toBe(false);
-  });
-
-  it('rejects a zero or negative spread limit', () => {
-    expect(ok(gatesConfigSchema, { ...gates, maxSpreadUsd: 0 })).toBe(false);
-    expect(ok(gatesConfigSchema, { ...gates, maxSpreadStopFraction: 1.5 })).toBe(false);
-  });
-
-  it('rejects an unknown exit profile and negative costs', () => {
-    expect(ok(riskConfigSchema, { ...risk, exitProfile: 'EP9_MAGIC' })).toBe(false);
-    expect(ok(riskConfigSchema, { ...risk, simSlippageUsd: -0.01 })).toBe(false);
-    expect(ok(riskConfigSchema, { ...risk, commissionUsdPerOz: -1 })).toBe(false);
-    expect(ok(riskConfigSchema, { ...risk, timeStopMin: 0 })).toBe(false);
+    expect(ok(qualityConfigSchema, { ...quality, min: 64 })).toBe(false);
+    expect(ok(qualityConfigSchema, { ...quality, min: 70 })).toBe(true);
+    expect(ok(qualityConfigSchema, { ...quality, min: 101 })).toBe(false);
+    expect(ok(qualityConfigSchema, { ...quality, minCoverage: 0 })).toBe(false);
   });
 
   it('requires quality weights that add up to 1 and cover every group', () => {
@@ -158,14 +221,44 @@ describe('gates, risk and quality', () => {
     ).toBe(false);
     const { reward: _reward, ...missing } = quality.weights;
     expect(ok(qualityConfigSchema, { ...quality, weights: missing })).toBe(false);
-    expect(ok(qualityConfigSchema, { ...quality, weights: { ...quality.weights, vibes: 0 } })).toBe(
-      false,
-    );
+    expect(
+      ok(qualityConfigSchema, { ...quality, weights: { ...quality.weights, vibes: 0.01 } }),
+    ).toBe(false);
   });
 
   it('accepts re-weighted groups that still add up to 1', () => {
     const weights = { ...quality.weights, trend: 0.27, reward: 0.03 };
     expect(ok(qualityConfigSchema, { ...quality, weights })).toBe(true);
+  });
+
+  it('writes rule C10 into the config: no throttles, one signal per setup', () => {
+    expect(ok(policyConfigSchema, { throttles: 'none', dedupe: 'per_setup_instance' })).toBe(true);
+    expect(ok(policyConfigSchema, { throttles: 'daily_cap', dedupe: 'per_setup_instance' })).toBe(
+      false,
+    );
+    expect(ok(policyConfigSchema, { throttles: 'none', dedupe: 'cooldown' })).toBe(false);
+    expect(ok(policyConfigSchema, { throttles: 'none' })).toBe(false);
+  });
+
+  it('allows warn or block per advisory flag and nothing else', () => {
+    const advisory = config.advisory;
+    expect(ok(advisoryConfigSchema, { ...advisory, nearLevel: 'block' })).toBe(true);
+    expect(ok(advisoryConfigSchema, { ...advisory, nearLevel: 'ignore' })).toBe(false);
+    expect(ok(advisoryConfigSchema, { ...advisory, headlineRecent: 'warn' })).toBe(false);
+  });
+
+  it('rejects an unknown exit profile, negative costs and a zero time stop', () => {
+    expect(ok(riskConfigSchema, { ...risk, exitProfile: 'EP9_MAGIC' })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, simSlippageUsd: -0.01 })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, commissionUsdPerOz: -1 })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, timeStopMin: 0 })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, entryValidSec: 0 })).toBe(false);
+  });
+
+  it('keeps the evidence thresholds fixed at 30 and 100 (rule C6)', () => {
+    expect(ok(statsConfigSchema, { minN: 30, lowSampleBelow: 100 })).toBe(true);
+    expect(ok(statsConfigSchema, { minN: 10, lowSampleBelow: 100 })).toBe(false);
+    expect(ok(statsConfigSchema, { minN: 30, lowSampleBelow: 50 })).toBe(false);
   });
 });
 
