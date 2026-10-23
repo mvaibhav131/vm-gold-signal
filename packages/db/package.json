@@ -1,0 +1,26 @@
+{
+  "name": "@vmgs/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "codegen": "tsx scripts/codegen.ts"
+  },
+  "dependencies": {
+    "@vmgs/config": "workspace:*",
+    "@vmgs/contracts": "workspace:*",
+    "@vmgs/core": "workspace:*",
+    "kysely": "0.29.7",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "12.2.1",
+    "@types/pg": "8.23.1",
+    "testcontainers": "12.2.1"
+  }
+}

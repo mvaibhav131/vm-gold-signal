@@ -1,4 +1,4 @@
--- VM Gold Signal schema v1 (PostgreSQL 17). Hand-written; query types are generated from the migrated database (kysely-codegen).
+-- VM Gold Signal schema v1 (PostgreSQL 17). Hand-written; query types are generated from the migrated database (packages/db/src/codegen.ts).
 -- All timestamps are timestamptz (UTC). Prices are numeric(12,3). "R" means multiples of the initial risk distance.
 
 -- ============================================================
