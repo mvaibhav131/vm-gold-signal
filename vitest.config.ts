@@ -18,7 +18,10 @@ export default defineConfig({
         test: {
           name: 'int',
           environment: 'node',
-          include: ['{packages,tools}/*/src/**/*.int.test.ts'],
+          include: [
+            '{packages,tools}/*/src/**/*.int.test.ts',
+            'apps/{api,worker}/src/**/*.int.test.ts',
+          ],
           globalSetup: ['packages/db/test/global-setup.ts'],
           fileParallelism: false,
           testTimeout: 60_000,

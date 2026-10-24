@@ -106,6 +106,28 @@ importers:
         specifier: 8.3.5
         version: 8.3.5(@types/node@24.19.2)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)
 
+  apps/worker:
+    dependencies:
+      '@vmgs/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@vmgs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@vmgs/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@vmgs/feed':
+        specifier: workspace:*
+        version: link:../../packages/feed
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+
   e2e:
     devDependencies:
       '@axe-core/playwright':
