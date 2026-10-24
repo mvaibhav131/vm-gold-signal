@@ -108,7 +108,7 @@ export function signalDraft(): SignalDraft {
     session: 'LONDON',
     volBucket: 'NORMAL',
     newsState: 'CLEAR',
-    setupKey: 'trend_pullback:15m:leg-2026-10-23T05:30:00Z',
+    setupKey: 'trend_pullback:5m:leg-2026-10-23T05:30:00Z',
     openSignalsAtEntry: 0,
     warnings: [],
     chartObjects: [

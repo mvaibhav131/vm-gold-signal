@@ -15,6 +15,7 @@ export * from './levels';
 export * from './patterns';
 export * from './quality';
 export * from './regime';
+export * from './strategies';
 export * from './structure';
 export * from './time';
 export * from './trendlines';
