@@ -172,6 +172,18 @@ export class CandleBuilder {
     return sortClosed(closed);
   }
 
+  /**
+   * Restores the most recent tick before replaying ticks after the last persisted minute. This
+   * preserves gap detection without adding the tick to a candle that has already been sealed.
+   */
+  seedLastTick(tick: TickInput): void {
+    if (this.accepted > 0 || this.lastTickTs !== null) {
+      throw new Error('seedLastTick must be called before any tick');
+    }
+    if (!this.isUsable(tick)) throw new RangeError('the seed tick is not usable');
+    this.lastTickTs = tick.ts;
+  }
+
   /** The 1m candles still collecting ticks, as incomplete candles. */
   openMinutes(): MarketCandle[] {
     return [...this.open.values()]

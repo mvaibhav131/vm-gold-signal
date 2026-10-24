@@ -110,6 +110,44 @@ describe('late ticks', () => {
   });
 });
 
+describe('recovery seed', () => {
+  it('restores the prior tick for gap detection without adding it to a candle', () => {
+    const b = builder();
+    b.seedLastTick(tick('2026-10-23T10:00:30Z', 100, 100.2));
+
+    const result = b.push(tick('2026-10-23T10:01:31Z', 100, 100.2));
+
+    expect(result.gaps).toEqual([
+      {
+        startMs: utc('2026-10-23T10:00:30Z'),
+        endMs: utc('2026-10-23T10:01:31Z'),
+        durationMs: 61_000,
+        kind: 'FEED',
+      },
+    ]);
+    expect(b.stats.accepted).toBe(1);
+    expect(b.openMinutes()).toMatchObject([{ tickCount: 1 }]);
+  });
+
+  it('can only seed once, before any tick', () => {
+    const b = builder();
+    const last = tick('2026-10-23T10:00:30Z', 100, 100.2);
+    b.seedLastTick(last);
+    expect(() => {
+      b.seedLastTick(last);
+    }).toThrow('seedLastTick must be called before any tick');
+    expect(() => {
+      builder().seedLastTick({ ...last, bid: 0 });
+    }).toThrow('the seed tick is not usable');
+
+    const withTick = builder();
+    withTick.push(last);
+    expect(() => {
+      withTick.seedLastTick(last);
+    }).toThrow('seedLastTick must be called before any tick');
+  });
+});
+
 describe('invalid ticks', () => {
   it('rejects bad quotes without touching the state', () => {
     const b = builder();

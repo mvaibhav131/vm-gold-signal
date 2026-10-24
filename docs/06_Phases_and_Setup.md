@@ -22,7 +22,7 @@ Rule for every phase: `pnpm typecheck`, `pnpm lint` and all tests pass before th
 | B9 Chart patterns | Double top and bottom, head and shoulders, triangles, flags and pennants, wedges, rectangles | Synthetic fixtures plus negative near-miss cases; triggers and targets verified |
 | B10 Candlesticks and divergence | Pin bar, engulfing, inside bar, NR7, stars; RSI and MACD divergence | Fixture tests |
 | B11 Feed package | Provider interface, replay and simulated providers, Biquote SignalR adapter (reconnect, validation, clock check) | Adapter tested against a local fake SignalR server; manual live probe; replay determinism |
-| B12 Recorder (record-only worker) | Batched tick and candle persistence, back-fill, gap flags, heartbeat | Local soak run with measured drops and gaps. Ready to deploy early (see parallel start) |
+| B12 Recorder (record-only worker) | Batched tick and candle persistence, restart back-fill, gap incidents, database heartbeat | `pnpm worker:soak`: rejected quotes accounted for, persisted tick count matches accepted ticks, at least one candle and gap, no late ticks or queued frames |
 | B13 Regime and context | Regime classifier, news-shock flag, session and macro proximity inputs | Fixture tests per regime |
 | B14 Gates and advisory flags | Blocking gates, advisory flags and their owner switches | One test per gate and per flag; flags never block unless switched |
 | B15 Strategy A | Trend pullback | Positive and negative fixtures; no-look-ahead |
@@ -98,7 +98,7 @@ Static environment (root-owned `.env`, mode 600, never in git):
 PUBLIC_HOST            vmgs-yourname.duckdns.org
 DATABASE_URL_API       postgres role vmgs_api
 DATABASE_URL_WORKER    postgres role vmgs_worker
-FEED_PROVIDER          biquote | replay
+FEED_PROVIDER          biquote
 FEED_SYMBOLS           XAUUSD,DXY,XAGUSD
 TELEGRAM_BOT_TOKEN     from BotFather
 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
@@ -108,6 +108,8 @@ BACKUP_RCLONE_REMOTE   OCI Object Storage remote name
 ```
 
 Runtime settings live in `app_settings` and are editable on the System page: display time zone, language, alert switches and minimum grade, strategy enable flags. Strategy parameters are not runtime settings: they live in immutable strategy versions.
+
+The B12 `pnpm worker:start` executable currently requires `FEED_PROVIDER=biquote`; `replay` remains available to deterministic tests but is not wired into the recorder runtime yet. The shared environment schema still permits `replay` for later replay-stack use. `pnpm worker:soak` runs a deterministic 10-minute simulation entirely in memory, so it does not need PostgreSQL or Docker. The PostgreSQL integration suite (`pnpm test:int`) requires Docker Desktop.
 
 ## 4. Deployment and operations
 
@@ -132,7 +134,7 @@ Backups and restore drill:
 - The owner downloads a copy to their own PC from time to time.
 - Monthly `restore-drill.sh` restores the newest backup into a scratch database and compares row counts and the schema version. A failed drill sends a Telegram alert.
 
-External check: the worker sends a heartbeat to Healthchecks.io (free Hobbyist plan) every minute and Healthchecks.io alerts the owner by Telegram or email when the pings stop. This is how a dead VM or a stuck worker is noticed. A scheduled GitHub Actions job was rejected because one run every 10 minutes would likely exceed the 2,000 free monthly minutes of a private repository.
+External check (planned for B31): the worker will send a heartbeat to Healthchecks.io (free Hobbyist plan) every minute and Healthchecks.io will alert the owner by Telegram or email when the pings stop. The B12 recorder currently writes its database heartbeat every 15 seconds. A scheduled GitHub Actions job was rejected because one run every 10 minutes would likely exceed the 2,000 free monthly minutes of a private repository.
 
 Oracle idle-reclaim awareness: the System page shows CPU, memory and network use. If the VM sits close to the thresholds that Oracle documents for idle instances, we review sizing or consider the owner's own always-on machine. Upgrading the Oracle account to pay-as-you-go keeps Always Free resources free per Oracle's documentation but needs a card and a budget alert; that is the owner's choice and not part of the plan.
 

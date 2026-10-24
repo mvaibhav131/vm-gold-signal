@@ -1,0 +1,22 @@
+{
+  "name": "@vmgs/worker",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
+    "soak": "tsx src/soak.ts"
+  },
+  "dependencies": {
+    "@vmgs/config": "workspace:*",
+    "@vmgs/core": "workspace:*",
+    "@vmgs/db": "workspace:*",
+    "@vmgs/feed": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1"
+  }
+}
