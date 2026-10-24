@@ -5,6 +5,7 @@ export const PRICE_DECIMALS = 3;
 
 export * from './candles';
 export * from './candlesticks';
+export * from './context';
 export * from './divergence';
 export * from './domain';
 export * from './evidence';
@@ -12,6 +13,7 @@ export * from './indicators';
 export * from './levels';
 export * from './patterns';
 export * from './quality';
+export * from './regime';
 export * from './structure';
 export * from './time';
 export * from './trendlines';
