@@ -9,6 +9,7 @@ export * from './context';
 export * from './divergence';
 export * from './domain';
 export * from './evidence';
+export * from './gates';
 export * from './indicators';
 export * from './levels';
 export * from './patterns';

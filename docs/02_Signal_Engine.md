@@ -148,14 +148,41 @@ Only two things can stop a signal: missing or unreliable data, and a trade whose
 | `NEWS_WINDOW` | HIGH-importance USD event within [-45 min, +20 min], or spread and ATR not yet back under 1.5 x median after a release | Warning line, lowers the Session and macro group, statistics bucket `news = IN_WINDOW` |
 | `NEWS_SHOCK` | See the regime table | Warning line |
 | `HEADLINE_RECENT` | A HIGH-impact headline cluster in the last 30 minutes (section 16) | Warning line and a news line with up to 3 headlines |
-| `ROLLOVER` | 21:45-23:15 UTC | Warning line |
-| `OFF_HOURS` | ASIA session or the last 30 minutes of a session | Warning line (thin liquidity) |
+| `ROLLOVER` | Session ROLLOVER: 21:45-23:15 UTC and the quiet hours up to midnight (section 2, 6.1) | Warning line |
+| `OFF_HOURS` | ASIA session or the last 30 minutes of a session (6.1: while every open market is about to close) | Warning line (thin liquidity) |
 | `NEAR_LEVEL` | Entry within 0.3 x ATR(5m) of a major opposing level, unless the setup is a sweep of that level | Warning line, lowers Reward feasibility |
 | `OPPOSES_OPEN` | Direction is opposite to an open signal | Warning naming that signal |
 | `UNVALIDATED_STRATEGY` | Strategy status below VALIDATED | `FORWARD-TEST` label |
 | `NEWS_UNKNOWN` | Calendar feed unavailable | Warning line, news state UNKNOWN |
 
 By default every flag only warns. The owner can switch a flag to `block` in Settings (`advisoryGates`). That is a personal preference stored in `app_settings`, not in the strategy config, and the flags present at signal time are stored on each signal, so statistics always show how signals with and without a flag performed.
+
+### 6.1 Gates and flags, details (B14)
+
+Code: `packages/core/src/gates` (`evaluateGates`, `evaluateFlags`, `decide`, `nearOpposingLevel`, `gateLabel`) and `gateParamsOf` in `packages/config`. Pure code: the worker and the backtester run the same functions, and the live values (feed health, clock skew, spread, candle counts, the regime, the news window) are handed in.
+
+**Blocking gates.** Each gate returns `{code, passed, value?, limit?}`, the form stored in `signals.hard_gates`. A failed gate may add a `reason` (for example `STALE` or `DISCONNECTED`) and WARMUP_OK the missing timeframes; these are for the dashboard and are not stored. **A gate whose input is unknown fails**: no clock skew yet, no spread, no ATR, no quality score. Missing data blocks. Without a setup only the five market gates run (DATA_FRESH, WARMUP_OK, CLOCK_OK, SPREAD_OK, GAP_RECOVERY_OK, `complete` is false); a signal needs all nine, and a decision on fewer is refused.
+
+- `DATA_FRESH`: the feed is connected, its newest tick is at most 10 s old by its source time, the provider does not call the quote stale and the market state is `OPEN`. The value is the age in seconds. The reason is the first that applies: market closed, disconnected, no tick yet, tick too old, provider stale, market state unknown.
+- `WARMUP_OK`: every timeframe of the strategy (entry, context and bias) has its warm-up candles: **three times the longest window the engine uses on that timeframe**, as section 2 says for EMA 200. That is 900 for 5m (the zones look at 300 candles), 1440 for 15m (the ATR percentile of the regime looks at 480) and 600 for 1h (EMA 200). A test fails when a window grows without these numbers, and they are never below what the regime needs. The value is the progress in whole percent (the mean share of the required timeframes, rounded down, so 100 means ready).
+- `CLOCK_OK`: the median receive-minus-source time is under 5 s in either direction; exactly 5 s fails.
+- `SPREAD_OK`: the spread is at most 0.60 USD and at most 12% of the stop distance. That is one limit, the smaller of the two, and the result gives the spread and that limit. Without a stop distance only 0.60 applies.
+- `GAP_RECOVERY_OK`: the newest 12 5m candles have no hole between them, neither a feed gap nor a weekend. The value is how many candles in a row, counted back from the newest (at most 12). A hole just before those 12 candles does not count. If the candle that has just closed is missing from the end of the series, it fails.
+- `REGIME_OK`: the regime is one of the accepted regimes of the strategy. `STOP_OK` and `TARGET_OK`: the distance in ATR(5m); a failure gives the bound that was broken, a pass the bound it is nearest to. `QUALITY_OK`: the score is at least 65 and rests on at least 70% of the weight (the coverage is checked first, section 8).
+- A rejection (`rejections.failed_gates`) lists the failed gates and then the flags that the owner switched to block.
+
+**Advisory flags.** Where the table leaves room, these are the definitions:
+
+- `NEWS_WINDOW` is the news window of section 5.1 (including the time while spread and ATR settle). `NEWS_UNKNOWN` is present when the calendar is unavailable, and then `NEWS_WINDOW` cannot be.
+- `HEADLINE_RECENT`: the newest HIGH headline cluster was published at most 30 minutes ago; one stamped ahead of our clock counts as just now.
+- `ROLLOVER` is the session label ROLLOVER of section 2, so the flag and the statistics bucket always agree.
+- `OFF_HOURS`: the ASIA label, or every open market (London, New York) closes within 30 minutes. The last half hour of London inside the overlap is not off-hours, because New York is still open.
+- `NEAR_LEVEL`: the nearest major level ahead of the entry (above it for a BUY, below it for a SELL) within 0.3 x ATR(5m). A level behind the entry is support, not an obstacle. Major levels are the liquidity levels (previous day, Asia and London highs and lows, equal highs and lows), zones with at least 3 swing points (measured to the near edge, 0 when the entry is inside) and round numbers of $50 and $100. The level that the setup itself sweeps is left out.
+- `OPPOSES_OPEN` names every open signal of the other side. `UNVALIDATED_STRATEGY` is present for every status but `VALIDATED` (so also DRIFTED and PAUSED).
+
+**Owner switches.** Only four flags have one, the keys of `advisoryGates`: `newsWindow`, `rollover`, `offHours`, `nearLevel` (warn or block, all warn by default, the owner's settings over the strategy config). `NEWS_SHOCK`, `HEADLINE_RECENT`, `OPPOSES_OPEN`, `UNVALIDATED_STRATEGY` and `NEWS_UNKNOWN` have no switch and always warn. `decide` allows a signal when all nine gates passed and no present flag is switched to block; every other present flag is a warning stored on the signal.
+
+**Wait reasons.** `gateLabel` gives a failed gate in plain words ("Spread too high: 0.90 USD", "No tick for 18 s: new signals are blocked"). The labels of the flags need names (the event, the headline) and are made with the explanation.
 
 ## 7. Strategies
 
