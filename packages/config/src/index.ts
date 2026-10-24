@@ -5,4 +5,5 @@ export * from './settings';
 export * from './strategy';
 export * from './squeezeRetestParams';
 export * from './sweepReversalParams';
+export * from './trendlineRetestParams';
 export * from './trendPullbackParams';

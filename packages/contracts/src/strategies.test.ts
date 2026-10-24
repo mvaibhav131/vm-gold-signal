@@ -1,4 +1,10 @@
-import { keyTime, type PullbackSetup, type SqueezeSetup, type SweepSetup } from '@vmgs/core';
+import {
+  keyTime,
+  type PullbackSetup,
+  type SqueezeSetup,
+  type SweepSetup,
+  type TrendlineRetestSetup,
+} from '@vmgs/core';
 import { describe, expect, it } from 'vitest';
 
 import { sideSchema, strategyKeySchema } from './enums';
@@ -93,5 +99,42 @@ describe('what a strategy setup hands to a signal fits the contract', () => {
       'squeeze_retest:5m:brk-2026-10-23T09:05:00Z',
     );
     expect(priceSchema.parse(squeeze.stopLoss)).toBe(4017.9);
+  });
+
+  it('the same for a trendline retest, keyed by the line and the break candle', () => {
+    const trendline: TrendlineRetestSetup = {
+      strategyKey: 'trendline_retest',
+      side: 'SELL',
+      setupKey: `trendline_retest:5m:15mS:${keyTime(Date.UTC(2026, 9, 23, 3, 15))}:${keyTime(Date.UTC(2026, 9, 23, 5, 0))}@${keyTime(Date.UTC(2026, 9, 23, 9, 35))}`,
+      at: Date.UTC(2026, 9, 23, 9, 55),
+      close: 4017.4,
+      stopLoss: 4019.1,
+      facts: {
+        lineFrom: Date.UTC(2026, 9, 23, 3, 15),
+        lineTo: Date.UTC(2026, 9, 23, 5, 0),
+        touches: 3,
+        lineValue: 4017.9,
+        lineSlope: 0.4,
+        breakOpenTime: Date.UTC(2026, 9, 23, 9, 35),
+        candlesSinceBreak: 4,
+        breakBeyondAtr: 0.6,
+        breakBodyRatio: 0.8,
+        retestExtreme: 4018.3,
+        retestDistanceAtr: 0.2,
+        closeAwayAtr: 0.2,
+        wickRatio: 0.55,
+        rsi: 47,
+        adx1h: 24,
+        adx1hAligned: true,
+        stopFromLine: false,
+        atr: 1.9,
+      },
+    };
+    expect(strategyKeySchema.parse(trendline.strategyKey)).toBe('trendline_retest');
+    expect(sideSchema.parse(trendline.side)).toBe('SELL');
+    expect(setupKeySchema.parse(trendline.setupKey)).toBe(
+      'trendline_retest:5m:15mS:2026-10-23T03:15:00Z:2026-10-23T05:00:00Z@2026-10-23T09:35:00Z',
+    );
+    expect(priceSchema.parse(trendline.stopLoss)).toBe(4019.1);
   });
 });
