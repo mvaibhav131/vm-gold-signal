@@ -1,7 +1,11 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, vi } from 'vitest';
+
+// A screen is loaded on demand (lazy route, data table), and the first load of its code can take
+// longer than a second on a busy machine: waiting for it is not a failure.
+configure({ asyncUtilTimeout: 5000 });
 
 // The chart draws on a canvas, which jsdom does not have. The e2e tests cover the real chart.
 vi.mock('./dashboard/chart/PriceChart', () => ({

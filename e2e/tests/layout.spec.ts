@@ -133,6 +133,15 @@ test.describe('the history and the detail fit the screen', () => {
     { path: '/signals/00000000-0000-4000-8000-000000000029', ready: 'detail-header' },
     { path: '/analytics', ready: 'news-impact' },
     { path: '/analytics?scope=BACKTEST_OOS', ready: 'news-impact' },
+    { path: '/news', ready: 'news-past' },
+    { path: '/news?tab=headlines', ready: 'news-headlines' },
+    { path: '/news?tab=moves', ready: 'news-moves' },
+    { path: '/system', ready: 'health-incidents' },
+    { path: '/system?tab=storage', ready: 'storage-retention' },
+    { path: '/system?tab=strategies', ready: 'strategy-row-pattern_breakout' },
+    { path: '/system?tab=alerts', ready: 'alerts-market-moves' },
+    { path: '/system?tab=display', ready: 'display-numbers' },
+    { path: '/system?tab=security', ready: 'sessions-table' },
   ] as const;
 
   for (const { path, ready } of screens) {
@@ -186,6 +195,76 @@ test.describe('the history and the detail fit the screen', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(pageOverflow).toBeLessThanOrEqual(0);
+  });
+
+  test('the news and system tables and tabs are wider than a phone and scroll inside their own boxes', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    await logIn(page);
+    const overflowOf = (page2: Page) =>
+      page2.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+    const scrollsInside = async (name: string) => {
+      const scrollBox = page.getByRole('region', { name });
+      await expect(scrollBox).toHaveAttribute('tabindex', '0');
+      expect(await scrollBox.evaluate((el) => el.scrollWidth > el.clientWidth), name).toBe(true);
+    };
+
+    await page.goto('/news');
+    await expect(page.getByTestId('news-past')).toBeVisible();
+    await scrollsInside('Upcoming events, scrolls sideways');
+    await scrollsInside('Released events, scrolls sideways');
+    expect(await overflowOf(page)).toBeLessThanOrEqual(0);
+
+    await page.goto('/system');
+    await expect(page.getByTestId('health-incidents')).toBeVisible();
+    for (const name of [
+      'Health checks, scrolls sideways',
+      'Latency, scrolls sideways',
+      'Feed incidents, scrolls sideways',
+    ]) {
+      await scrollsInside(name);
+    }
+    const tabs = page.getByRole('tablist', { name: 'System sections' });
+    expect(await tabs.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    expect(await overflowOf(page)).toBeLessThanOrEqual(0);
+
+    await page.goto('/system?tab=storage');
+    await expect(page.getByTestId('storage-retention')).toBeVisible();
+    await scrollsInside('Table sizes, scrolls sideways');
+    await scrollsInside('Retention rules, scrolls sideways');
+    expect(await overflowOf(page)).toBeLessThanOrEqual(0);
+
+    await page.goto('/system?tab=security');
+    await expect(page.getByTestId('sessions-table')).toBeVisible();
+    await scrollsInside('Active sessions, scrolls sideways');
+    expect(await overflowOf(page)).toBeLessThanOrEqual(0);
+  });
+
+  test('on a phone the filters of the news and the 2-step key stay inside the screen', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    await logIn(page);
+    await page.goto('/news?tab=headlines');
+    await expect(page.getByTestId('news-headlines')).toBeVisible();
+    for (const name of ['Minimum impact', 'Topic']) {
+      const input = page.getByRole('combobox', { name });
+      await expect(input).toBeVisible();
+      const rect = await input.boundingBox();
+      expect((rect?.x ?? -1) + (rect?.width ?? 999)).toBeLessThanOrEqual(390.5);
+    }
+    await page.goto('/system?tab=security');
+    await page.getByTestId('totp-setup').click();
+    await expect(page.getByTestId('totp-setup-panel')).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
   });
 
   test('on a phone the filters are folded and the chart of a trade starts closed; on a desktop both are open', async ({

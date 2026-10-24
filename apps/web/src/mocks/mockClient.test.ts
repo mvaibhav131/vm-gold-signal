@@ -3,7 +3,13 @@ import { sseEventSchema, type SseEvent } from '@vmgs/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
-import { MOCK_PASSWORD, MOCK_USERNAME, createMockClient, seededRandom } from './mockClient';
+import {
+  MOCK_PASSWORD,
+  MOCK_TOTP_CODE,
+  MOCK_USERNAME,
+  createMockClient,
+  seededRandom,
+} from './mockClient';
 import { SCENARIOS } from './scenarios';
 
 function memoryStorage() {
@@ -95,7 +101,11 @@ describe('mock client data follows the contracts', () => {
   it('is marked as a preview with its own credentials', () => {
     const api = client();
     expect(api.kind).toBe('mock');
-    expect(api.preview).toEqual({ username: MOCK_USERNAME, password: MOCK_PASSWORD });
+    expect(api.preview).toEqual({
+      username: MOCK_USERNAME,
+      password: MOCK_PASSWORD,
+      totp: MOCK_TOTP_CODE,
+    });
   });
 
   it('always reports SIMULATED data (rule C8)', async () => {
@@ -135,8 +145,10 @@ describe('mock client data follows the contracts', () => {
       expect(snapshot.engine.openCount, id).toBe(open.openCount);
       expect(recent.items.length, id).toBeLessThanOrEqual(5);
       expect(today.generated, id).toBeGreaterThan(0);
-      expect(news.next, id).not.toBeNull();
-      expect(headlines.items, id).toHaveLength(3);
+      // With the calendar feed down the system cannot say what comes next, so there is no next event
+      if (id === 'news-unknown') expect([news.state, news.next], id).toEqual(['UNKNOWN', null]);
+      else expect(news.next, id).not.toBeNull();
+      expect(headlines.items.length, id).toBeGreaterThan(0);
       expect(candles.candles, id).toHaveLength(50);
     }
   });
@@ -156,6 +168,8 @@ describe('scenarios', () => {
       'market-closed',
       'review-pending',
       'paused',
+      'news-unknown',
+      'system-warning',
     ]);
     expect(api.scenarios?.current()).toBe('two-open');
   });
@@ -791,5 +805,356 @@ describe('the preview state with a fresh loss', () => {
   it('does not exist in the other states', async () => {
     const page = await client({ scenario: 'wait' }).getSignals({ limit: 1 });
     expect(page.items[0]?.seq).toBe(41);
+  });
+});
+
+describe('news endpoints', () => {
+  it('answer by the state of the preview: clear, inside the window, or unknown with the feeds down', async () => {
+    const states = await Promise.all(
+      ['two-open', 'wait', 'news-unknown'].map(async (scenario) => {
+        const api = client({ scenario });
+        const [state, events, headlines] = await Promise.all([
+          api.getNewsState(),
+          api.getNewsEvents({}),
+          api.getHeadlines({ limit: 50 }),
+        ]);
+        return { scenario, state, events, headlines };
+      }),
+    );
+    expect(states.map((s) => s.state.state)).toEqual(['CLEAR', 'IN_WINDOW', 'UNKNOWN']);
+    expect(states.map((s) => s.events.items.length)).toEqual([18, 18, 10]);
+    expect(states.map((s) => s.headlines.items.length)).toEqual([14, 14, 11]);
+    expect(
+      states.map((s) => s.headlines.sources.every((source) => source.lastError === null)),
+    ).toEqual([true, true, false]);
+  });
+
+  it('give the headlines the filters and the cursor of the contract, and refuse what the contract refuses', async () => {
+    const api = client();
+    expect((await api.getHeadlines({ limit: 50, minImpact: 'HIGH' })).items).toHaveLength(4);
+    expect((await api.getHeadlines({ limit: 50, topic: 'FED_RATES' })).items).toHaveLength(3);
+    const page = await api.getHeadlines({ limit: 5 });
+    expect(page.items).toHaveLength(5);
+    expect(page.nextCursor).not.toBeNull();
+    const next = await api.getHeadlines({ limit: 5, cursor: page.nextCursor ?? '' });
+    expect(next.items[0]?.id).not.toBe(page.items[0]?.id);
+    await expect(api.getHeadlines({ limit: 500 })).rejects.toThrow();
+    await expect(api.getHeadlines({ limit: 5, minImpact: 'URGENT' as never })).rejects.toThrow();
+    await expect(api.getHeadlines({ limit: 5, cursor: 'nonsense' })).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_cursor',
+    });
+  });
+
+  it('give the calendar its importance filter and its range, and refuse a range that ends first', async () => {
+    const api = client();
+    expect((await api.getNewsEvents({ importance: 'high' })).items).toHaveLength(7);
+    expect(
+      (await api.getNewsEvents({ from: new Date().toISOString() })).items.length,
+    ).toBeGreaterThan(0);
+    await expect(api.getNewsEvents({ importance: 'urgent' as never })).rejects.toThrow();
+    await expect(
+      api.getNewsEvents({ from: '2026-02-01T00:00:00Z', to: '2026-01-01T00:00:00Z' }),
+    ).rejects.toThrow();
+  });
+
+  it('list the market moves of a range, newest first', async () => {
+    const api = client();
+    expect((await api.getMarketMoves({})).items.map((m) => m.id)).toEqual([5, 4, 3, 2, 1]);
+    const week = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    expect((await api.getMarketMoves({ from: week })).items.length).toBeGreaterThan(0);
+    await expect(
+      api.getMarketMoves({ to: '2026-01-01T00:00:00Z', from: '2026-02-01T00:00:00Z' }),
+    ).rejects.toThrow();
+  });
+});
+
+describe('system endpoints', () => {
+  it('answer health, incidents, storage and latency for every preview state', async () => {
+    for (const { id } of SCENARIOS) {
+      const api = client({ scenario: id });
+      const [health, incidents, storage, latency] = await Promise.all([
+        api.getSystemHealth(),
+        api.getSystemIncidents(),
+        api.getSystemStorage(),
+        api.getSystemLatency(),
+      ]);
+      expect(health.dbReachable, id).toBe(true);
+      expect(incidents.items.length, id).toBeGreaterThanOrEqual(9);
+      expect(storage.tables.length, id).toBeGreaterThan(0);
+      expect(latency.dbCommit.samples, id).toBeGreaterThan(0);
+    }
+  });
+
+  it('tell the same story as the feed: a stale or disconnected feed has an open incident, a running feed has none', async () => {
+    const open = async (scenario: string) =>
+      (await client({ scenario }).getSystemIncidents()).items
+        .filter((i) => i.endedAt === null)
+        .map((i) => i.kind);
+    expect(await open('two-open')).toEqual([]);
+    expect(await open('stale')).toEqual(['STALE']);
+    expect(await open('disconnected')).toEqual(['DISCONNECT']);
+    expect(await open('system-warning')).toEqual(['CLOCK_SKEW']);
+    const nowMs = Date.parse('2026-10-23T12:00:00Z');
+    const stale = await client({ scenario: 'stale', now: () => new Date(nowMs) }).getSystemHealth();
+    expect([stale.ticksPerSecond, stale.feedAgeMs]).toEqual([0, 18_400]);
+    expect(
+      (await client({ scenario: 'disconnected' }).getSystemHealth()).ticksPerSecond,
+    ).toBeNull();
+  });
+
+  it('show the warnings of the warning state, and none in the others', async () => {
+    const warning = client({ scenario: 'system-warning' });
+    expect((await warning.getSystemHealth()).telegram.lastError).toMatch(/502/);
+    expect((await warning.getSystemStorage()).budgetPct).toBe(82);
+    expect((await client().getSystemHealth()).telegram.lastError).toBeNull();
+    expect((await client().getSystemStorage()).budgetPct).toBe(11);
+  });
+
+  it('send a test message, which moves the last Telegram send of the health to now', async () => {
+    const nowMs = Date.parse('2026-10-23T12:00:00Z');
+    const api = client({ now: () => new Date(nowMs) });
+    const before = await api.getSystemHealth();
+    expect(before.telegram.lastSendAt).toBe('2026-10-23T11:13:00.000Z');
+    const { eventKey } = await api.sendTestNotification({ channel: 'telegram' });
+    expect(eventKey).toMatch(
+      /^test:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect((await api.getSystemHealth()).telegram.lastSendAt).toBe('2026-10-23T12:00:00.000Z');
+    // every test has a key of its own
+    expect((await api.sendTestNotification({ channel: 'telegram' })).eventKey).not.toBe(eventKey);
+  });
+
+  it('cannot send a test to Web Push before a device has subscribed (phase U6)', async () => {
+    await expect(client().sendTestNotification({ channel: 'webpush' })).rejects.toMatchObject({
+      status: 409,
+      code: 'no_push_subscription',
+    });
+    await expect(client().sendTestNotification({ channel: 'sms' as never })).rejects.toThrow();
+  });
+});
+
+describe('settings and strategies', () => {
+  it('start with the defaults, and a change answers with all the settings', async () => {
+    const api = client();
+    expect((await api.getSettings()).locale).toBe('en');
+    const next = await api.updateSettings({ locale: 'hinglish' });
+    expect(next).toMatchObject({ locale: 'hinglish', displayTz: 'Asia/Kolkata' });
+    expect(await api.getSettings()).toEqual(next);
+  });
+
+  it('are kept for the next page load, which uses the same storage', async () => {
+    const storage = memoryStorage();
+    const first = createMockClient({ storage, latencyMs: 0, scenario: 'two-open' });
+    await first.updateSettings({
+      displayTz: 'America/New_York',
+      alerts: { telegram: { enabled: false } },
+    });
+    await first.updateStrategy('trend_pullback', { enabled: false });
+    const second = createMockClient({ storage, latencyMs: 0, scenario: 'two-open' });
+    expect(await second.getSettings()).toMatchObject({
+      displayTz: 'America/New_York',
+      alerts: { telegram: { enabled: false } },
+    });
+    expect((await second.getStrategies())[0]?.enabled).toBe(false);
+    // another browser tab has its own storage and starts from the defaults
+    expect((await client().getSettings()).displayTz).toBe('Asia/Kolkata');
+  });
+
+  it('refuse a patch that is empty, has an unknown field or a time zone that is not a name', async () => {
+    const api = client();
+    await expect(api.updateSettings({})).rejects.toThrow();
+    await expect(api.updateSettings({ engine: { paused: true } } as never)).rejects.toThrow();
+    await expect(api.updateSettings({ displayTz: '+05:30' })).rejects.toThrow();
+    expect((await api.getSettings()).displayTz).toBe('Asia/Kolkata');
+  });
+
+  it('have one alert switch for a strategy, whether it is changed in the settings or on the strategy', async () => {
+    const api = client();
+    const alertsOf = async (key: string) =>
+      (await api.getStrategies()).find((s) => s.key === key)?.alerts;
+    expect(await alertsOf('trend_pullback')).toBe(true);
+    await api.updateStrategy('trend_pullback', { alerts: false });
+    expect((await api.getSettings()).strategyAlerts.trend_pullback).toBe('off');
+    expect(await alertsOf('trend_pullback')).toBe(false);
+    await api.updateSettings({ strategyAlerts: { trend_pullback: 'on', pattern_breakout: 'on' } });
+    expect(await alertsOf('trend_pullback')).toBe(true);
+    expect(await alertsOf('pattern_breakout')).toBe(true);
+  });
+
+  it('let the owner switch a strategy off and on without touching its alerts, and answer with the strategy', async () => {
+    const api = client();
+    const off = await api.updateStrategy('sweep_reversal', { enabled: false });
+    expect([off.key, off.enabled, off.alerts]).toEqual(['sweep_reversal', false, true]);
+    const on = await api.updateStrategy('sweep_reversal', { enabled: true });
+    expect([on.enabled, on.alerts]).toEqual([true, true]);
+    await expect(api.updateStrategy('sweep_reversal', {})).rejects.toThrow();
+    await expect(
+      api.updateStrategy('sweep_reversal', { status: 'VALIDATED' } as never),
+    ).rejects.toThrow();
+  });
+
+  it('show for each strategy its version, status, newest signal and the evidence of that signal', async () => {
+    const api = client({ scenario: 'wait' });
+    const strategies = await api.getStrategies();
+    const byKey = new Map(strategies.map((s) => [s.key, s]));
+    expect(strategies.map((s) => [s.key, s.version, s.status])).toEqual([
+      ['trend_pullback', '0.1.0', 'FORWARD_TESTING'],
+      ['sweep_reversal', '0.1.0', 'FORWARD_TESTING'],
+      ['squeeze_retest', '0.1.0', 'FORWARD_TESTING'],
+      ['trendline_retest', '0.0.1', 'RESEARCH'],
+      ['pattern_breakout', '0.0.1', 'RESEARCH'],
+    ]);
+    const rows = (await api.getSignals({ limit: 200 })).items;
+    for (const key of ['trend_pullback', 'sweep_reversal', 'squeeze_retest'] as const) {
+      const newest = rows
+        .filter((row) => row.strategyKey === key)
+        .map((row) => row.generatedAt)
+        .sort()
+        .at(-1);
+      expect(byKey.get(key)?.lastSignalAt, key).toBe(newest);
+      expect(byKey.get(key)?.evidence, key).not.toBeNull();
+    }
+    // the strategies that have not produced a signal have nothing to show
+    expect([
+      byKey.get('trendline_retest')?.lastSignalAt,
+      byKey.get('trendline_retest')?.evidence,
+    ]).toEqual([null, null]);
+    expect(byKey.get('trend_pullback')?.evidence).toMatchObject({ scope: 'BACKTEST_OOS', n: 214 });
+    expect(byKey.get('sweep_reversal')?.evidence).toMatchObject({
+      scope: 'FORWARD',
+      sampleLabel: 'INSUFFICIENT',
+    });
+  });
+
+  it('show the config of a strategy, read only', async () => {
+    const config = await client().getStrategyConfig('squeeze_retest');
+    expect(config).toMatchObject({ key: 'squeeze_retest', version: '0.1.0' });
+    expect(config.config).toHaveProperty('setup.squeezePercentile', 20);
+  });
+});
+
+describe('security', () => {
+  const owner = { username: MOCK_USERNAME, password: MOCK_PASSWORD };
+
+  it('lists the three sessions of the owner after a login, and refuses to without one', async () => {
+    const api = client();
+    await expect(api.getSessions()).rejects.toMatchObject({ status: 401 });
+    await api.login(owner);
+    const { items } = await api.getSessions();
+    expect(items.map((s) => [s.id, s.current])).toEqual([
+      ['sess-current', true],
+      ['sess-phone', false],
+      ['sess-laptop', false],
+    ]);
+  });
+
+  it('revokes another session, and a session that does not exist is not found', async () => {
+    const api = client();
+    await api.login(owner);
+    await api.revokeSession('sess-phone');
+    expect((await api.getSessions()).items.map((s) => s.id)).toEqual([
+      'sess-current',
+      'sess-laptop',
+    ]);
+    await expect(api.revokeSession('sess-phone')).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
+    await expect(api.revokeSession('nobody')).rejects.toMatchObject({ status: 404 });
+    // the revoked session stays revoked after a reload
+    expect((await api.me())?.username).toBe(MOCK_USERNAME);
+  });
+
+  it('logs out when the session in use is revoked', async () => {
+    const api = client();
+    await api.login(owner);
+    await api.revokeSession('sess-current');
+    expect(await api.me()).toBeNull();
+  });
+
+  describe('the password', () => {
+    it('is not changed when the current one is wrong (403), or the new one is shorter than 12 characters', async () => {
+      const api = client();
+      await expect(
+        api.changePassword({ current: 'wrong', next: 'a-long-new-password' }),
+      ).rejects.toMatchObject({ status: 403, code: 'wrong_password' });
+      await expect(
+        api.changePassword({ current: MOCK_PASSWORD, next: 'short-11-ch' }),
+      ).rejects.toThrow();
+      await api.login(owner);
+    });
+
+    it('is changed for the next login, revokes every other session and is shown on the login page of the preview', async () => {
+      const storage = memoryStorage();
+      const api = createMockClient({ storage, latencyMs: 0, scenario: 'two-open' });
+      await api.login(owner);
+      await api.changePassword({ current: MOCK_PASSWORD, next: 'a-long-new-password' });
+      expect((await api.getSessions()).items.map((s) => s.id)).toEqual(['sess-current']);
+      expect(api.preview?.password).toBe('a-long-new-password');
+      await api.logout();
+      await expect(api.login(owner)).rejects.toMatchObject({ status: 401 });
+      await api.login({ ...owner, password: 'a-long-new-password' });
+      expect((await api.me())?.username).toBe(MOCK_USERNAME);
+      // a new page load with the same storage has the new password too
+      const reloaded = createMockClient({ storage, latencyMs: 0 });
+      await expect(reloaded.login(owner)).rejects.toMatchObject({ status: 401 });
+    });
+  });
+
+  describe('the second step', () => {
+    it('is off at first, and its setup gives a secret and a link for an authenticator app', async () => {
+      const api = client();
+      await api.login(owner);
+      expect((await api.me())?.totpEnabled).toBe(false);
+      const setup = await api.setupTotp();
+      expect(setup.secret).toMatch(/^[A-Z2-7]{16,64}$/);
+      expect(setup.otpauthUrl).toContain(`secret=${setup.secret}`);
+      expect(setup.otpauthUrl).toMatch(/^otpauth:\/\/totp\//);
+    });
+
+    it('is not turned on by a wrong code, and a malformed code is refused', async () => {
+      const api = client();
+      await api.login(owner);
+      await expect(api.enableTotp({ code: '000000' })).rejects.toMatchObject({
+        status: 400,
+        code: 'invalid_code',
+      });
+      await expect(api.enableTotp({ code: '12345' })).rejects.toThrow();
+      expect((await api.me())?.totpEnabled).toBe(false);
+    });
+
+    it('is turned on by the right code, gives eight recovery codes and then needs the code at login', async () => {
+      const api = client();
+      await api.login(owner);
+      const { recoveryCodes } = await api.enableTotp({ code: MOCK_TOTP_CODE });
+      expect(recoveryCodes).toHaveLength(8);
+      expect(new Set(recoveryCodes).size).toBe(8);
+      expect((await api.me())?.totpEnabled).toBe(true);
+      expect(api.preview?.totp).toBe(MOCK_TOTP_CODE);
+      await expect(api.setupTotp()).rejects.toMatchObject({
+        status: 409,
+        code: 'totp_already_enabled',
+      });
+      await api.logout();
+      await expect(api.login(owner)).rejects.toMatchObject({ status: 401 });
+      await expect(api.login({ ...owner, totp: '000000' })).rejects.toMatchObject({ status: 401 });
+      await api.login({ ...owner, totp: MOCK_TOTP_CODE });
+      expect((await api.me())?.totpEnabled).toBe(true);
+    });
+
+    it('is turned off by the right code only', async () => {
+      const api = client();
+      await api.login(owner);
+      await api.enableTotp({ code: MOCK_TOTP_CODE });
+      await expect(api.disableTotp({ code: '111111' })).rejects.toMatchObject({
+        code: 'invalid_code',
+      });
+      expect((await api.me())?.totpEnabled).toBe(true);
+      await api.disableTotp({ code: MOCK_TOTP_CODE });
+      expect((await api.me())?.totpEnabled).toBe(false);
+      await api.logout();
+      await api.login(owner);
+    });
   });
 });

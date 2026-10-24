@@ -216,33 +216,6 @@ body {
   outline-offset: 2px;
 }
 
-/* ---- cards of the placeholder screens ---- */
-
-.plan-card {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  height: 100%;
-  padding: 16px;
-  background: var(--vm-card-bg);
-  border: 1px solid var(--vm-card-border);
-  border-radius: var(--mantine-radius-md);
-}
-
-.plan-number {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--mantine-color-gold-6);
-  color: #0b0f14;
-  font-size: 0.8125rem;
-  font-weight: 700;
-}
-
 /* No horizontal scrolling on phones: wide content scrolls inside its own box. The box is positioned,
    so that an absolutely positioned child (visually hidden text) is clipped with it and cannot widen the page. */
 .scroll-x {

@@ -6,6 +6,7 @@ import {
   CAUSE_CODES,
   ENGINE_STATUSES,
   EXIT_PROFILES,
+  FEED_INCIDENT_KINDS,
   FEED_STATES,
   GATE_CODES,
   GATE_MODES,
@@ -61,6 +62,7 @@ export const autopsyStatusSchema = z.enum(AUTOPSY_STATUSES);
 export const statsScopeSchema = z.enum(STATS_SCOPES);
 export const candleSourceSchema = z.enum(CANDLE_SOURCES);
 export const feedStateSchema = z.enum(FEED_STATES);
+export const feedIncidentKindSchema = z.enum(FEED_INCIDENT_KINDS);
 export const engineStatusSchema = z.enum(ENGINE_STATUSES);
 export const notificationChannelSchema = z.enum(NOTIFICATION_CHANNELS);
 export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);

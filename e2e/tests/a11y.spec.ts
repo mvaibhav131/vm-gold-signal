@@ -4,7 +4,10 @@ import { expect, test, type Page } from '@playwright/test';
 import { PRIVATE_ROUTES, logIn } from './helpers';
 
 // Scenario E16: zero serious or critical axe violations on every route, in the dark and in the
-// light theme. Axe reads the DOM, no image is taken.
+// light theme. Axe reads the DOM, no image is taken. An axe run on a busy machine (every worker
+// has a browser) can take long, so the tests of this file have 60 s instead of 30 s.
+test.describe.configure({ timeout: 60_000 });
+
 async function seriousViolations(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page }).analyze();
   return results.violations
@@ -57,6 +60,7 @@ for (const scheme of ['dark', 'light'] as const) {
     test('the history with a filter, with every page loaded, with a menu open and with no match has none', async ({
       page,
     }) => {
+      test.setTimeout(120_000);
       await logIn(page);
       await page.goto('/signals');
       await expect(page.getByTestId('history-row-43')).toBeVisible();
@@ -158,6 +162,143 @@ for (const scheme of ['dark', 'light'] as const) {
       ).toBeVisible();
       expect(await seriousViolations(page)).toEqual([]);
       await page.keyboard.press('Escape');
+    });
+
+    test('the news screen, with every tab opened and a menu open, has none', async ({ page }) => {
+      test.setTimeout(90_000);
+      await logIn(page);
+      await page.goto('/news');
+      await expect(page.getByTestId('news-past')).toBeVisible();
+      expect(await seriousViolations(page), 'calendar').toEqual([]);
+      await page.getByRole('combobox', { name: 'Importance' }).click();
+      await expect(page.getByRole('option', { name: 'High', exact: true })).toBeVisible();
+      expect(await seriousViolations(page), 'importance menu').toEqual([]);
+      await page.keyboard.press('Escape');
+      await page.getByRole('tab', { name: 'Headlines' }).click();
+      await expect(page.getByTestId('news-headlines')).toBeVisible();
+      expect(await seriousViolations(page), 'headlines').toEqual([]);
+      await page.getByRole('combobox', { name: 'Topic' }).click();
+      await expect(page.getByRole('option', { name: 'Risk-off moves', exact: true })).toBeVisible();
+      expect(await seriousViolations(page), 'topic menu').toEqual([]);
+      await page.keyboard.press('Escape');
+      await page.getByRole('tab', { name: 'Market moves' }).click();
+      await expect(page.getByTestId('news-moves')).toBeVisible();
+      expect(await seriousViolations(page), 'market moves').toEqual([]);
+    });
+
+    test('the news screen inside a news window has none', async ({ page }) => {
+      await logIn(page, { scenario: 'wait' });
+      await page.getByRole('link', { name: 'News', exact: true }).click();
+      await expect(page.getByTestId('news-state-chip')).toHaveText('IN WINDOW');
+      await expect(page.getByTestId('news-past')).toBeVisible();
+      expect(await seriousViolations(page), 'in window').toEqual([]);
+    });
+
+    test('the news screen with the calendar feed and every headline feed down has none', async ({
+      page,
+    }) => {
+      await logIn(page, { scenario: 'news-unknown' });
+      await page.getByRole('link', { name: 'News', exact: true }).click();
+      await expect(page.getByTestId('news-state-chip')).toHaveText('UNKNOWN');
+      await expect(page.getByTestId('news-past')).toBeVisible();
+      expect(await seriousViolations(page), 'unknown calendar').toEqual([]);
+      await page.getByRole('tab', { name: 'Headlines' }).click();
+      await expect(page.getByTestId('headline-feed-banner')).toBeVisible();
+      expect(await seriousViolations(page), 'feeds down').toEqual([]);
+    });
+
+    test('the system screen, with every tab opened, has none', async ({ page }) => {
+      test.setTimeout(90_000);
+      await logIn(page);
+      await page.goto('/system');
+      await expect(page.getByTestId('health-incidents')).toBeVisible();
+      await expect(page.getByTestId('health-latency')).toBeVisible();
+      expect(await seriousViolations(page), 'Health').toEqual([]);
+      const ready = {
+        Storage: 'storage-retention',
+        Strategies: 'strategy-row-pattern_breakout',
+        Alerts: 'alerts-market-moves',
+        Display: 'display-numbers',
+        Security: 'sessions-table',
+      } as const;
+      for (const [tab, testId] of Object.entries(ready)) {
+        await page.getByRole('tab', { name: tab }).click();
+        await expect(page.getByTestId(testId)).toBeVisible();
+        expect(await seriousViolations(page), tab).toEqual([]);
+      }
+    });
+
+    test('the system screen with its questions and menus open has none', async ({ page }) => {
+      test.setTimeout(90_000);
+      await logIn(page);
+      await page.goto('/system');
+      await page.getByTestId('health-pause').click();
+      await expect(page.getByRole('dialog', { name: 'Pause the engine?' })).toBeVisible();
+      expect(await seriousViolations(page), 'pause question').toEqual([]);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+
+      await page.getByRole('tab', { name: 'Strategies' }).click();
+      await page.getByRole('switch', { name: 'Enabled: Trend Pullback' }).click();
+      await expect(page.getByRole('dialog', { name: 'Switch off Trend Pullback?' })).toBeVisible();
+      expect(await seriousViolations(page), 'switch-off question').toEqual([]);
+      await page.getByRole('button', { name: 'Cancel' }).click();
+      await page
+        .getByTestId('strategy-row-trend_pullback')
+        .getByRole('button', { name: 'Configuration (read only)' })
+        .click();
+      await expect(page.getByTestId('strategy-config-trend_pullback')).toBeVisible();
+      expect(await seriousViolations(page), 'configuration').toEqual([]);
+
+      await page.getByRole('tab', { name: 'Alerts' }).click();
+      await page.getByRole('combobox', { name: 'Telegram: minimum grade of a signal' }).click();
+      await expect(page.getByRole('option', { name: 'Very strong', exact: true })).toBeVisible();
+      expect(await seriousViolations(page), 'grade menu').toEqual([]);
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('tab', { name: 'Display' }).click();
+      await page.getByRole('combobox', { name: 'Time zone' }).click();
+      await expect(page.getByRole('option', { name: 'Europe/London', exact: true })).toBeVisible();
+      expect(await seriousViolations(page), 'time-zone menu').toEqual([]);
+      await page.keyboard.press('Escape');
+
+      await page.getByRole('tab', { name: 'Security' }).click();
+      await page.getByTestId('session-revoke-sess-phone').click();
+      await expect(page.getByRole('dialog', { name: 'Revoke this session?' })).toBeVisible();
+      expect(await seriousViolations(page), 'revoke question').toEqual([]);
+    });
+
+    test('the security tab with its errors, the 2-step setup and the recovery codes has none', async ({
+      page,
+    }) => {
+      test.setTimeout(90_000);
+      await logIn(page);
+      await page.goto('/system?tab=security');
+      await page.getByTestId('password-submit').click();
+      await expect(page.getByText('Enter your current password')).toBeVisible();
+      expect(await seriousViolations(page), 'password errors').toEqual([]);
+      await page.getByTestId('totp-setup').click();
+      await expect(page.getByTestId('totp-setup-panel')).toBeVisible();
+      await page.getByTestId('totp-code').fill('12ab');
+      await page.getByTestId('totp-enable').click();
+      await expect(page.getByText('The code has 6 digits')).toBeVisible();
+      expect(await seriousViolations(page), 'setup with an error').toEqual([]);
+      await page.getByTestId('totp-code').fill('123456');
+      await page.getByTestId('totp-enable').click();
+      await expect(page.getByTestId('totp-recovery-codes')).toBeVisible();
+      expect(await seriousViolations(page), 'recovery codes').toEqual([]);
+    });
+
+    test('the system screen in the warning state, with the health and the storage tab, has none', async ({
+      page,
+    }) => {
+      test.setTimeout(90_000);
+      await logIn(page, { scenario: 'system-warning' });
+      await page.getByRole('link', { name: 'System', exact: true }).click();
+      await expect(page.getByTestId('health-summary')).toHaveText('4 checks need attention.');
+      expect(await seriousViolations(page), 'health').toEqual([]);
+      await page.getByRole('tab', { name: 'Storage' }).click();
+      await expect(page.getByTestId('storage-warning')).toBeVisible();
+      expect(await seriousViolations(page), 'storage').toEqual([]);
     });
 
     test('the detail of a loss whose review is still preliminary has none', async ({ page }) => {

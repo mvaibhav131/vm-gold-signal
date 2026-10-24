@@ -1,6 +1,7 @@
 import type { FeedState, Regime, Timeframe } from '@vmgs/core';
 import type { WaitReason } from '@vmgs/contracts';
 
+import type { NewsScenarioState } from './news';
 import type { TemplateKey } from './signals';
 
 /** One state of the simulated market, selectable in the preview (and by the e2e tests with `?scenario=`). */
@@ -12,7 +13,8 @@ export interface Scenario {
   readonly signals: readonly TemplateKey[];
   /** The owner paused the engine (`pausedSince` is 12 minutes before the scenario started). */
   readonly paused: boolean;
-  readonly news: 'CLEAR' | 'IN_WINDOW';
+  /** `UNKNOWN`: the calendar and the headline feeds are unavailable. */
+  readonly news: NewsScenarioState;
   readonly warmup: {
     readonly ready: boolean;
     readonly progressPct: number;
@@ -23,6 +25,8 @@ export interface Scenario {
   readonly waitReasons: readonly WaitReason[];
   /** A loss closed 35 minutes before the scenario started: its review is still preliminary. */
   readonly freshLoss?: boolean;
+  /** The System screen shows warnings: Telegram failing, clock skew, a full database, an old backup. */
+  readonly systemWarning?: boolean;
 }
 
 const READY = { ready: true, progressPct: 100, missingTimeframes: [] } as const;
@@ -153,6 +157,36 @@ export const SCENARIOS: readonly Scenario[] = [
     warmup: READY,
     tickAgeMs: null,
     waitReasons: [{ code: 'PAUSED', label: 'Paused by you: no new signals until you resume' }],
+  },
+  {
+    id: 'news-unknown',
+    label: 'News feeds unavailable (calendar and headlines)',
+    feedState: 'LIVE',
+    regime: 'RANGE',
+    signals: [],
+    paused: false,
+    news: 'UNKNOWN',
+    warmup: READY,
+    tickAgeMs: null,
+    waitReasons: [
+      {
+        code: 'NEWS_UNKNOWN',
+        label: 'News feeds unavailable: signals carry a NEWS UNKNOWN warning',
+      },
+    ],
+  },
+  {
+    id: 'system-warning',
+    label: 'System warnings (Telegram failing, database 82% full)',
+    feedState: 'LIVE',
+    regime: 'RANGE',
+    signals: [],
+    paused: false,
+    news: 'CLEAR',
+    warmup: READY,
+    tickAgeMs: null,
+    waitReasons: NO_SETUP,
+    systemWarning: true,
   },
 ];
 

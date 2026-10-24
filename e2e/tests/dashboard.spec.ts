@@ -339,6 +339,8 @@ test.describe('E15 responsive', () => {
 });
 
 test.describe('E16 accessibility of every state', () => {
+  // an axe run on a busy machine can take long: 60 s instead of 30 s
+  test.describe.configure({ timeout: 60_000 });
   const scenarios = [
     'two-open',
     'open-buy',

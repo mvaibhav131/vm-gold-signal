@@ -3,13 +3,14 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import { usePageTitle } from '../hooks';
-import { PlaceholderPage } from './PlaceholderPage';
 
 export { DashboardPage } from '../dashboard/DashboardPage';
 
 const HistoryPage = lazy(() => import('../history/HistoryPage'));
 const SignalDetailScreen = lazy(() => import('../detail/SignalDetailPage'));
 const AnalyticsScreen = lazy(() => import('../analytics/AnalyticsPage'));
+const NewsScreen = lazy(() => import('../news/NewsPage'));
+const SystemScreen = lazy(() => import('../system/SystemPage'));
 
 /** What a lazily loaded screen shows for a moment: its heading, so the page is never without one. */
 function Loading({ title, testId }: { title: string; testId: string }) {
@@ -54,33 +55,17 @@ export function AnalyticsPage() {
 
 export function NewsPage() {
   return (
-    <PlaceholderPage
-      testId="page-news"
-      title="News"
-      phase="U4"
-      summary="Calendar events, headlines and sudden gold moves, with the news-risk state."
-      planned={[
-        'Calendar with forecast, previous and actual, and gold’s move after each release',
-        'Clustered headlines with impact, topic and detection delay',
-        'Market moves with the headlines that were visible, worded as possible causes only',
-      ]}
-    />
+    <Lazy title="News" testId="page-news">
+      <NewsScreen />
+    </Lazy>
   );
 }
 
 export function SystemPage() {
   return (
-    <PlaceholderPage
-      testId="page-system"
-      title="System"
-      phase="U4"
-      summary="Health of the feed and the worker, storage, strategies and your settings."
-      planned={[
-        'Health, storage and retention rules, strategy switches and their config',
-        'Alert settings: Telegram, Web Push, language, advisory flags warn or block',
-        'Display time zone, password, optional 2-step login and active sessions',
-      ]}
-    />
+    <Lazy title="System" testId="page-system">
+      <SystemScreen />
+    </Lazy>
   );
 }
 

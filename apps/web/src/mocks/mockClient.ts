@@ -9,13 +9,22 @@ import {
   groupEffectivenessQuerySchema,
   headlinesQuerySchema,
   loginRequestSchema,
+  marketMovesQuerySchema,
   marketSnapshotSchema,
   meResponseSchema,
   monthlyQuerySchema,
+  newsEventsQuerySchema,
+  notificationTestRequestSchema,
+  notificationTestResponseSchema,
   openSignalsResponseSchema,
   overviewQuerySchema,
-  settingsSchema,
+  passwordChangeRequestSchema,
+  settingsPatchSchema,
   strategyInfoSchema,
+  strategyPatchSchema,
+  totpCodeRequestSchema,
+  totpEnableResponseSchema,
+  totpSetupResponseSchema,
   type BreakdownQuery,
   type BreakdownResponse,
   type CalibrationQuery,
@@ -33,22 +42,40 @@ import {
   type HeadlinesQuery,
   type HeadlinesResponse,
   type LoginRequest,
+  type MarketMovesQuery,
+  type MarketMovesResponse,
   type MarketSnapshot,
   type MeResponse,
   type MonthlyQuery,
   type MonthlyResponse,
+  type NewsEventsQuery,
+  type NewsEventsResponse,
   type NewsImpactResponse,
   type NewsStateResponse,
+  type NotificationTestRequest,
+  type NotificationTestResponse,
   type OpenSignalsResponse,
   type OverviewQuery,
   type OverviewResponse,
+  type PasswordChangeRequest,
   type QuoteData,
+  type SessionsResponse,
   type Settings,
+  type SettingsPatch,
   type SignalDetail,
   type SignalHistoryPage,
   type SignalHistoryQuery,
   type SseEvent,
+  type StrategyConfigResponse,
   type StrategyInfo,
+  type StrategyPatch,
+  type SystemHealth,
+  type SystemIncidentsResponse,
+  type SystemLatency,
+  type SystemStorage,
+  type TotpCodeRequest,
+  type TotpEnableResponse,
+  type TotpSetupResponse,
 } from '@vmgs/contracts';
 
 import { ApiError, type ApiClient } from '../api/client';
@@ -67,10 +94,28 @@ import {
   type AnalyticsRecord,
 } from './analytics';
 import { buildBacktest } from './backtest';
-import { headlinesAt, newsStateAt } from './news';
+import { headlinesAt, marketMovesAt, newsEventsAt, newsStateAt } from './news';
 import { allRows, detailOfOpen, overviewFor, queryHistory, summarize } from './history';
+import {
+  CURRENT_SESSION_ID,
+  applySettingsPatch,
+  loadPreferences,
+  savePreferences,
+  sessionsAt,
+  type Preferences,
+} from './preferences';
 import { SCENARIOS, scenarioById, type Scenario } from './scenarios';
 import { buildSimSignal, currentPrice, unrealisedR, type SimSignal } from './signals';
+import {
+  healthAt,
+  incidentsAt,
+  latencyAt,
+  storageAt,
+  strategyConfigFor,
+  strategyStatusOf,
+  strategyVersion,
+  type SystemInput,
+} from './system';
 import {
   buildFreshLoss,
   buildTrades,
@@ -85,15 +130,25 @@ import { candlesResponse, priceAt, round3 } from './world';
 /** Credentials of the preview. They only exist in the mock; the live API never sees them. */
 export const MOCK_USERNAME = 'owner';
 export const MOCK_PASSWORD = 'preview';
+/** The code of the second step in the preview, once the owner has turned it on. */
+export const MOCK_TOTP_CODE = '123456';
+const MOCK_TOTP_SECRET = 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP';
+const MOCK_RECOVERY_CODES = [
+  'k7m2-q9x4',
+  'p3d8-v6n1',
+  'h5t2-z8c7',
+  'w4r9-b2j6',
+  'f8y3-m5s1',
+  'c6g7-t4e9',
+  'n2a5-x7u3',
+  'd9l4-r8k2',
+];
 
 const SESSION_KEY = 'vmgs-mock-session';
 const SCENARIO_KEY = 'vmgs-mock-scenario';
 const SESSION_HOURS = 12;
 const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
-
-/** Strategies A, B and C alert by default; D and E stay in shadow mode until their backtest report. */
-const ALERTS_ON: readonly StrategyKey[] = ['trend_pullback', 'sweep_reversal', 'squeeze_retest'];
 
 /** Small deterministic generator: the preview shows the same numbers on every run. */
 export function seededRandom(seed: number): () => number {
@@ -123,39 +178,6 @@ export interface MockClientOptions {
 interface PauseState {
   since: number;
   until: number | null;
-}
-
-function defaultSettings(): Settings {
-  return settingsSchema.parse({
-    displayTz: 'Asia/Kolkata',
-    locale: 'en',
-    alerts: {
-      telegram: {
-        enabled: true,
-        minGrade: 'Moderate',
-        kinds: ['SIGNAL_NEW', 'SIGNAL_TP1', 'SIGNAL_CLOSED', 'SIGNAL_CANCELLED', 'SYSTEM_DEGRADED'],
-      },
-      webpush: { enabled: false, minGrade: 'Strong' },
-    },
-    advisoryGates: { newsWindow: 'warn', rollover: 'warn', offHours: 'warn', nearLevel: 'warn' },
-    strategyAlerts: Object.fromEntries(
-      STRATEGY_KEYS.map((key) => [key, ALERTS_ON.includes(key) ? 'on' : 'off']),
-    ),
-    newsAlerts: {
-      minImpact: 'HIGH',
-      topics: {
-        FED_RATES: 'on',
-        USD_DOLLAR: 'on',
-        INFLATION_JOBS: 'on',
-        GEOPOLITICS_WAR: 'on',
-        TRUMP_POLICY: 'on',
-        CENTRAL_BANK_GOLD: 'on',
-        GOLD_DIRECT: 'on',
-        RISK_OFF: 'on',
-      },
-      marketMoves: 'on',
-    },
-  });
 }
 
 function startingScenario(
@@ -189,6 +211,56 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
   let pause: PauseState | null = null;
   let frozen: QuoteData | null = null;
   let lastQuote: QuoteData;
+  // The owner's choices on the System screen survive a reload of the page (they are saved in the storage).
+  let prefs: Preferences = loadPreferences(storage, MOCK_PASSWORD);
+  let testSentAtMs: number | null = null;
+
+  function setPrefs(next: Preferences): void {
+    prefs = next;
+    savePreferences(storage, prefs);
+  }
+
+  function systemInput(): SystemInput {
+    return {
+      nowMs: now().getTime(),
+      feedState: lastQuote.feedState,
+      feedAgeMs: lastQuote.ageMs,
+      warning: scenario.systemWarning === true,
+      testSentAtMs,
+    };
+  }
+
+  /** A strategy as the list shows it: the owner's switches, the newest signal and its evidence. */
+  function strategyInfo(key: StrategyKey): StrategyInfo {
+    const newest = [...open.map((sim) => sim.signal), ...allTrades().map((trade) => trade.signal)]
+      .filter((signal) => signal.strategyKey === key)
+      .sort((a, b) => Date.parse(b.generatedAt) - Date.parse(a.generatedAt))[0];
+    return strategyInfoSchema.parse({
+      key,
+      version: strategyVersion(key),
+      status: strategyStatusOf(key),
+      enabled: prefs.enabled[key],
+      alerts: prefs.settings.strategyAlerts[key] === 'on',
+      lastSignalAt: newest?.generatedAt ?? null,
+      evidence: newest?.evidence ?? null,
+    });
+  }
+
+  /** The session of this browser: its expiry, or null when there is none (the real API answers 401). */
+  function sessionExpiry(): string {
+    const expiresAt = storage.getItem(SESSION_KEY);
+    if (expiresAt === null || Date.parse(expiresAt) <= now().getTime()) {
+      throw new ApiError(401, 'unauthenticated', 'There is no valid session.');
+    }
+    return expiresAt;
+  }
+
+  /** A made-up id for a test message: `test:` and a uuid. */
+  function testEventKey(): string {
+    const hex = (length: number) =>
+      Array.from({ length }, () => Math.floor(random() * 16).toString(16)).join('');
+    return `test:${hex(8)}-${hex(4)}-4${hex(3)}-8${hex(3)}-${hex(12)}`;
+  }
 
   function allTrades(): readonly Trade[] {
     return freshLoss ? [...trades, freshLoss] : trades;
@@ -298,7 +370,9 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
 
   return {
     kind: 'mock',
-    preview: { username: MOCK_USERNAME, password: MOCK_PASSWORD },
+    get preview() {
+      return { username: MOCK_USERNAME, password: prefs.password, totp: MOCK_TOTP_CODE };
+    },
     scenarios: {
       scenarios: SCENARIOS.map(({ id, label }) => ({ id, label })),
       current: () => scenario.id,
@@ -317,7 +391,8 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       if (
         !parsed.success ||
         parsed.data.username !== MOCK_USERNAME ||
-        parsed.data.password !== MOCK_PASSWORD
+        parsed.data.password !== prefs.password ||
+        (prefs.totpEnabled && parsed.data.totp !== MOCK_TOTP_CODE)
       ) {
         throw new ApiError(401, 'invalid_credentials', 'Login failed.');
       }
@@ -339,14 +414,23 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       }
       return meResponseSchema.parse({
         username: MOCK_USERNAME,
-        totpEnabled: false,
+        totpEnabled: prefs.totpEnabled,
         sessionExpiresAt: expiresAt,
       });
     },
 
     async getSettings(): Promise<Settings> {
       await wait();
-      return defaultSettings();
+      return prefs.settings;
+    },
+
+    async updateSettings(patch: SettingsPatch): Promise<Settings> {
+      await wait();
+      setPrefs({
+        ...prefs,
+        settings: applySettingsPatch(prefs.settings, settingsPatchSchema.parse(patch)),
+      });
+      return prefs.settings;
     },
 
     async getSnapshot(): Promise<MarketSnapshot> {
@@ -372,17 +456,32 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
 
     async getStrategies(): Promise<StrategyInfo[]> {
       await wait();
-      return STRATEGY_KEYS.map((key) =>
-        strategyInfoSchema.parse({
-          key,
-          version: '0.1.0',
-          status: 'FORWARD_TESTING',
-          enabled: true,
-          alerts: ALERTS_ON.includes(key),
-          lastSignalAt: null,
-          evidence: null,
-        }),
-      );
+      return STRATEGY_KEYS.map(strategyInfo);
+    },
+
+    async getStrategyConfig(key: StrategyKey): Promise<StrategyConfigResponse> {
+      await wait();
+      return strategyConfigFor(key);
+    },
+
+    async updateStrategy(key: StrategyKey, patch: StrategyPatch): Promise<StrategyInfo> {
+      await wait();
+      const parsed = strategyPatchSchema.parse(patch);
+      // The alert switch of a strategy is `strategyAlerts.<key>` of the settings: one switch, two ways to reach it.
+      setPrefs({
+        ...prefs,
+        enabled: {
+          ...prefs.enabled,
+          ...(parsed.enabled === undefined ? {} : { [key]: parsed.enabled }),
+        },
+        settings:
+          parsed.alerts === undefined
+            ? prefs.settings
+            : applySettingsPatch(prefs.settings, {
+                strategyAlerts: { [key]: parsed.alerts ? 'on' : 'off' },
+              }),
+      });
+      return strategyInfo(key);
     },
 
     async getCandles(query: CandlesQuery): Promise<CandlesResponse> {
@@ -544,10 +643,20 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       return newsStateAt(scenario.news, now().getTime());
     },
 
+    async getNewsEvents(query: NewsEventsQuery): Promise<NewsEventsResponse> {
+      await wait();
+      return newsEventsAt(scenario.news, now().getTime(), newsEventsQuerySchema.parse(query));
+    },
+
     async getHeadlines(query: HeadlinesQuery): Promise<HeadlinesResponse> {
       await wait();
       const parsed = headlinesQuerySchema.parse(query);
-      return headlinesAt(now().getTime(), parsed.limit);
+      return headlinesAt(now().getTime(), parsed, scenario.news);
+    },
+
+    async getMarketMoves(query: MarketMovesQuery): Promise<MarketMovesResponse> {
+      await wait();
+      return marketMovesAt(now().getTime(), marketMovesQuerySchema.parse(query));
     },
 
     async pauseEngine(request) {
@@ -564,6 +673,98 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
       await wait();
       pause = null;
       emitEngine();
+    },
+
+    async getSystemHealth(): Promise<SystemHealth> {
+      await wait();
+      return healthAt(systemInput());
+    },
+
+    async getSystemIncidents(): Promise<SystemIncidentsResponse> {
+      await wait();
+      return incidentsAt(systemInput());
+    },
+
+    async getSystemStorage(): Promise<SystemStorage> {
+      await wait();
+      return storageAt(now().getTime(), scenario.systemWarning === true);
+    },
+
+    async getSystemLatency(): Promise<SystemLatency> {
+      await wait();
+      return latencyAt(scenario.systemWarning === true);
+    },
+
+    async sendTestNotification(
+      request: NotificationTestRequest,
+    ): Promise<NotificationTestResponse> {
+      await wait();
+      const parsed = notificationTestRequestSchema.parse(request);
+      if (parsed.channel === 'webpush') {
+        throw new ApiError(409, 'no_push_subscription', 'No device is subscribed to Web Push yet.');
+      }
+      testSentAtMs = now().getTime();
+      return notificationTestResponseSchema.parse({ eventKey: testEventKey() });
+    },
+
+    async changePassword(request: PasswordChangeRequest): Promise<void> {
+      await wait();
+      const parsed = passwordChangeRequestSchema.parse(request);
+      if (parsed.current !== prefs.password) {
+        throw new ApiError(403, 'wrong_password', 'The current password is not right.');
+      }
+      // The real API revokes every other session when the password changes.
+      setPrefs({
+        ...prefs,
+        password: parsed.next,
+        revokedSessions: ['sess-phone', 'sess-laptop'],
+      });
+    },
+
+    async setupTotp(): Promise<TotpSetupResponse> {
+      await wait();
+      if (prefs.totpEnabled) {
+        throw new ApiError(409, 'totp_already_enabled', 'The second step is already on.');
+      }
+      return totpSetupResponseSchema.parse({
+        secret: MOCK_TOTP_SECRET,
+        otpauthUrl: `otpauth://totp/VM%20Gold%20Signal:${MOCK_USERNAME}?secret=${MOCK_TOTP_SECRET}&issuer=VM%20Gold%20Signal`,
+      });
+    },
+
+    async enableTotp(request: TotpCodeRequest): Promise<TotpEnableResponse> {
+      await wait();
+      const parsed = totpCodeRequestSchema.parse(request);
+      if (parsed.code !== MOCK_TOTP_CODE) {
+        throw new ApiError(400, 'invalid_code', 'This code is not right.');
+      }
+      setPrefs({ ...prefs, totpEnabled: true });
+      return totpEnableResponseSchema.parse({ recoveryCodes: MOCK_RECOVERY_CODES });
+    },
+
+    async disableTotp(request: TotpCodeRequest): Promise<void> {
+      await wait();
+      const parsed = totpCodeRequestSchema.parse(request);
+      if (parsed.code !== MOCK_TOTP_CODE) {
+        throw new ApiError(400, 'invalid_code', 'This code is not right.');
+      }
+      setPrefs({ ...prefs, totpEnabled: false });
+    },
+
+    async getSessions(): Promise<SessionsResponse> {
+      await wait();
+      return sessionsAt(now().getTime(), sessionExpiry(), prefs.revokedSessions);
+    },
+
+    async revokeSession(id: string): Promise<void> {
+      await wait();
+      const sessions = sessionsAt(now().getTime(), sessionExpiry(), prefs.revokedSessions);
+      if (!sessions.items.some((session) => session.id === id)) {
+        throw new ApiError(404, 'not_found', 'There is no session with this id.');
+      }
+      // Revoking the session you are using is a logout.
+      if (id === CURRENT_SESSION_ID) storage.removeItem(SESSION_KEY);
+      else setPrefs({ ...prefs, revokedSessions: [...prefs.revokedSessions, id] });
     },
 
     subscribe(listener) {

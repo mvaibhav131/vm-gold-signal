@@ -7,16 +7,16 @@ import { ToneBadge } from '../components/ToneBadge';
 import { useNewsState, useTopHeadlines } from '../data/queries';
 import type { Tone } from '../format/format';
 import { labelOf } from '../format/format';
+import { IMPACT_TONE } from '../format/news';
 import { formatCountdown } from '../format/time';
 import { useNow } from '../hooks';
+import { headlineFeedStatus } from '../news/feeds';
 
 const NEWS_STATE: Record<NewsStateResponse['state'], { text: string; tone: Tone }> = {
   CLEAR: { text: 'CLEAR', tone: 'neutral' },
   IN_WINDOW: { text: 'IN WINDOW', tone: 'warning' },
   UNKNOWN: { text: 'UNKNOWN: news feed unavailable', tone: 'warning' },
 };
-
-const IMPACT_TONE: Record<string, Tone> = { HIGH: 'negative', MEDIUM: 'warning', LOW: 'neutral' };
 
 /**
  * Next macro event and the newest headlines (05_UI_Spec section 7). Wording stays factual: a
@@ -29,6 +29,10 @@ export function EventsCard() {
   const news = state.data;
   const next = news?.next ?? null;
   const secondsToNext = next ? (Date.parse(next.scheduledAt) - now) / 1000 : 0;
+  // When every headline feed is down the card says so, instead of a list that looks like "no news".
+  const headlineFeedDown = headlines.data
+    ? headlineFeedStatus(headlines.data.sources, now).state === 'DOWN'
+    : false;
 
   return (
     <Paper withBorder p="md" radius="md" className="dash-events" data-testid="events-card">
@@ -58,7 +62,12 @@ export function EventsCard() {
         )}
 
         <div data-testid="news-headlines">
-          {headlines.isSuccess && headlines.data.items.length === 0 && (
+          {headlineFeedDown && (
+            <Text size="sm" data-testid="news-headlines-down">
+              Headline feed unavailable. This is not the same as no news.
+            </Text>
+          )}
+          {headlines.isSuccess && headlines.data.items.length === 0 && !headlineFeedDown && (
             <Text size="sm" c="dimmed">
               No headline in the last hours.
             </Text>
@@ -67,7 +76,7 @@ export function EventsCard() {
             {headlines.data?.items.map((item) => (
               <div key={item.id} data-testid={`headline-${item.id}`}>
                 <Group gap={6} mb={2}>
-                  <ToneBadge tone={IMPACT_TONE[item.impact] ?? 'neutral'} size="sm">
+                  <ToneBadge tone={IMPACT_TONE[item.impact]} size="sm">
                     {item.impact}
                   </ToneBadge>
                   {item.topics.map((topic) => (
