@@ -108,6 +108,58 @@ for (const scheme of ['dark', 'light'] as const) {
       });
     }
 
+    /** The analytics page with every block loaded (the last block, the news impact, is the slowest to appear). */
+    async function openAnalytics(page: Page, query = ''): Promise<void> {
+      await logIn(page);
+      await page.goto(`/analytics${query}`);
+      await expect(page.getByTestId('news-impact')).toBeVisible();
+      await expect(page.getByTestId('drift-panel')).toBeVisible();
+      await expect(page.getByTestId('equity-curve').locator('svg')).toBeVisible();
+      await expect(page.getByTestId('calibration')).toBeVisible();
+      await expect(page.getByTestId('group-effectiveness')).toBeVisible();
+    }
+
+    test('the analytics page with every block loaded, in the forward and the backtest scope, has none', async ({
+      page,
+    }) => {
+      await openAnalytics(page);
+      expect(await seriousViolations(page)).toEqual([]);
+      await page.getByTestId('scope-switch').getByText('Backtest out-of-sample').click();
+      await expect(page.getByTestId('kpi-generated')).toContainText('318');
+      await expect(page.getByTestId('news-impact')).toBeVisible();
+      await expect(page.getByTestId('calibration')).toBeVisible();
+      await expect(page.getByTestId('group-effectiveness')).toBeVisible();
+      await expect(page.getByTestId('failure-total')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+
+    test('the analytics breakdown, with every tab opened, has none', async ({ page }) => {
+      test.setTimeout(90_000);
+      await openAnalytics(page);
+      for (const tab of ['Side', 'Session', 'Regime', 'Volatility', 'News condition', 'Grade']) {
+        await page.getByRole('tab', { name: tab }).click();
+        await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByTestId(/^breakdown-[a-z]+$/)).toBeVisible();
+        expect(await seriousViolations(page), tab).toEqual([]);
+      }
+    });
+
+    test('the analytics page with the cause rules and the strategy menu opened has none', async ({
+      page,
+    }) => {
+      await openAnalytics(page, '?scope=BACKTEST_OOS');
+      await expect(page.getByTestId('kpi-generated')).toContainText('318');
+      await page.getByRole('button', { name: 'How each cause is decided' }).click();
+      await expect(page.getByTestId('failure-rules')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      await page.getByRole('combobox', { name: 'Strategy' }).click();
+      await expect(
+        page.getByRole('option', { name: 'Squeeze Breakout and Retest', exact: true }),
+      ).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      await page.keyboard.press('Escape');
+    });
+
     test('the detail of a loss whose review is still preliminary has none', async ({ page }) => {
       await logIn(page, { scenario: 'review-pending' });
       await page.getByTestId('recent-row-42').getByRole('link', { name: 'S-0042' }).click();

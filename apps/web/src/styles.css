@@ -243,10 +243,72 @@ body {
   font-weight: 700;
 }
 
-/* No horizontal scrolling on phones: wide content scrolls inside its own box. */
+/* No horizontal scrolling on phones: wide content scrolls inside its own box. The box is positioned,
+   so that an absolutely positioned child (visually hidden text) is clipped with it and cannot widen the page. */
 .scroll-x {
+  position: relative;
   max-width: 100%;
   overflow-x: auto;
+}
+
+.scroll-x:focus-visible {
+  outline: 2px solid var(--vm-brand);
+  outline-offset: 2px;
+}
+
+/* ---- analytics (05_UI_Spec section 6.2) ---- */
+
+/* The tabs of the breakdown scroll inside their own row on a phone. */
+.tabs-scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+
+.tabs-scroll > button {
+  flex-shrink: 0;
+}
+
+/* A horizontal bar: its width is the value, the numbers beside it say the same in words. */
+.bar-track {
+  flex: 1;
+  min-width: 60px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--vm-bar-border);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--vm-brand);
+}
+
+/* The backtest interval of a strategy as a band on a 0 to 100% scale, with the rolling win rate as a mark. */
+.range-track {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--vm-bar-border);
+}
+
+.range-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: var(--vm-brand);
+  opacity: 0.55;
+}
+
+.range-mark {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 3px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: currentColor;
 }
 
 /* ---- text colours that stay readable in both themes ---- */

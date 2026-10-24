@@ -9,6 +9,7 @@ export { DashboardPage } from '../dashboard/DashboardPage';
 
 const HistoryPage = lazy(() => import('../history/HistoryPage'));
 const SignalDetailScreen = lazy(() => import('../detail/SignalDetailPage'));
+const AnalyticsScreen = lazy(() => import('../analytics/AnalyticsPage'));
 
 /** What a lazily loaded screen shows for a moment: its heading, so the page is never without one. */
 function Loading({ title, testId }: { title: string; testId: string }) {
@@ -45,18 +46,9 @@ export function SignalDetailPage() {
 
 export function AnalyticsPage() {
   return (
-    <PlaceholderPage
-      testId="page-analytics"
-      title="Analytics"
-      phase="U3"
-      summary="How the signals really performed, measured from recorded results only."
-      planned={[
-        'KPI cards and a monthly table of generated and properly tracked signals',
-        'Equity curve in R, breakdowns by strategy, side, session, regime and grade',
-        'Failure analysis, evidence-group effectiveness, score calibration and drift',
-        'No percentage is shown below 30 resolved trades, only the counts',
-      ]}
-    />
+    <Lazy title="Analytics" testId="page-analytics">
+      <AnalyticsScreen />
+    </Lazy>
   );
 }
 

@@ -47,16 +47,18 @@ There is no registration route. A test asserts that it does not exist.
 
 ### Analytics (computed from `signal_outcomes` and the rollup tables, cached for 30 s)
 
+`scope` (`FORWARD` by default, or `BACKTEST_OOS`) is a parameter of every endpoint that is computed from signal outcomes, so the scope switch of the Analytics page reaches every section that is about trades (the two scopes are never mixed, as for the evidence of a signal, 02 section 13). Two sections have no scope on purpose: the drift panel compares the forward trades with the evidence interval of the strategy (a backtest cannot drift), and the news impact is measured on headlines and gold moves, not on trades.
+
 | Path | Returns |
 |---|---|
 | `GET /analytics/overview?from&to&strategy&scope=FORWARD|BACKTEST_OOS` | `generated, resolvedValid, wins, partials, losses, timeExits, cancelled, dataInvalid, winRate, ci95, netR, expectancyR, profitFactor, maxDrawdownR, avgDurationS, tp1Rate, tp2Rate, currentStreak` |
-| `GET /analytics/monthly?months=12&strategy` | One row per month: `generated, resolvedValid, wins, partials, losses, timeExits, cancelled, dataInvalid, winRate, netR, profitFactor` |
-| `GET /analytics/breakdown?by=strategy|side|session|regime|volatility|news|grade` | Rows with `n, winRate, ci95, expectancyR, profitFactor` and a `lowSample` flag. |
-| `GET /analytics/failures?from&to` | Failure causes: `code, category, n, share, sumR` and the ranking of weak groups at entry. |
-| `GET /analytics/groups?strategy` | Win rate by evidence group and state (the "which indicator group was right" view). |
-| `GET /analytics/score-calibration` | Quality-score bands against realised win rate with `n`. |
-| `GET /analytics/equity?from&to` | Cumulative net R points. |
-| `GET /analytics/drift` | Rolling 50-trade win rate against the strategy's evidence interval, with status. |
+| `GET /analytics/monthly?months=12&strategy&scope` | One row per month, oldest first, ending at the newest month that has a signal in the scope (months before the first signal are left out): `generated, resolvedValid, wins, partials, losses, timeExits, cancelled, dataInvalid, winRate, netR, profitFactor`. A month is a calendar month of the display time zone. |
+| `GET /analytics/breakdown?by=strategy|side|session|regime|volatility|news|grade&from&to&strategy&scope` | Rows with `n, wins, winRate, ci95, expectancyR, profitFactor` and a `lowSample` flag, biggest `n` first. A key without a valid result is left out. `wins` counts results with net R above zero. |
+| `GET /analytics/failures?from&to&scope` | Failure causes: `code, category, n, share, sumR` (the primary cause of every reviewed result, 02 section 12; `share` is of the reviewed results) and the ranking of weak groups at entry (`n` results in which the group was `WEAK` or `FAIL`, `share` of the reviewed results). |
+| `GET /analytics/groups?strategy&scope` | Win rate by evidence group and state, one row per strategy, group and state that occurred (the "which indicator group was right" view). |
+| `GET /analytics/score-calibration?scope` | Quality-score bands against realised win rate with `n`: 65-69, 70-74, 75-79, 80-84, 85-89 and 90-100. |
+| `GET /analytics/equity?from&to&scope` | Cumulative net R points, one for each valid result, in the order they closed. |
+| `GET /analytics/drift` | Rolling 50-trade win rate of the forward trades against the evidence interval of the strategy, with status. `INSUFFICIENT_DATA` below 30 trades. |
 | `GET /analytics/news-impact` | Per topic and impact level: `n`, share of headlines after which gold moved 1 ATR or more within 10 minutes with its interval, average absolute move in ATR, baseline share, lift over baseline, `lowSample`. |
 
 "Properly tracked" in the UI and in reports means `resolvedValid`: signals with a valid result that count in statistics (excludes `CANCELLED` and `DATA_INVALID`, which are always shown separately).

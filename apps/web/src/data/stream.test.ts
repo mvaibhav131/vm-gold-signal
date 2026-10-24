@@ -58,12 +58,15 @@ describe('applyStreamEvent', () => {
       },
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.openSignals });
+    // the numbers of the Analytics screen change when a signal closes
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.analytics });
     invalidate.mockClear();
     applyStreamEvent(queryClient, {
       event: 'signal',
       data: { id: '0b2f6f5e-7a3c-4c64-9a38-2a4a3f1d9e10' },
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.openSignals });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.analytics });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.recentSignals });
     // the history list and the open pages of a signal follow too
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.signalHistory });

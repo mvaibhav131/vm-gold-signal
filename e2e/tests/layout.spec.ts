@@ -131,6 +131,8 @@ test.describe('the history and the detail fit the screen', () => {
     { path: '/signals', ready: 'history-row-43' },
     { path: '/signals/00000000-0000-4000-8000-000000000028', ready: 'detail-header' },
     { path: '/signals/00000000-0000-4000-8000-000000000029', ready: 'detail-header' },
+    { path: '/analytics', ready: 'news-impact' },
+    { path: '/analytics?scope=BACKTEST_OOS', ready: 'news-impact' },
   ] as const;
 
   for (const { path, ready } of screens) {
@@ -155,6 +157,31 @@ test.describe('the history and the detail fit the screen', () => {
     await expect(page.getByTestId('history-row-43')).toBeVisible();
     const viewport = page.getByTestId('history-table').locator('.mantine-ScrollArea-viewport');
     expect(await viewport.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    const pageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(pageOverflow).toBeLessThanOrEqual(0);
+  });
+
+  test('the analytics tables and tabs are wider than a phone and scroll inside their own boxes', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    await logIn(page);
+    await page.goto('/analytics');
+    await expect(page.getByTestId('news-impact')).toBeVisible();
+    for (const name of [
+      'Monthly table, scrolls sideways',
+      'News impact by topic, scrolls sideways',
+      'Drift by strategy, scrolls sideways',
+    ]) {
+      const box = page.getByRole('region', { name });
+      await expect(box).toHaveAttribute('tabindex', '0');
+      expect(await box.evaluate((el) => el.scrollWidth > el.clientWidth), name).toBe(true);
+    }
+    const tabs = page.getByRole('tablist', { name: 'Split the results by' });
+    expect(await tabs.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
     const pageOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );

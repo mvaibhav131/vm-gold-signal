@@ -31,6 +31,7 @@ export function applyStreamEvent(queryClient: QueryClient, event: SseEvent): voi
         KEYS.signalDetail,
         KEYS.overviewToday,
         KEYS.overviewMonth,
+        KEYS.analytics,
         KEYS.snapshot,
       );
       return;
@@ -44,6 +45,7 @@ export function applyStreamEvent(queryClient: QueryClient, event: SseEvent): voi
           KEYS.recentSignals,
           KEYS.signalHistory,
           KEYS.signalDetail,
+          KEYS.analytics,
           KEYS.snapshot,
         );
         return;

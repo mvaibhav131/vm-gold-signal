@@ -1,23 +1,43 @@
-import { STRATEGY_KEYS, sessionAt, type StrategyKey } from '@vmgs/core';
+import { STRATEGY_KEYS, sessionAt, type StatsScope, type StrategyKey } from '@vmgs/core';
 import {
+  breakdownQuerySchema,
+  calibrationQuerySchema,
   candlesQuerySchema,
   candlesResponseSchema,
+  equityQuerySchema,
+  failuresQuerySchema,
+  groupEffectivenessQuerySchema,
   headlinesQuerySchema,
   loginRequestSchema,
   marketSnapshotSchema,
   meResponseSchema,
+  monthlyQuerySchema,
   openSignalsResponseSchema,
   overviewQuerySchema,
   settingsSchema,
   strategyInfoSchema,
+  type BreakdownQuery,
+  type BreakdownResponse,
+  type CalibrationQuery,
+  type CalibrationResponse,
   type CandlesQuery,
   type CandlesResponse,
+  type DriftResponse,
+  type EquityQuery,
+  type EquityResponse,
+  type FailuresQuery,
+  type FailuresResponse,
   type FeatureSnapshotResponse,
+  type GroupEffectivenessQuery,
+  type GroupEffectivenessResponse,
   type HeadlinesQuery,
   type HeadlinesResponse,
   type LoginRequest,
   type MarketSnapshot,
   type MeResponse,
+  type MonthlyQuery,
+  type MonthlyResponse,
+  type NewsImpactResponse,
   type NewsStateResponse,
   type OpenSignalsResponse,
   type OverviewQuery,
@@ -33,8 +53,22 @@ import {
 
 import { ApiError, type ApiClient } from '../api/client';
 import { midOf } from '../format/format';
+import {
+  breakdownOf,
+  calibrationOf,
+  driftOf,
+  equityOf,
+  failuresOf,
+  forwardRecordsOf,
+  groupEffectivenessOf,
+  inRange,
+  monthlyOf,
+  newsImpactOf,
+  type AnalyticsRecord,
+} from './analytics';
+import { buildBacktest } from './backtest';
 import { headlinesAt, newsStateAt } from './news';
-import { allRows, detailOfOpen, overviewFor, queryHistory } from './history';
+import { allRows, detailOfOpen, overviewFor, queryHistory, summarize } from './history';
 import { SCENARIOS, scenarioById, type Scenario } from './scenarios';
 import { buildSimSignal, currentPrice, unrealisedR, type SimSignal } from './signals';
 import {
@@ -158,6 +192,22 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
 
   function allTrades(): readonly Trade[] {
     return freshLoss ? [...trades, freshLoss] : trades;
+  }
+
+  // The backtest does not depend on the preview state: it is built once, when first asked for.
+  let backtest: AnalyticsRecord[] | null = null;
+  function backtestRecords(): readonly AnalyticsRecord[] {
+    backtest ??= buildBacktest(trades[0]?.generatedMs ?? activatedAt);
+    return backtest;
+  }
+
+  /** The results of one scope, of one strategy if given. */
+  function recordsOf(scope: StatsScope, strategy?: StrategyKey): readonly AnalyticsRecord[] {
+    const all =
+      scope === 'FORWARD'
+        ? forwardRecordsOf(open, allTrades(), now().getTime())
+        : backtestRecords();
+    return strategy === undefined ? all : all.filter(({ row }) => row.strategyKey === strategy);
   }
 
   function activate(next: Scenario): void {
@@ -423,11 +473,70 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
     async getOverview(query: OverviewQuery): Promise<OverviewResponse> {
       await wait();
       const parsed = overviewQuerySchema.parse(query);
-      const days =
-        parsed.from !== undefined && parsed.to !== undefined
-          ? (Date.parse(parsed.to) - Date.parse(parsed.from)) / DAY_MS
-          : 30;
-      return overviewFor(days, open.length);
+      // The dashboard counters (today, this month) are fixed numbers, see `overviewFor`.
+      const dashboardCounters =
+        parsed.scope === 'FORWARD' &&
+        parsed.strategy === undefined &&
+        parsed.from !== undefined &&
+        parsed.to !== undefined;
+      if (dashboardCounters) {
+        const days = (Date.parse(parsed.to ?? '') - Date.parse(parsed.from ?? '')) / DAY_MS;
+        return overviewFor(days, open.length);
+      }
+      const rows = inRange(recordsOf(parsed.scope, parsed.strategy), parsed).map(({ row }) => row);
+      return summarize(rows);
+    },
+
+    async getMonthly(query: MonthlyQuery): Promise<MonthlyResponse> {
+      await wait();
+      const parsed = monthlyQuerySchema.parse(query);
+      return monthlyOf(recordsOf(parsed.scope, parsed.strategy), parsed.months);
+    },
+
+    async getBreakdown(query: BreakdownQuery): Promise<BreakdownResponse> {
+      await wait();
+      const parsed = breakdownQuerySchema.parse(query);
+      return breakdownOf(recordsOf(parsed.scope, parsed.strategy), parsed.by, parsed);
+    },
+
+    async getFailures(query: FailuresQuery): Promise<FailuresResponse> {
+      await wait();
+      const parsed = failuresQuerySchema.parse(query);
+      return failuresOf(recordsOf(parsed.scope), parsed);
+    },
+
+    async getGroupEffectiveness(
+      query: GroupEffectivenessQuery,
+    ): Promise<GroupEffectivenessResponse> {
+      await wait();
+      const parsed = groupEffectivenessQuerySchema.parse(query);
+      return groupEffectivenessOf(recordsOf(parsed.scope), parsed.strategy);
+    },
+
+    async getCalibration(query: CalibrationQuery): Promise<CalibrationResponse> {
+      await wait();
+      const parsed = calibrationQuerySchema.parse(query);
+      return calibrationOf(recordsOf(parsed.scope));
+    },
+
+    async getEquity(query: EquityQuery): Promise<EquityResponse> {
+      await wait();
+      const parsed = equityQuerySchema.parse(query);
+      return equityOf(recordsOf(parsed.scope), parsed);
+    },
+
+    async getDrift(): Promise<DriftResponse> {
+      await wait();
+      // The evidence of a strategy is its backtest interval, as on its signals.
+      const evidence = Object.fromEntries(
+        breakdownOf(backtestRecords(), 'strategy').items.map((item) => [item.key, item.ci95]),
+      );
+      return driftOf(recordsOf('FORWARD'), evidence);
+    },
+
+    async getNewsImpact(): Promise<NewsImpactResponse> {
+      await wait();
+      return newsImpactOf();
     },
 
     async getNewsState(): Promise<NewsStateResponse> {
