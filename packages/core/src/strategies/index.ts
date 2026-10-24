@@ -1,4 +1,5 @@
 export * from './mirror';
+export * from './patternBreakout';
 export * from './squeezeRetest';
 export * from './sweepReversal';
 export * from './trendlineRetest';

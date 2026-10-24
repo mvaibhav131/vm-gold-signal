@@ -30,7 +30,7 @@ Rule for every phase: `pnpm typecheck`, `pnpm lint` and all tests pass before th
 | B17 Strategy C | Squeeze breakout and retest | Same |
 | B18 Strategy D | Trendline break and retest | Same |
 | B19 Strategy E | Chart pattern breakout | Same |
-| B20 Scoring, risk, fills | Quality score, risk, exit profiles, fill and outcome model with configurable slippage and manual-execution delay (`02` section 9) | R accounting for every exit path; ties resolved against the trade; a delay moves the fill to the first tick after it, and a delayed price beyond `maxValidEntry` is skipped |
+| B20 Scoring, risk, fills | Quality score, risk, exit profiles, fill and outcome model with configurable slippage and manual-execution delay (`02` section 9); strategy E's 1.5 R measured-move rule is checked again with the real fill (`02` section 7.5) | R accounting for every exit path; ties resolved against the trade; a delay moves the fill to the first tick after it, and a delayed price beyond `maxValidEntry` is skipped |
 | B21 Explanation and messages | Explanation builder, Telegram and Web Push formatters (English, plus Hinglish labels) | Golden tests; every required field present; length limits |
 | B22 Review and statistics | Failure attribution rules, Wilson interval, expectancy, profit factor, drawdown, bucket fallback | One test per cause code; statistics checked against known samples |
 | B23 Lifecycle | Signal transaction, `signal_state`, outcome tracker (many open signals), restart recovery | Integration tests on Postgres incl. kill and restart mid-trade |

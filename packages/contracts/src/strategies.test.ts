@@ -1,5 +1,6 @@
 import {
   keyTime,
+  type PatternBreakoutSetup,
   type PullbackSetup,
   type SqueezeSetup,
   type SweepSetup,
@@ -136,5 +137,41 @@ describe('what a strategy setup hands to a signal fits the contract', () => {
       'trendline_retest:5m:15mS:2026-10-23T03:15:00Z:2026-10-23T05:00:00Z@2026-10-23T09:35:00Z',
     );
     expect(priceSchema.parse(trendline.stopLoss)).toBe(4019.1);
+  });
+
+  it('the same for a pattern breakout, keyed by the pattern and the break candle', () => {
+    const pattern: PatternBreakoutSetup = {
+      strategyKey: 'pattern_breakout',
+      side: 'BUY',
+      setupKey: `pattern_breakout:5m:15m:INVERSE_HEAD_AND_SHOULDERS:${keyTime(Date.UTC(2026, 9, 23, 3, 15))}:${keyTime(Date.UTC(2026, 9, 23, 7, 0))}@${keyTime(Date.UTC(2026, 9, 23, 9, 35))}`,
+      at: Date.UTC(2026, 9, 23, 9, 55),
+      close: 4021.2,
+      stopLoss: 4019.4,
+      facts: {
+        pattern: 'INVERSE_HEAD_AND_SHOULDERS',
+        patternFrom: Date.UTC(2026, 9, 23, 3, 15),
+        patternTo: Date.UTC(2026, 9, 23, 7, 0),
+        height: 9.5,
+        breakLevel: 4020.4,
+        level: 4020.6,
+        breakOpenTime: Date.UTC(2026, 9, 23, 9, 35),
+        candlesSinceBreak: 4,
+        breakBeyondAtr: 0.6,
+        breakDisplacementAtr: 1.9,
+        alsoBroke: 0,
+        retestExtreme: 4020.8,
+        retestDistanceAtr: 0.1,
+        wickRatio: 0.5,
+        target: 4029.9,
+        measuredMoveR: 4.9,
+        atr: 1.8,
+      },
+    };
+    expect(strategyKeySchema.parse(pattern.strategyKey)).toBe('pattern_breakout');
+    expect(sideSchema.parse(pattern.side)).toBe('BUY');
+    expect(setupKeySchema.parse(pattern.setupKey)).toBe(
+      'pattern_breakout:5m:15m:INVERSE_HEAD_AND_SHOULDERS:2026-10-23T03:15:00Z:2026-10-23T07:00:00Z@2026-10-23T09:35:00Z',
+    );
+    expect(priceSchema.parse(pattern.stopLoss)).toBe(4019.4);
   });
 });
