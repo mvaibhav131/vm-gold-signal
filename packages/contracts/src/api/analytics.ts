@@ -137,6 +137,7 @@ export const monthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'YYYY-MM'
 export const monthlyQuerySchema = z.strictObject({
   months: z.coerce.number().pipe(z.int().min(1).max(120)).default(12),
   strategy: strategyKeySchema.optional(),
+  scope: statsScopeSchema.default('FORWARD'),
 });
 
 export const monthlyRowSchema = z
@@ -188,9 +189,11 @@ export const breakdownRowSchema = z
     checkLowSampleFlag(ctx, v.n, v.lowSample);
   });
 
-export const failuresQuerySchema = z.strictObject({ ...rangeShape }).check((ctx) => {
-  checkRange(ctx);
-});
+export const failuresQuerySchema = z
+  .strictObject({ ...rangeShape, scope: statsScopeSchema.default('FORWARD') })
+  .check((ctx) => {
+    checkRange(ctx);
+  });
 
 export const failuresResponseSchema = z.strictObject({
   causes: z.array(
@@ -209,6 +212,7 @@ export const failuresResponseSchema = z.strictObject({
 
 export const groupEffectivenessQuerySchema = z.strictObject({
   strategy: strategyKeySchema.optional(),
+  scope: statsScopeSchema.default('FORWARD'),
 });
 
 export const groupEffectivenessRowSchema = z
@@ -229,6 +233,10 @@ export const groupEffectivenessRowSchema = z
     checkRateInsideInterval(ctx, v.winRate, v.ci95, 'winRate');
   });
 
+export const calibrationQuerySchema = z.strictObject({
+  scope: statsScopeSchema.default('FORWARD'),
+});
+
 export const calibrationRowSchema = z
   .strictObject({
     bandFrom: z.int().min(0).max(100),
@@ -246,9 +254,11 @@ export const calibrationRowSchema = z
     checkRateInsideInterval(ctx, v.winRate, v.ci95, 'winRate');
   });
 
-export const equityQuerySchema = z.strictObject({ ...rangeShape }).check((ctx) => {
-  checkRange(ctx);
-});
+export const equityQuerySchema = z
+  .strictObject({ ...rangeShape, scope: statsScopeSchema.default('FORWARD') })
+  .check((ctx) => {
+    checkRange(ctx);
+  });
 
 export const equityPointSchema = z.strictObject({ t: timestampSchema, netR: r2Schema });
 
@@ -315,3 +325,27 @@ export const calibrationResponseSchema = listSchema(calibrationRowSchema);
 export const equityResponseSchema = listSchema(equityPointSchema);
 export const driftResponseSchema = listSchema(driftRowSchema);
 export const newsImpactResponseSchema = listSchema(newsImpactRowSchema);
+
+export type MonthlyQuery = z.input<typeof monthlyQuerySchema>;
+export type MonthlyRow = z.infer<typeof monthlyRowSchema>;
+export type MonthlyResponse = z.infer<typeof monthlyResponseSchema>;
+export type BreakdownDimension = (typeof BREAKDOWN_DIMENSIONS)[number];
+export type BreakdownQuery = z.input<typeof breakdownQuerySchema>;
+export type BreakdownRow = z.infer<typeof breakdownRowSchema>;
+export type BreakdownResponse = z.infer<typeof breakdownResponseSchema>;
+export type FailuresQuery = z.input<typeof failuresQuerySchema>;
+export type FailuresResponse = z.infer<typeof failuresResponseSchema>;
+export type GroupEffectivenessQuery = z.input<typeof groupEffectivenessQuerySchema>;
+export type GroupEffectivenessRow = z.infer<typeof groupEffectivenessRowSchema>;
+export type GroupEffectivenessResponse = z.infer<typeof groupEffectivenessResponseSchema>;
+export type CalibrationQuery = z.input<typeof calibrationQuerySchema>;
+export type CalibrationRow = z.infer<typeof calibrationRowSchema>;
+export type CalibrationResponse = z.infer<typeof calibrationResponseSchema>;
+export type EquityQuery = z.input<typeof equityQuerySchema>;
+export type EquityPoint = z.infer<typeof equityPointSchema>;
+export type EquityResponse = z.infer<typeof equityResponseSchema>;
+export type DriftStatus = (typeof DRIFT_STATUSES)[number];
+export type DriftRow = z.infer<typeof driftRowSchema>;
+export type DriftResponse = z.infer<typeof driftResponseSchema>;
+export type NewsImpactRow = z.infer<typeof newsImpactRowSchema>;
+export type NewsImpactResponse = z.infer<typeof newsImpactResponseSchema>;

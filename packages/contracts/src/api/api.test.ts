@@ -4,12 +4,17 @@ import { describe, expect, it } from 'vitest';
 import {
   breakdownQuerySchema,
   breakdownRowSchema,
+  calibrationQuerySchema,
   calibrationRowSchema,
   candlesQuerySchema,
   candlesResponseSchema,
+  driftResponseSchema,
   driftRowSchema,
   engineEventSchema,
+  equityQuerySchema,
+  failuresQuerySchema,
   featureSnapshotResponseSchema,
+  groupEffectivenessQuerySchema,
   groupEffectivenessRowSchema,
   headlineSchema,
   healthReadySchema,
@@ -17,9 +22,12 @@ import {
   macroEventSchema,
   marketMoveSchema,
   marketSnapshotSchema,
+  monthlyQuerySchema,
   monthlyRowSchema,
+  newsImpactResponseSchema,
   newsImpactRowSchema,
   openSignalsResponseSchema,
+  overviewQuerySchema,
   overviewResponseSchema,
   pageSchema,
   pageQueryShape,
@@ -161,6 +169,33 @@ describe('pagination and queries', () => {
     expect(ok(breakdownQuerySchema, { by: 'session' })).toBe(true);
     expect(ok(breakdownQuerySchema, {})).toBe(false);
     expect(ok(breakdownQuerySchema, { by: 'colour' })).toBe(false);
+  });
+
+  it('lets the scope switch of the Analytics page reach every section: forward unless asked otherwise', () => {
+    const queries = {
+      overview: overviewQuerySchema,
+      monthly: monthlyQuerySchema,
+      breakdown: breakdownQuerySchema,
+      failures: failuresQuerySchema,
+      groups: groupEffectivenessQuerySchema,
+      calibration: calibrationQuerySchema,
+      equity: equityQuerySchema,
+    } as const;
+    for (const [name, schema] of Object.entries(queries)) {
+      const input = name === 'breakdown' ? { by: 'side' } : {};
+      expect(schema.parse(input), name).toMatchObject({ scope: 'FORWARD' });
+      expect(schema.parse({ ...input, scope: 'BACKTEST_OOS' }), name).toMatchObject({
+        scope: 'BACKTEST_OOS',
+      });
+      expect(ok(schema, { ...input, scope: 'LIVE' }), name).toBe(false);
+    }
+  });
+
+  it('keeps the drift panel and the news impact outside the scope switch (no scope parameter)', () => {
+    // drift compares the forward trades with the evidence; the news impact is measured on headlines, not on trades
+    expect(ok(z.strictObject({}), {})).toBe(true);
+    expect(driftResponseSchema.safeParse({ items: [] }).success).toBe(true);
+    expect(newsImpactResponseSchema.safeParse({ items: [] }).success).toBe(true);
   });
 });
 

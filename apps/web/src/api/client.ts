@@ -1,12 +1,26 @@
 import type {
+  BreakdownQuery,
+  BreakdownResponse,
+  CalibrationQuery,
+  CalibrationResponse,
   CandlesQuery,
   CandlesResponse,
+  DriftResponse,
+  EquityQuery,
+  EquityResponse,
+  FailuresQuery,
+  FailuresResponse,
   FeatureSnapshotResponse,
+  GroupEffectivenessQuery,
+  GroupEffectivenessResponse,
   HeadlinesQuery,
   HeadlinesResponse,
   LoginRequest,
   MarketSnapshot,
   MeResponse,
+  MonthlyQuery,
+  MonthlyResponse,
+  NewsImpactResponse,
   NewsStateResponse,
   OpenSignalsResponse,
   OverviewQuery,
@@ -71,7 +85,17 @@ export interface ApiClient {
   getSignalDetail(id: string): Promise<SignalDetail>;
   /** GET /signals/:id/snapshot. Fails with `ApiError` 404 `snapshot_pruned` after the retention window. */
   getSignalSnapshot(id: string): Promise<FeatureSnapshotResponse>;
+  /** GET /analytics/overview. Without `from` and `to` it covers every signal of the scope. */
   getOverview(query: OverviewQuery): Promise<OverviewResponse>;
+  getMonthly(query: MonthlyQuery): Promise<MonthlyResponse>;
+  getBreakdown(query: BreakdownQuery): Promise<BreakdownResponse>;
+  getFailures(query: FailuresQuery): Promise<FailuresResponse>;
+  getGroupEffectiveness(query: GroupEffectivenessQuery): Promise<GroupEffectivenessResponse>;
+  getCalibration(query: CalibrationQuery): Promise<CalibrationResponse>;
+  getEquity(query: EquityQuery): Promise<EquityResponse>;
+  /** Always forward results: drift is the comparison of the live results with the backtest. */
+  getDrift(): Promise<DriftResponse>;
+  getNewsImpact(): Promise<NewsImpactResponse>;
   getNewsState(): Promise<NewsStateResponse>;
   getHeadlines(query: HeadlinesQuery): Promise<HeadlinesResponse>;
   /** Owner pause (POST /engine/pause). Without `minutes` it lasts until the owner resumes. */

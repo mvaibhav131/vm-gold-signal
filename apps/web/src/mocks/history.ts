@@ -174,7 +174,7 @@ export function queryHistory(
 // Counters
 
 /** The 95% Wilson score interval of a share, rounded to 3 decimals (the stats code of B22 will own this). */
-function wilson(wins: number, n: number): [number, number] {
+export function wilson(wins: number, n: number): [number, number] {
   const z = 1.96;
   const p = wins / n;
   const denominator = 1 + (z * z) / n;
@@ -184,6 +184,7 @@ function wilson(wins: number, n: number): [number, number] {
 }
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
+export { round2 };
 
 /** The counters of `GET /analytics/overview` for a list of history rows. No percentage below 30 valid results. */
 export function summarize(rows: readonly SignalHistoryRow[]): OverviewResponse {

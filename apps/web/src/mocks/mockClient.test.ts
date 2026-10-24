@@ -517,6 +517,162 @@ describe('counters and recent signals', () => {
   });
 });
 
+describe('analytics endpoints', () => {
+  it('the forward overview is the summary of the whole history list, and an open signal only adds to "generated"', async () => {
+    for (const scenario of ['two-open', 'wait', 'review-pending']) {
+      const api = client({ scenario });
+      const overview = await api.getOverview({});
+      expect(overview, scenario).toEqual((await api.getSignals({ limit: 1 })).summary);
+      expect(await api.getOverview({ scope: 'FORWARD' }), scenario).toEqual(overview);
+    }
+    const [two, none] = await Promise.all([
+      client({ scenario: 'two-open' }).getOverview({}),
+      client({ scenario: 'wait' }).getOverview({}),
+    ]);
+    expect([two.generated, two.resolvedValid]).toEqual([43, 39]);
+    expect([none.generated, none.resolvedValid]).toEqual([41, 39]);
+  });
+
+  it('the backtest overview is another set of results that is the same in every scenario', async () => {
+    const [a, b] = await Promise.all([
+      client({ scenario: 'two-open' }).getOverview({ scope: 'BACKTEST_OOS' }),
+      client({ scenario: 'review-pending' }).getOverview({ scope: 'BACKTEST_OOS' }),
+    ]);
+    expect(a).toEqual(b);
+    expect(a).toMatchObject({ generated: 318, resolvedValid: 302, winRate: 0.543, netR: 34.9 });
+  });
+
+  it('limits the overview to one strategy or to a date range', async () => {
+    const api = client({ scenario: 'wait' });
+    const trend = await api.getOverview({ scope: 'BACKTEST_OOS', strategy: 'trend_pullback' });
+    expect(trend).toMatchObject({ resolvedValid: 214, winRate: 0.551 });
+    // a strategy with fewer than 30 results has no percentage
+    const sweep = await api.getOverview({ strategy: 'sweep_reversal' });
+    expect(sweep.resolvedValid).toBe(11);
+    expect([sweep.winRate, sweep.ci95]).toEqual([null, null]);
+    const none = await api.getOverview({
+      scope: 'BACKTEST_OOS',
+      from: '2020-01-01T00:00:00Z',
+      to: '2020-02-01T00:00:00Z',
+    });
+    expect(none).toMatchObject({ generated: 0, resolvedValid: 0, netR: 0 });
+    // the first month of the backtest in IST (2025-07-01 00:00 IST is 2025-06-30 18:30 UTC)
+    const first = (await api.getMonthly({ scope: 'BACKTEST_OOS' })).items[0];
+    const july = await api.getOverview({
+      scope: 'BACKTEST_OOS',
+      from: '2025-06-30T18:30:00Z',
+      to: '2025-07-31T18:30:00Z',
+    });
+    expect([july.generated, july.resolvedValid, july.netR]).toEqual([
+      first?.generated,
+      first?.resolvedValid,
+      first?.netR,
+    ]);
+  });
+
+  it('answers the monthly table by scope and keeps the last N months', async () => {
+    const api = client({ scenario: 'wait' });
+    expect((await api.getMonthly({})).items.map((m) => m.month)).toEqual([
+      '2026-07',
+      '2026-08',
+      '2026-09',
+      '2026-10',
+    ]);
+    const backtest = await api.getMonthly({ scope: 'BACKTEST_OOS' });
+    expect(backtest.items).toHaveLength(12);
+    expect(backtest.items.reduce((sum, m) => sum + m.generated, 0)).toBe(318);
+    expect((await api.getMonthly({ scope: 'BACKTEST_OOS', months: 3 })).items).toHaveLength(3);
+    const oneStrategy = await api.getMonthly({ scope: 'BACKTEST_OOS', strategy: 'squeeze_retest' });
+    expect(oneStrategy.items.reduce((sum, m) => sum + m.resolvedValid, 0)).toBe(64);
+  });
+
+  it('answers the breakdown, failures, groups, calibration and equity curve for both scopes', async () => {
+    const api = client({ scenario: 'wait' });
+    for (const scope of ['FORWARD', 'BACKTEST_OOS'] as const) {
+      const overview = await api.getOverview({ scope });
+      const [side, failures, groups, calibration, equity] = await Promise.all([
+        api.getBreakdown({ by: 'side', scope }),
+        api.getFailures({ scope }),
+        api.getGroupEffectiveness({ scope }),
+        api.getCalibration({ scope }),
+        api.getEquity({ scope }),
+      ]);
+      expect(side.by).toBe('side');
+      expect(
+        side.items.reduce((sum, i) => sum + i.n, 0),
+        scope,
+      ).toBe(overview.resolvedValid);
+      expect(failures.causes.length, scope).toBeGreaterThan(0);
+      expect(groups.items.length, scope).toBeGreaterThan(0);
+      expect(
+        calibration.items.reduce((sum, i) => sum + i.n, 0),
+        scope,
+      ).toBe(overview.resolvedValid);
+      expect(equity.items, scope).toHaveLength(overview.resolvedValid);
+      expect(equity.items.at(-1)?.netR, scope).toBe(overview.netR);
+    }
+  });
+
+  it('the group view can be limited to one strategy', async () => {
+    const { items } = await client().getGroupEffectiveness({
+      scope: 'BACKTEST_OOS',
+      strategy: 'squeeze_retest',
+    });
+    expect(new Set(items.map((i) => i.strategy))).toEqual(new Set(['squeeze_retest']));
+  });
+
+  it('the breakdown, the monthly table and the overview can be limited to one strategy, with a date range too', async () => {
+    const api = client({ scenario: 'wait' });
+    const total = (rows: { n: number }[]) => rows.reduce((sum, row) => sum + row.n, 0);
+    expect(total((await api.getBreakdown({ by: 'side', strategy: 'sweep_reversal' })).items)).toBe(
+      11,
+    );
+    expect(
+      total(
+        (await api.getBreakdown({ by: 'side', strategy: 'sweep_reversal', scope: 'BACKTEST_OOS' }))
+          .items,
+      ),
+    ).toBe(24);
+    // a date range with a strategy is computed, it is not the fixed counters of the dashboard
+    const wide = { from: '2020-01-01T00:00:00Z', to: '2030-01-01T00:00:00Z' };
+    expect(await api.getOverview({ ...wide, strategy: 'trend_pullback' })).toMatchObject({
+      generated: 25,
+      resolvedValid: 24,
+    });
+    expect(await api.getOverview({ ...wide, scope: 'BACKTEST_OOS' })).toMatchObject({
+      generated: 318,
+    });
+  });
+
+  it('drift is about the forward results only: every strategy has fewer than 30 so far, whatever the scope', async () => {
+    const { items } = await client().getDrift();
+    expect(items.map((i) => [i.strategy, i.status, i.rollingWinRate])).toEqual([
+      ['trend_pullback', 'INSUFFICIENT_DATA', null],
+      ['sweep_reversal', 'INSUFFICIENT_DATA', null],
+      ['squeeze_retest', 'INSUFFICIENT_DATA', null],
+    ]);
+    // the evidence interval is the one of the backtest, as on the signals
+    expect(items[0]?.evidenceCi95).toEqual([0.484, 0.617]);
+    expect(items[1]?.evidenceCi95).toBeNull();
+  });
+
+  it('news impact is a table of topics and levels, with no percentage under 30 headlines', async () => {
+    const { items } = await client().getNewsImpact();
+    expect(items).toHaveLength(17);
+    expect(items.filter((i) => i.movedShare === null).every((i) => i.n < 30)).toBe(true);
+  });
+
+  it('refuses a scope it does not know and a range that ends before it starts', async () => {
+    const api = client();
+    await expect(api.getOverview({ scope: 'LIVE' as never })).rejects.toThrow();
+    await expect(api.getMonthly({ months: 0 })).rejects.toThrow();
+    await expect(
+      api.getEquity({ from: '2026-02-01T00:00:00Z', to: '2026-01-01T00:00:00Z' }),
+    ).rejects.toThrow();
+    await expect(api.getBreakdown({ by: 'colour' as never })).rejects.toThrow();
+  });
+});
+
 describe('signal detail, snapshot and the chart around a trade', () => {
   const idOf = async (api: ReturnType<typeof client>, seq: number) => {
     const page = await api.getSignals({ limit: 200 });

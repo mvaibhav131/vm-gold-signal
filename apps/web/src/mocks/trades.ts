@@ -215,7 +215,7 @@ const BASE_STRENGTHS: Readonly<Record<Letter, Strengths>> = {
 };
 
 /** The group that was weak when the signal was taken, for the causes whose story starts there. */
-const WEAK_BY_CAUSE: Partial<Record<CauseCode, QualityGroup>> = {
+export const WEAK_BY_CAUSE: Partial<Record<CauseCode, QualityGroup>> = {
   NO_FOLLOW_THROUGH: 'trigger',
   HTF_STRUCTURE_BREAK: 'structure',
   NEWS_SHOCK: 'sessionMacro',
@@ -294,11 +294,11 @@ function evidenceFor(letter: Letter, seq: number, plan: readonly PlanRow[]): Evi
       wins: 118,
       sampleLabel: 'NORMAL',
       winRate: 0.551,
-      ci: [0.485, 0.617],
-      expectancyR: 0.27,
-      profitFactor: 1.42,
-      tp1Rate: 0.71,
-      tp2Rate: 0.42,
+      ci: [0.484, 0.617],
+      expectancyR: 0.13,
+      profitFactor: 1.29,
+      tp1Rate: 0.523,
+      tp2Rate: 0.341,
     };
   }
   if (letter === 'C')
@@ -309,7 +309,11 @@ function evidenceFor(letter: Letter, seq: number, plan: readonly PlanRow[]): Evi
       n: 64,
       wins: 35,
       winRate: 0.547,
-      ci: [0.424, 0.665],
+      ci: [0.426, 0.663],
+      expectancyR: 0.13,
+      profitFactor: 1.29,
+      tp1Rate: 0.531,
+      tp2Rate: 0.344,
     };
   // Sweep reversals have only their own forward trades so far: the valid ones before this signal.
   const before = plan.slice(0, seq - 1).filter((row) => row[0] === 'B' && row[4] !== null);

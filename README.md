@@ -17,7 +17,7 @@ pnpm test:unit      # fast tests only, no Docker
 pnpm test:int       # database integration tests (needs Docker)
 pnpm --filter @vmgs/db codegen   # regenerate packages/db/src/types.generated.ts after a migration change
 pnpm test:watch
-pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (login: owner / preview); the Dashboard has a "Preview state" picker, or open /login?scenario=stale (ids: two-open, open-buy, tp1-hit, wait, warming-up, stale, disconnected, market-closed, review-pending, paused); the Signals screen lists 43 simulated signals over three months
+pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (login: owner / preview); the Dashboard has a "Preview state" picker, or open /login?scenario=stale (ids: two-open, open-buy, tp1-hit, wait, warming-up, stale, disconnected, market-closed, review-pending, paused); the Signals screen lists 43 simulated signals over three months and the Analytics screen shows them next to a simulated 12-month backtest (switch at the top, or /analytics?scope=BACKTEST_OOS)
 pnpm e2e:install    # once: downloads Chromium for the e2e tests
 pnpm e2e            # builds the web app and runs the Playwright scenarios (DOM and axe checks, no screenshots)
 pnpm web:budget     # after a build: the initial route must stay under 400 KB gzip
