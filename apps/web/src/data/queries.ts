@@ -1,11 +1,14 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type {
   BreakdownDimension,
+  HeadlinesQuery,
+  MarketMovesQuery,
+  NewsEventsQuery,
   OverviewQuery,
   QuoteData,
   SignalHistoryQuery,
 } from '@vmgs/contracts';
-import type { StatsScope } from '@vmgs/core';
+import type { StatsScope, StrategyKey } from '@vmgs/core';
 
 import { useApi } from '../api/context';
 
@@ -26,6 +29,12 @@ export const KEYS = {
   analytics: ['analytics'],
   newsState: ['news', 'state'],
   headlines: ['news', 'headlines'],
+  newsEvents: ['news', 'events'],
+  marketMoves: ['news', 'moves'],
+  /** Health, incidents, storage and latency of the System screen. */
+  system: ['system'],
+  sessions: ['auth', 'sessions'],
+  strategyConfig: ['strategies', 'config'],
   candles: ['candles'],
 } as const;
 
@@ -148,6 +157,104 @@ export function useTopHeadlines(limit: number) {
     queryFn: () => api.getHeadlines({ limit }),
     refetchInterval: 60_000,
   });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The News screen
+
+/** What the headline list is filtered by (everything of the query except the paging). */
+export type HeadlineFilters = Omit<HeadlinesQuery, 'limit' | 'cursor'>;
+
+/** The calendar of a range. The range is part of the key, so it changes the entry only when the day changes. */
+export function useNewsEvents(query: NewsEventsQuery) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.newsEvents, query],
+    queryFn: () => api.getNewsEvents(query),
+    refetchInterval: 60_000,
+  });
+}
+
+/** The headlines, one page at a time (cursor pagination). Another filter starts again from the first page. */
+export function useHeadlineFeed(filters: HeadlineFilters, pageSize: number) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: [...KEYS.headlines, 'feed', filters, pageSize],
+    queryFn: ({ pageParam }) =>
+      api.getHeadlines({
+        ...filters,
+        limit: pageSize,
+        ...(pageParam ? { cursor: pageParam } : {}),
+      }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useMarketMoves(query: MarketMovesQuery) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.marketMoves, query],
+    queryFn: () => api.getMarketMoves(query),
+    refetchInterval: 60_000,
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// The System screen
+
+export function useSystemHealth() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.system, 'health'],
+    queryFn: () => api.getSystemHealth(),
+    refetchInterval: 15_000,
+  });
+}
+
+export function useSystemIncidents() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.system, 'incidents'],
+    queryFn: () => api.getSystemIncidents(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSystemLatency() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.system, 'latency'],
+    queryFn: () => api.getSystemLatency(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useSystemStorage() {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.system, 'storage'],
+    queryFn: () => api.getSystemStorage(),
+    refetchInterval: 60_000,
+  });
+}
+
+/** The config of a strategy, only fetched when the owner opens it (`enabled`). It cannot change: a change is a new version. */
+export function useStrategyConfig(key: StrategyKey, enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.strategyConfig, key],
+    queryFn: () => api.getStrategyConfig(key),
+    enabled,
+    staleTime: Infinity,
+  });
+}
+
+export function useSessions() {
+  const api = useApi();
+  return useQuery({ queryKey: KEYS.sessions, queryFn: () => api.getSessions() });
 }
 
 // The Analytics screen. Every query carries its scope in the key, so switching the scope loads the

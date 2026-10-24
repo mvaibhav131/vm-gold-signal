@@ -74,5 +74,14 @@ export function formatCountdown(seconds: number): string {
   return `${String(total)} s`;
 }
 
+/** Like a countdown, with days from 24 hours on: `2 d 3 h`, `1 d`, `5 h 10 min`. For ages and spans that can be long. */
+export function formatSpan(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  if (total < 86_400) return formatCountdown(total);
+  const days = Math.floor(total / 86_400);
+  const hours = Math.floor((total % 86_400) / 3600);
+  return hours === 0 ? `${String(days)} d` : `${String(days)} d ${String(hours)} h`;
+}
+
 /** How long a trade lasted, in the same words as a countdown. */
 export const formatDuration = formatCountdown;

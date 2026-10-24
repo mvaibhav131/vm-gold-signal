@@ -7,9 +7,16 @@ import {
   newsStateSchema,
   newsTopicSchema,
 } from '../enums';
-import { countSchema, priceSchema, spreadSchema, timestampSchema, uuidSchema } from '../primitives';
+import {
+  addIssue,
+  countSchema,
+  priceSchema,
+  spreadSchema,
+  timestampSchema,
+  uuidSchema,
+} from '../primitives';
 import { frozenHeadlineSchema, httpUrlSchema } from '../news';
-import { checkRange, pageQueryShape, rangeShape } from './common';
+import { checkRange, listSchema, pageQueryShape, rangeShape } from './common';
 
 export const macroEventSchema = z.strictObject({
   id: uuidSchema,
@@ -25,6 +32,28 @@ export const macroEventSchema = z.strictObject({
 });
 export type MacroEvent = z.infer<typeof macroEventSchema>;
 
+/**
+ * An event of the calendar list: the event and what was measured after it was released. Both
+ * extra values are null until the release, and when the data needed is missing (a null is never a guess).
+ */
+export const calendarEventSchema = macroEventSchema
+  .extend({
+    /** (actual - forecast) in standard deviations of the past surprises of the same indicator. */
+    surpriseSigma: z.number().nullable(),
+    /** Gold's move in the 5 minutes after the scheduled time, from the recorded 1-minute candles. */
+    goldMoveAfter: z.strictObject({ usd: z.number(), atr: z.number() }).nullable(),
+  })
+  .check((ctx) => {
+    const { actual, surpriseSigma, goldMoveAfter } = ctx.value;
+    if (actual === null && surpriseSigma !== null) {
+      addIssue(ctx, 'an event that was not released has no surprise', ['surpriseSigma']);
+    }
+    if (actual === null && goldMoveAfter !== null) {
+      addIssue(ctx, 'an event that was not released has no move after it', ['goldMoveAfter']);
+    }
+  });
+export type CalendarEvent = z.infer<typeof calendarEventSchema>;
+
 export const newsStateResponseSchema = z.strictObject({
   state: newsStateSchema,
   next: macroEventSchema.nullable(),
@@ -38,6 +67,14 @@ export const newsEventsQuerySchema = z
   .check((ctx) => {
     checkRange(ctx);
   });
+export type NewsEventsQuery = z.input<typeof newsEventsQuerySchema>;
+
+/** Oldest first. `sourceAgeS` is the age of the last successful calendar fetch (null if there was none). */
+export const newsEventsResponseSchema = z.strictObject({
+  items: z.array(calendarEventSchema),
+  sourceAgeS: countSchema.nullable(),
+});
+export type NewsEventsResponse = z.infer<typeof newsEventsResponseSchema>;
 
 export const headlineSourceSchema = z.strictObject({
   key: z.string().min(1),
@@ -101,3 +138,9 @@ export const marketMoveSchema = z.strictObject({
 export const marketMovesQuerySchema = z.strictObject({ ...rangeShape }).check((ctx) => {
   checkRange(ctx);
 });
+export type MarketMove = z.infer<typeof marketMoveSchema>;
+export type MarketMovesQuery = z.input<typeof marketMovesQuerySchema>;
+
+/** Newest first. */
+export const marketMovesResponseSchema = listSchema(marketMoveSchema);
+export type MarketMovesResponse = z.infer<typeof marketMovesResponseSchema>;

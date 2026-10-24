@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
-import { notificationChannelSchema } from '../enums';
+import { feedIncidentKindSchema, notificationChannelSchema } from '../enums';
 import { addIssue, countSchema, timestampSchema } from '../primitives';
+import { listSchema } from './common';
 
 export const healthLiveSchema = z.strictObject({ status: z.literal('ok') });
 
@@ -23,6 +24,30 @@ export const systemHealthSchema = z.strictObject({
   lastBackupAt: timestampSchema.nullable(),
   lastMaintenanceAt: timestampSchema.nullable(),
 });
+export type SystemHealth = z.infer<typeof systemHealthSchema>;
+
+/** One entry of the feed incident list of the Health tab (table `feed_incidents`). `detail` is one readable line. */
+export const feedIncidentSchema = z
+  .strictObject({
+    id: z.int().positive(),
+    kind: feedIncidentKindSchema,
+    startedAt: timestampSchema,
+    endedAt: timestampSchema.nullable(),
+    detail: z.string(),
+  })
+  .check((ctx) => {
+    const { startedAt, endedAt } = ctx.value;
+    if (endedAt !== null && Date.parse(endedAt) < Date.parse(startedAt)) {
+      addIssue(ctx, 'an incident cannot end before it starts', ['endedAt']);
+    }
+  });
+export type FeedIncident = z.infer<typeof feedIncidentSchema>;
+
+/** The last 30 incidents, newest first. */
+export const systemIncidentsResponseSchema = listSchema(feedIncidentSchema).check((ctx) => {
+  if (ctx.value.items.length > 30) addIssue(ctx, 'at most 30 incidents', ['items']);
+});
+export type SystemIncidentsResponse = z.infer<typeof systemIncidentsResponseSchema>;
 
 export const systemStorageSchema = z.strictObject({
   dbSizeBytes: countSchema,
@@ -37,6 +62,7 @@ export const systemStorageSchema = z.strictObject({
     })
     .nullable(),
 });
+export type SystemStorage = z.infer<typeof systemStorageSchema>;
 
 const latencyMetricSchema = z
   .strictObject({
@@ -57,11 +83,14 @@ export const systemLatencySchema = z.strictObject({
   dbCommit: latencyMetricSchema,
   notifyDispatch: latencyMetricSchema,
 });
+export type SystemLatency = z.infer<typeof systemLatencySchema>;
 
 export const notificationTestRequestSchema = z.strictObject({ channel: notificationChannelSchema });
 export const notificationTestResponseSchema = z.strictObject({
   eventKey: z.string().regex(/^test:[0-9a-f-]{36}$/),
 });
+export type NotificationTestRequest = z.infer<typeof notificationTestRequestSchema>;
+export type NotificationTestResponse = z.infer<typeof notificationTestResponseSchema>;
 
 const base64UrlSchema = z
   .string()

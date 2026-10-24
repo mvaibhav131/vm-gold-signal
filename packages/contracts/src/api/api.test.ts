@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   breakdownQuerySchema,
   breakdownRowSchema,
+  calendarEventSchema,
   calibrationQuerySchema,
   calibrationRowSchema,
   candlesQuerySchema,
@@ -14,6 +15,7 @@ import {
   equityQuerySchema,
   failuresQuerySchema,
   featureSnapshotResponseSchema,
+  feedIncidentSchema,
   groupEffectivenessQuerySchema,
   groupEffectivenessRowSchema,
   headlineSchema,
@@ -21,18 +23,26 @@ import {
   loginRequestSchema,
   macroEventSchema,
   marketMoveSchema,
+  marketMovesQuerySchema,
+  marketMovesResponseSchema,
   marketSnapshotSchema,
   monthlyQuerySchema,
   monthlyRowSchema,
+  newsEventsQuerySchema,
+  newsEventsResponseSchema,
   newsImpactResponseSchema,
   newsImpactRowSchema,
+  notificationTestRequestSchema,
+  notificationTestResponseSchema,
   openSignalsResponseSchema,
   overviewQuerySchema,
   overviewResponseSchema,
   pageSchema,
   pageQueryShape,
+  passwordChangeRequestSchema,
   problemSchema,
   pushSubscribeRequestSchema,
+  sessionsResponseSchema,
   settingsPatchSchema,
   settingsSchema,
   signalDetailSchema,
@@ -41,9 +51,16 @@ import {
   signalHistoryRowSchema,
   sseEventIdSchema,
   sseEventSchema,
+  strategyConfigResponseSchema,
   strategyInfoSchema,
   strategyPatchSchema,
+  systemHealthSchema,
+  systemIncidentsResponseSchema,
   systemLatencySchema,
+  systemStorageSchema,
+  totpCodeRequestSchema,
+  totpEnableResponseSchema,
+  totpSetupResponseSchema,
 } from './index';
 import { frozenHeadlineSchema } from '../news';
 import { evidence, outcome, signal, signalState, SIGNAL_ID } from '../test-fixtures';
@@ -801,6 +818,189 @@ describe('news', () => {
     };
     expect(roundTrip(macroEventSchema, event)).toEqual(event);
     expect(ok(macroEventSchema, { ...event, importance: 'HIGH' })).toBe(false);
+  });
+
+  describe('calendar list', () => {
+    const released = {
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'CPI m/m',
+      scheduledAt: '2026-10-23T12:30:00Z',
+      importance: 'high',
+      currency: 'USD',
+      unit: '%',
+      actual: 0.5,
+      forecast: 0.3,
+      previous: 0.4,
+      revisedPrevious: 0.3,
+      surpriseSigma: 2.1,
+      goldMoveAfter: { usd: -3.1, atr: -0.7 },
+    };
+    const upcoming = { ...released, actual: null, surpriseSigma: null, goldMoveAfter: null };
+
+    it('accepts a released and an upcoming event', () => {
+      expect(roundTrip(calendarEventSchema, released)).toEqual(released);
+      expect(roundTrip(calendarEventSchema, upcoming)).toEqual(upcoming);
+      expect(ok(newsEventsResponseSchema, { items: [upcoming, released], sourceAgeS: 45 })).toBe(
+        true,
+      );
+      expect(ok(newsEventsResponseSchema, { items: [], sourceAgeS: null })).toBe(true);
+      expect(ok(newsEventsResponseSchema, { items: [] })).toBe(false);
+    });
+
+    it('has no surprise and no move for an event that was not released', () => {
+      expect(ok(calendarEventSchema, { ...upcoming, surpriseSigma: 1 })).toBe(false);
+      expect(ok(calendarEventSchema, { ...upcoming, goldMoveAfter: { usd: 1, atr: 0.2 } })).toBe(
+        false,
+      );
+      // a released event may lack them: no history to measure the surprise, no candles
+      expect(ok(calendarEventSchema, { ...released, surpriseSigma: null })).toBe(true);
+      expect(ok(calendarEventSchema, { ...released, goldMoveAfter: null })).toBe(true);
+    });
+
+    it('takes a range and one importance as the query, and refuses a range that ends first', () => {
+      expect(ok(newsEventsQuerySchema, { importance: 'high' })).toBe(true);
+      expect(ok(newsEventsQuerySchema, { importance: 'HIGH' })).toBe(false);
+      expect(
+        ok(newsEventsQuerySchema, { from: '2026-10-02T00:00:00Z', to: '2026-10-01T00:00:00Z' }),
+      ).toBe(false);
+    });
+  });
+
+  it('lists market moves, newest first, and takes a range', () => {
+    expect(ok(marketMovesResponseSchema, { items: [] })).toBe(true);
+    expect(ok(marketMovesQuerySchema, { from: '2026-10-01T00:00:00Z' })).toBe(true);
+    expect(
+      ok(marketMovesQuerySchema, { from: '2026-10-02T00:00:00Z', to: '2026-10-01T00:00:00Z' }),
+    ).toBe(false);
+    expect(ok(marketMovesQuerySchema, { kind: 'SPIKE_UP' })).toBe(false);
+  });
+});
+
+describe('system pages', () => {
+  const incident = {
+    id: 12,
+    kind: 'STALE',
+    startedAt: '2026-10-23T08:32:00Z',
+    endedAt: '2026-10-23T08:37:00Z',
+    detail: 'No tick for 18 s',
+  };
+
+  it('accepts an open and a closed feed incident of a known kind', () => {
+    expect(roundTrip(feedIncidentSchema, incident)).toEqual(incident);
+    expect(ok(feedIncidentSchema, { ...incident, endedAt: null })).toBe(true);
+    expect(ok(feedIncidentSchema, { ...incident, kind: 'MELTDOWN' })).toBe(false);
+    expect(ok(feedIncidentSchema, { ...incident, endedAt: '2026-10-23T08:00:00Z' })).toBe(false);
+  });
+
+  it('lists at most the last 30 incidents', () => {
+    const many = (count: number) =>
+      Array.from({ length: count }, (_, i) => ({ ...incident, id: i + 1 }));
+    expect(ok(systemIncidentsResponseSchema, { items: many(30) })).toBe(true);
+    expect(ok(systemIncidentsResponseSchema, { items: many(31) })).toBe(false);
+  });
+
+  it('says what is not known yet with null, never with a guess', () => {
+    const health = {
+      feedAgeMs: null,
+      ticksPerSecond: null,
+      workerHeartbeatAt: null,
+      eventLoopLagMs: null,
+      dbReachable: true,
+      telegram: { lastSendAt: null, lastError: null },
+      clockSkewMs: null,
+      lastBackupAt: null,
+      lastMaintenanceAt: null,
+    };
+    expect(ok(systemHealthSchema, health)).toBe(true);
+    expect(ok(systemHealthSchema, { ...health, dbReachable: null })).toBe(false);
+    expect(ok(systemHealthSchema, { ...health, feedAgeMs: -1 })).toBe(false);
+  });
+
+  it('describes the storage with sizes in bytes and the rules as text', () => {
+    const storage = {
+      dbSizeBytes: 1_181_116_006,
+      tables: [{ name: 'ticks', sizeBytes: 900_000_000 }],
+      retention: [{ item: 'Raw ticks', rule: '14 days' }],
+      budgetPct: 11,
+      lastMaintenanceRun: { job: 'retention', finishedAt: '2026-10-23T01:15:00Z', rowsDeleted: 0 },
+    };
+    expect(roundTrip(systemStorageSchema, storage)).toEqual(storage);
+    expect(ok(systemStorageSchema, { ...storage, lastMaintenanceRun: null })).toBe(true);
+    expect(ok(systemStorageSchema, { ...storage, budgetPct: -1 })).toBe(false);
+    expect(ok(systemStorageSchema, { ...storage, dbSizeBytes: 1.5 })).toBe(false);
+  });
+
+  it('names the channel of a test message', () => {
+    expect(ok(notificationTestRequestSchema, { channel: 'telegram' })).toBe(true);
+    expect(ok(notificationTestRequestSchema, { channel: 'sms' })).toBe(false);
+    expect(
+      ok(notificationTestResponseSchema, { eventKey: 'test:0b2f6f5e-7a3c-4c64-9a38-2a4a3f1d9e10' }),
+    ).toBe(true);
+    expect(ok(notificationTestResponseSchema, { eventKey: 'signal:1' })).toBe(false);
+  });
+});
+
+describe('security payloads', () => {
+  const session = {
+    id: 'a1',
+    createdAt: '2026-10-22T08:00:00Z',
+    lastSeenAt: '2026-10-23T08:00:00Z',
+    expiresAt: '2026-10-23T20:00:00Z',
+    current: true,
+  };
+
+  it('requires a new password of at least 12 characters', () => {
+    expect(ok(passwordChangeRequestSchema, { current: 'old', next: 'a-long-new-pass' })).toBe(true);
+    expect(ok(passwordChangeRequestSchema, { current: 'old', next: 'short-11-ch' })).toBe(false);
+    expect(ok(passwordChangeRequestSchema, { current: 'old', next: 'exactly-12-ch' })).toBe(true);
+    expect(ok(passwordChangeRequestSchema, { current: '', next: 'a-long-new-pass' })).toBe(false);
+  });
+
+  it('lists the sessions, with at most one that is the current one', () => {
+    expect(
+      ok(sessionsResponseSchema, { items: [session, { ...session, id: 'b2', current: false }] }),
+    ).toBe(true);
+    expect(ok(sessionsResponseSchema, { items: [session, { ...session, id: 'b2' }] })).toBe(false);
+    expect(ok(sessionsResponseSchema, { items: [] })).toBe(true);
+  });
+
+  it('sets up the second step with a base32 secret and an otpauth link, and checks a six digit code', () => {
+    const setup = {
+      secret: 'JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP',
+      otpauthUrl: 'otpauth://totp/VM%20Gold%20Signal:owner?secret=JBSWY3DPEHPK3PXP',
+    };
+    expect(ok(totpSetupResponseSchema, setup)).toBe(true);
+    expect(ok(totpSetupResponseSchema, { ...setup, secret: 'jbswy3dpehpk3pxp' })).toBe(false);
+    expect(ok(totpSetupResponseSchema, { ...setup, secret: 'ABC' })).toBe(false);
+    expect(ok(totpSetupResponseSchema, { ...setup, otpauthUrl: 'https://example.com' })).toBe(
+      false,
+    );
+    expect(ok(totpCodeRequestSchema, { code: '123456' })).toBe(true);
+    expect(ok(totpCodeRequestSchema, { code: '12345' })).toBe(false);
+    expect(ok(totpCodeRequestSchema, { code: '12345a' })).toBe(false);
+  });
+
+  it('gives exactly eight recovery codes of the form xxxx-xxxx', () => {
+    const codes = Array.from({ length: 8 }, (_, i) => `ab${String(i)}d-ef${String(i)}9`);
+    expect(ok(totpEnableResponseSchema, { recoveryCodes: codes })).toBe(true);
+    expect(ok(totpEnableResponseSchema, { recoveryCodes: codes.slice(1) })).toBe(false);
+    expect(ok(totpEnableResponseSchema, { recoveryCodes: [...codes.slice(1), 'ABCD-EFGH'] })).toBe(
+      false,
+    );
+  });
+});
+
+describe('strategy config', () => {
+  it('is read-only JSON for one version of one strategy', () => {
+    const body = {
+      key: 'trend_pullback',
+      version: '0.1.0',
+      config: { gates: { maxTickAgeSec: 10 }, quality: { min: 65 }, list: [1, 'a', null, true] },
+    };
+    expect(roundTrip(strategyConfigResponseSchema, body)).toEqual(body);
+    expect(ok(strategyConfigResponseSchema, { ...body, key: 'moon_phase' })).toBe(false);
+    expect(ok(strategyConfigResponseSchema, { ...body, config: [] })).toBe(false);
+    expect(ok(strategyConfigResponseSchema, { ...body, version: 'latest' })).toBe(false);
   });
 });
 

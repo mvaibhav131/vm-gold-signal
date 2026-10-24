@@ -16,6 +16,14 @@ export const strategyInfoSchema = z.strictObject({
 });
 export type StrategyInfo = z.infer<typeof strategyInfoSchema>;
 
+/** GET /strategies/:key/config: the config of the version in use, for reading only (versions are immutable). */
+export const strategyConfigResponseSchema = z.strictObject({
+  key: strategyKeySchema,
+  version: semverSchema,
+  config: z.record(z.string(), z.json()),
+});
+export type StrategyConfigResponse = z.infer<typeof strategyConfigResponseSchema>;
+
 /** PATCH /strategies/:key. Only the two owner switches can change; at least one must be sent. */
 export const strategyPatchSchema = z
   .strictObject({ enabled: z.boolean().optional(), alerts: z.boolean().optional() })
@@ -24,3 +32,4 @@ export const strategyPatchSchema = z
       addIssue(ctx, 'send enabled, alerts or both');
     }
   });
+export type StrategyPatch = z.infer<typeof strategyPatchSchema>;

@@ -122,6 +122,12 @@ export function LoginPage() {
                 <List.Item>
                   Password: <b>{api.preview.password}</b>
                 </List.Item>
+                {api.preview.totp !== undefined && (
+                  <List.Item>
+                    If you turn on 2-step login in the preview, its code is{' '}
+                    <b>{api.preview.totp}</b>
+                  </List.Item>
+                )}
               </List>
               <Text size="sm" mt="xs">
                 Every number you see in this preview is simulated.

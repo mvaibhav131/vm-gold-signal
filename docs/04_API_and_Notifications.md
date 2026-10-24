@@ -22,9 +22,9 @@ Contracts live as Zod schemas in `packages/contracts` and are shared by `apps/ap
 | `POST /auth/login` `{username, password, totp?}` | `204` and sets the session cookie. Generic `401` on any failure. `429` when throttled. |
 | `POST /auth/logout` | Revokes the current session. |
 | `GET /auth/me` | `{username, totpEnabled, sessionExpiresAt}` |
-| `POST /auth/password` `{current, next}` | Changes the password and revokes all other sessions. |
-| `POST /auth/totp/setup`, `/enable`, `/disable` | Optional second factor (behind a feature flag). |
-| `GET /auth/sessions`, `DELETE /auth/sessions/:id` | List and revoke sessions. |
+| `POST /auth/password` `{current, next}` | Changes the password (at least 12 characters) and revokes all other sessions. |
+| `POST /auth/totp/setup`, `/enable`, `/disable` | Optional second factor (behind a feature flag). `setup` answers `{secret, otpauthUrl}` (shown once). `enable` `{code}` answers `{recoveryCodes}`: eight codes of the form `xxxx-xxxx`, shown once. `disable` `{code}`. |
+| `GET /auth/sessions`, `DELETE /auth/sessions/:id` | `{items: [{id, createdAt, lastSeenAt, expiresAt, current}]}`, the current session first, and revoke. Revoking the current session is a logout, so the UI offers "Log out" for it and "Revoke" for the others. |
 
 There is no registration route. A test asserts that it does not exist.
 
@@ -67,11 +67,13 @@ There is no registration route. A test asserts that it does not exist.
 
 | Path | Purpose |
 |---|---|
-| `GET /strategies`, `PATCH /strategies/:key` `{enabled, alerts}` | Status (`FORWARD_TESTING` and so on), version, enabled, last signal, evidence. Config is read-only. |
-| `GET /news/state`, `GET /news/events?from&to&importance` | `{state: CLEAR|IN_WINDOW|UNKNOWN, next, last, sourceAgeS}` and calendar events with actual, forecast, previous, revised previous. |
-| `GET /news/headlines?from&to&minImpact&topic&limit&cursor` | Clustered headlines: `{id, title, sources[], publishedAt, firstSeenAt, delayS, topics[], impact, url, goldMoveSincePublish: {usd, atr}}` and per-source health. |
-| `GET /news/moves?from&to` | Detected market moves with `{detectedAt, kind, windowS, moveUsd, moveAtr, spread, headlines[]}`; the headline list is the frozen copy. |
-| `GET /system/health` | Feed age, ticks per second, worker heartbeat, event-loop lag, DB reachability, Telegram last send and last error, clock skew, last backup, last maintenance. |
+| `GET /strategies`, `PATCH /strategies/:key` `{enabled, alerts}` | Status (`FORWARD_TESTING` and so on), version, enabled, last signal, evidence. `PATCH` answers with the updated entry. The `alerts` switch of a strategy and `strategyAlerts.<key>` of the settings are the same switch: changing one changes the other. |
+| `GET /strategies/:key/config` | `{key, version, config}`: the config of the version in use, as JSON, for reading only (a strategy version is immutable; a change is a new version). |
+| `GET /news/state`, `GET /news/events?from&to&importance` | `{state: CLEAR|IN_WINDOW|UNKNOWN, next, last, sourceAgeS}`, and calendar events, oldest first, as `{items, sourceAgeS}` (`sourceAgeS` is the age of the last successful calendar fetch). An event has `actual, forecast, previous, revisedPrevious` and, once released, `surpriseSigma` (actual minus forecast, in standard deviations of the past surprises of the same indicator) and `goldMoveAfter` `{usd, atr}` (gold's move in the 5 minutes after the scheduled time, from the recorded 1-minute candles). Both are null before the release and whenever the data to measure them is missing. `importance` limits the list to events of exactly that importance (it is not "and above"). Without `from` and `to` the list covers the 14 days before today to the 8 days after it. |
+| `GET /news/headlines?from&to&minImpact&topic&limit&cursor` | Clustered headlines: `{id, title, sources[], publishedAt, firstSeenAt, delayS, topics[], impact, url, goldMoveSincePublish: {usd, atr}}`, newest first, and per-source health (`enabled`, `lastOkAt`, `lastError`). The UI says "feed unavailable" for a source that has an error, no successful poll yet or none for 10 minutes, so an empty list is never mistaken for "no news". |
+| `GET /news/moves?from&to` | Detected market moves, newest first, with `{detectedAt, kind, windowS, moveUsd, moveAtr, spread, headlines[]}`; the headline list is the frozen copy. Without `from` the list covers the last 30 days. |
+| `GET /system/health` | Feed age, ticks per second, worker heartbeat, event-loop lag, DB reachability, Telegram last send and last error, clock skew, last backup, last maintenance. A value that is not known is `null`. |
+| `GET /system/incidents` | The last 30 feed incidents, newest first: `{id, kind, startedAt, endedAt|null, detail}`. `endedAt` is null while the incident goes on. |
 | `GET /system/storage` | DB size, per-table sizes, retention rules, budget percentage, last maintenance run. |
 | `GET /system/latency` | p50 and p95 for feed lag, candle-to-signal, DB commit, notification dispatch. |
 | `GET /settings`, `PATCH /settings` | `{displayTz, locale: en|hinglish, alerts: {telegram: {enabled, minGrade, kinds[]}, webpush: {enabled, minGrade}}, advisoryGates: {newsWindow, rollover, offHours, nearLevel: warn or block}, strategyAlerts: {<key>: on or off}, newsAlerts: {minImpact, topics: {<topic>: on or off}, marketMoves: on or off}}`. |
