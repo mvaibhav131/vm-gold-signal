@@ -270,6 +270,24 @@ Code: `packages/core/src/strategies/sweepReversal` (`judgeSweep`, `chooseSweep`,
 
 **Divergence.** `rsiDivergence` is true when a regular bullish RSI divergence (section 4.1, 5m) has its second low on a candle from the sweep candle to the reclaim candle. It is known only when that low is confirmed as a swing low, two candles later, so a setup made earlier says false. It is a quality bonus for section 8 and never a rule.
 
+### 7.3 Strategy C, details (B17)
+
+Code: `packages/core/src/strategies/squeezeRetest` (`judgeSqueeze`, `breakoutOf`, `retestOf`, `chooseBreakout`, `SqueezeRetestStrategy`, `SQUEEZE_RETEST_DEFAULTS`) and `squeezeRetestParamsOf` in `packages/config`. The six `squeeze_retest` params of the strategy config are used as they are (8 squeezed 15m candles, Donchian 20, 0.10 ATR beyond it, 8 candles for the retest, 0.25 ATR to the level, 0.20 stop buffer). The rest are decisions made here and stay in `core`: the ATR and ADX periods (14), the release window (6 15m candles) and the share of the retest candle's range that the rejection wick must be (30 percent).
+
+**Interface.** As in 7.2 but with nothing else to hand in: `updateFive(candle)`, `updateQuarter(candle)` and `evaluate()`, which answers for the newest 5m candle with the 5 rules of each side (`SQUEEZE_CHECKS`: the 15m squeeze was released, a breakout is waiting, the retest candle touched the level, closed above it, and has the rejection wick) and, when all hold, a `StrategySetup`. Push every candle that closed at the same moment before calling `evaluate()`. The regime (SQUEEZE or BREAKOUT) is the `REGIME_OK` gate, not the strategy's. SELL is the exact mirror by the same construction as in 7.1 and 7.2: a breakout below the lowest low, a retest from below with an upper wick, the stop above the retest high. The squeeze and the ADX do not care about direction.
+
+**The 15m context.** The newest release of a 15m squeeze (section 4: Bollinger inside Keltner) counts when the squeeze had been on for at least 8 candles before it, the release is among the newest 6 15m candles (the release candle is the first of them) and the bands are outside the channel now. These are the numbers of the regime classifier (section 5.1: a squeeze of 8 candles, a release within 6), and a test ties them. It is judged at the retest candle, not at the breakout: the 15m candle that releases the squeeze closes after the 5m breakout that it belongs to, so the release is usually known only a few candles after the breakout. A shorter squeeze that was released later is the newest release and fails the rule.
+
+**The breakout.** A 5m candle that closes above the highest high of the 20 candles before it (the candle itself never counts) by at least 0.10 x ATR(5m) (the ATR includes the candle, and the comparison ignores the last bit of a float), that is a bullish displacement candle (section 4), and with ADX(14, 5m) strictly higher than on the candle before it. The highest high is the broken level. The breakout candle is never the entry: it is first judged as a retest candle on the next candle.
+
+**Waiting for the retest.** A breakout waits for 8 candles after its own. It ends at once if a candle closes below the level (a close exactly on it does not end it: the level held). A candle that closes beyond the level again higher up is a breakout of its own, with its own level, and several can wait at once.
+
+**The retest candle.** One candle that has all three: its low is at or below level + 0.25 x ATR(5m) (so it may go through the level), it closes above the level (strictly), and its lower wick is at least 30 percent of its range. The touch, the close and the wick are on the same candle: price that is still far above the level is not a retest, and an earlier touch followed by a candle that has no business near the level is not either. The 30 percent is the number of strategy D (section 7.D); the spec of C only says "rejection wick". When the candle completes the retest of several waiting breakouts, the setup is about the newest of them (whose level is the highest); when it completes none, the rules are shown against the newest breakout.
+
+**Stop.** The retest low, which is the lowest low from the candle after the breakout through the retest candle (the breakout candle's own low is not part of it), minus 0.20 x ATR(5m). For a SELL the highest high plus 0.20 x ATR(5m). `STOP_OK` decides whether that distance is allowed. The setup key is `squeeze_retest:5m:brk-<UTC time of the breakout candle>`, one signal per breakout and side (section 10).
+
+**To review in the research phases (B27 onward).** Not loosened here: that the touch, the close and the wick are on one candle, the 30 percent wick and that a close below the level ends the breakout.
+
 ## 8. Quality score
 
 Grouped, not a count of indicators. Each group returns a state and a strength in [0,1]; the weighted sum is scaled to 0-100.

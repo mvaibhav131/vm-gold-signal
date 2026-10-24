@@ -1,4 +1,4 @@
-import { keyTime, type PullbackSetup, type SweepSetup } from '@vmgs/core';
+import { keyTime, type PullbackSetup, type SqueezeSetup, type SweepSetup } from '@vmgs/core';
 import { describe, expect, it } from 'vitest';
 
 import { sideSchema, strategyKeySchema } from './enums';
@@ -62,5 +62,36 @@ describe('what a strategy setup hands to a signal fits the contract', () => {
       'sweep_reversal:5m:PDH:2026-10-22@2026-10-23T07:40:00Z',
     );
     expect(priceSchema.parse(sweep.stopLoss)).toBe(4038.6);
+  });
+
+  it('the same for a squeeze retest, keyed by the breakout candle', () => {
+    const squeeze: SqueezeSetup = {
+      strategyKey: 'squeeze_retest',
+      side: 'BUY',
+      setupKey: `squeeze_retest:5m:brk-${keyTime(Date.UTC(2026, 9, 23, 9, 5))}`,
+      at: Date.UTC(2026, 9, 23, 9, 25),
+      close: 4021.6,
+      stopLoss: 4017.9,
+      facts: {
+        level: 4019.4,
+        breakoutOpenTime: Date.UTC(2026, 9, 23, 9, 5),
+        candlesSinceBreakout: 4,
+        breakoutCloseAtr: 0.7,
+        breakoutDisplacementAtr: 1.9,
+        adx: 24,
+        adxBefore: 21,
+        retestExtreme: 4018.6,
+        retestDistanceAtr: -0.3,
+        wickRatio: 0.45,
+        squeezeCandles15m: 13,
+        candlesSinceRelease15m: 2,
+        atr: 2.6,
+      },
+    };
+    expect(strategyKeySchema.parse(squeeze.strategyKey)).toBe('squeeze_retest');
+    expect(setupKeySchema.parse(squeeze.setupKey)).toBe(
+      'squeeze_retest:5m:brk-2026-10-23T09:05:00Z',
+    );
+    expect(priceSchema.parse(squeeze.stopLoss)).toBe(4017.9);
   });
 });
