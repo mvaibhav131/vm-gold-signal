@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { nextWeekendMidpoint, tradingDayOf } from './tradingDay';
+import { isWeekendClosure, nextWeekendMidpoint, tradingDayOf } from './tradingDay';
 
 const utc = (iso: string) => Date.parse(iso);
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -61,6 +61,42 @@ describe('tradingDayOf', () => {
       expect(tradingDayOf(day.endMs).startMs).toBe(day.endMs);
       expect(tradingDayOf(day.endMs - 1).endMs).toBe(day.endMs);
       cursor += 37 * 60_000;
+    }
+  });
+});
+
+describe('isWeekendClosure', () => {
+  it('starts at Friday 17:00 New York and ends at Sunday 17:00, to the second (summer time)', () => {
+    expect(isWeekendClosure(utc('2026-10-23T20:59:59Z'))).toBe(false);
+    expect(isWeekendClosure(utc('2026-10-23T21:00:00Z'))).toBe(true);
+    expect(isWeekendClosure(utc('2026-10-24T12:00:00Z'))).toBe(true);
+    expect(isWeekendClosure(utc('2026-10-25T20:59:59Z'))).toBe(true);
+    expect(isWeekendClosure(utc('2026-10-25T21:00:00Z'))).toBe(false);
+  });
+
+  it('follows the clocks of New York: one hour later in winter, and across the weekend they change', () => {
+    expect(isWeekendClosure(utc('2026-11-06T21:59:59Z'))).toBe(false);
+    expect(isWeekendClosure(utc('2026-11-06T22:00:00Z'))).toBe(true);
+    // the clocks go back on Sunday 2026-11-01: the closure from Friday 21:00 UTC lasts until 22:00 UTC
+    expect(isWeekendClosure(utc('2026-10-30T20:59:59Z'))).toBe(false);
+    expect(isWeekendClosure(utc('2026-10-30T21:00:00Z'))).toBe(true);
+    expect(isWeekendClosure(utc('2026-11-01T21:59:59Z'))).toBe(true);
+    expect(isWeekendClosure(utc('2026-11-01T22:00:00Z'))).toBe(false);
+  });
+
+  it('is open on every weekday hour, also across the daily rollover', () => {
+    for (const day of ['2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29']) {
+      for (let hour = 0; hour < 24; hour += 1) {
+        const ms = utc(`${day}T00:00:00Z`) + hour * HOUR;
+        expect(isWeekendClosure(ms), iso(ms)).toBe(false);
+      }
+    }
+    expect(isWeekendClosure(utc('2026-10-26T00:00:00Z'))).toBe(false);
+  });
+
+  it('agrees with nextWeekendMidpoint: the midpoint of every closure is inside it', () => {
+    for (const from of ['2026-10-19T00:00:00Z', '2026-10-26T00:00:00Z', '2026-11-02T00:00:00Z']) {
+      expect(isWeekendClosure(nextWeekendMidpoint(utc(from)))).toBe(true);
     }
   });
 });

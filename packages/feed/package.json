@@ -1,0 +1,24 @@
+{
+  "name": "@vmgs/feed",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@microsoft/signalr": "10.0.11",
+    "@vmgs/contracts": "workspace:*",
+    "@vmgs/core": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2",
+    "@vmgs/config": "workspace:*",
+    "ws": "8.22.0"
+  }
+}

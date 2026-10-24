@@ -38,6 +38,18 @@ export function tradingDayOf(ms: number): TradingDay {
 }
 
 /**
+ * The weekly closure of the forex and metals market: Friday 17:00 to Sunday 17:00 New York time
+ * (the start of the trading day that is named Monday). A broker's own state of the market is
+ * more exact; this schedule is the fallback when it is not known.
+ */
+export function isWeekendClosure(ms: number): boolean {
+  const now = zonedParts(ms, TRADING_DAY_ZONE);
+  if (now.weekday === 6) return true;
+  if (now.weekday === 5) return now.hour >= TRADING_DAY_ROLL_HOUR;
+  return now.weekday === 0 && now.hour < TRADING_DAY_ROLL_HOUR;
+}
+
+/**
  * The first Saturday 12:00 New York strictly after `afterMs`. A gap in the data that contains this
  * instant spans a whole weekend closure (Friday 17:00 to Sunday 17:00), so it is expected.
  */
