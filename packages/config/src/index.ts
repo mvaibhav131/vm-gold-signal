@@ -3,3 +3,4 @@ export * from './env';
 export * from './gateParams';
 export * from './settings';
 export * from './strategy';
+export * from './trendPullbackParams';
