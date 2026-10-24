@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import type { QuoteData } from '@vmgs/contracts';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import type { QuoteData, SignalHistoryQuery } from '@vmgs/contracts';
 
 import { useApi } from '../api/context';
 
@@ -11,6 +11,9 @@ export const KEYS = {
   quote: ['quote'],
   openSignals: ['signals', 'open'],
   recentSignals: ['signals', 'recent'],
+  signalHistory: ['signals', 'history'],
+  signalDetail: ['signals', 'detail'],
+  signalSnapshot: ['signals', 'snapshot'],
   overviewToday: ['overview', 'today'],
   overviewMonth: ['overview', 'month'],
   newsState: ['news', 'state'],
@@ -72,6 +75,52 @@ export function useRecentSignals(limit: number) {
     queryKey: [...KEYS.recentSignals, limit],
     queryFn: () => api.getSignals({ limit }),
     refetchInterval: 60_000,
+  });
+}
+
+/** What the history screen filters and sorts by (everything of the query except the paging). */
+export type HistoryFilters = Omit<SignalHistoryQuery, 'limit' | 'cursor'>;
+
+/** The history list, one page at a time (cursor pagination). Another filter or sort starts again from the first page. */
+export function useSignalHistory(filters: HistoryFilters, pageSize: number) {
+  const api = useApi();
+  return useInfiniteQuery({
+    queryKey: [...KEYS.signalHistory, filters, pageSize],
+    queryFn: ({ pageParam }) =>
+      api.getSignals({ ...filters, limit: pageSize, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    refetchInterval: 60_000,
+    placeholderData: (previous) => previous,
+  });
+}
+
+/**
+ * One signal with its events, result and review. An open signal is reloaded every 15 s and a
+ * preliminary review every 30 s, so the final review appears by itself.
+ */
+export function useSignalDetail(id: string) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.signalDetail, id],
+    queryFn: () => api.getSignalDetail(id),
+    refetchInterval: (query) => {
+      const detail = query.state.data;
+      if (!detail) return false;
+      if (detail.state !== null) return 15_000;
+      return detail.autopsy?.status === 'PRELIMINARY' ? 30_000 : false;
+    },
+  });
+}
+
+/** The raw feature snapshot. It is only fetched when the owner opens it (`enabled`). */
+export function useSignalSnapshot(id: string, enabled: boolean) {
+  const api = useApi();
+  return useQuery({
+    queryKey: [...KEYS.signalSnapshot, id],
+    queryFn: () => api.getSignalSnapshot(id),
+    enabled,
+    staleTime: Infinity,
   });
 }
 

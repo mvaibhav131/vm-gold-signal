@@ -38,10 +38,12 @@ const WEIGHTS: Readonly<Record<QualityGroup, number>> = {
 
 type Strengths = Readonly<Record<QualityGroup, number>>;
 type Facts = Readonly<Record<QualityGroup, readonly { label: string; value: string | number }[]>>;
+export type { Facts, Strengths };
 
 export type TemplateKey = 'buy' | 'buy-tp1' | 'sell';
 
-interface Template {
+/** What a signal needs to be built, whether it is open (a template) or in the history (mocks/trades.ts). */
+export interface SignalSpec {
   readonly seq: number;
   readonly side: Side;
   readonly strategyKey: Signal['strategyKey'];
@@ -50,8 +52,6 @@ interface Template {
   readonly stop: number;
   readonly maxValidEntry: number;
   readonly atr5: number;
-  readonly minutesAgo: number;
-  readonly status: Extract<SignalStatus, 'ACTIVE' | 'TP1_HIT'>;
   readonly strengths: Strengths;
   readonly facts: Facts;
   readonly weak: readonly string[];
@@ -60,11 +60,18 @@ interface Template {
   readonly headlines: readonly FrozenHeadline[];
   readonly evidence: Evidence;
   readonly open: { count: number; riskR: number };
+  readonly regime?: Signal['regime'];
+  readonly volBucket?: Signal['volBucket'];
+}
+
+interface Template extends SignalSpec {
+  readonly minutesAgo: number;
+  readonly status: Extract<SignalStatus, 'ACTIVE' | 'TP1_HIT'>;
   readonly mfeR: number;
   readonly maeR: number;
 }
 
-const FORWARD_LOW_SAMPLE: Evidence = {
+export const FORWARD_LOW_SAMPLE: Evidence = {
   scope: 'FORWARD',
   level: 2,
   n: 64,
@@ -93,12 +100,12 @@ const FORWARD_INSUFFICIENT: Evidence = {
   tp2Rate: null,
 };
 
-const UNVALIDATED = {
+export const UNVALIDATED = {
   code: 'UNVALIDATED_STRATEGY',
   text: 'FORWARD-TEST: this strategy is not validated yet (paper signal)',
 } as const;
 
-const TREND_PULLBACK_FACTS: Facts = {
+export const TREND_PULLBACK_FACTS: Facts = {
   trend: [
     { label: '1h EMA', value: '20>50>200' },
     { label: 'ADX(1h)', value: '31 rising' },
@@ -133,7 +140,7 @@ const TREND_PULLBACK_FACTS: Facts = {
   ],
 };
 
-const SWEEP_REVERSAL_FACTS: Facts = {
+export const SWEEP_REVERSAL_FACTS: Facts = {
   trend: [
     { label: '1h EMA', value: '20<50, 200 flat' },
     { label: 'ADX(1h)', value: '18 falling' },
@@ -161,6 +168,37 @@ const SWEEP_REVERSAL_FACTS: Facts = {
   reward: [
     { label: 'TP1 distance', value: '1.5 x ATR' },
     { label: 'Room to the next level', value: '9.8 USD' },
+  ],
+};
+
+export const SQUEEZE_RETEST_FACTS: Facts = {
+  trend: [
+    { label: '1h EMA', value: '20>50, 200 below' },
+    { label: 'ADX(1h)', value: '24 rising' },
+  ],
+  structure: [
+    { label: 'Breakout 15m', value: 'closed above the squeeze range with displacement' },
+    { label: 'Retest', value: 'range high held as support, 0.2 USD wick' },
+  ],
+  trigger: [
+    { label: 'Trigger 5m', value: 'bullish rejection candle at the range edge' },
+    { label: 'Volume proxy', value: 'tick count 1.8 x average' },
+  ],
+  volatility: [
+    { label: 'Squeeze', value: 'released 9 candles ago, lasted 22' },
+    { label: 'ATR(5m)', value: 4.1 },
+  ],
+  execution: [
+    { label: 'Spread', value: 0.18 },
+    { label: 'Stop distance', value: '1.5 x ATR' },
+  ],
+  sessionMacro: [
+    { label: 'Session', value: 'New York' },
+    { label: 'High-impact USD event', value: 'none for 3 h' },
+  ],
+  reward: [
+    { label: 'TP1 distance', value: '1.5 x ATR' },
+    { label: 'Room to the next level', value: '12.4 USD' },
   ],
 };
 
@@ -280,8 +318,20 @@ export function mockSignalId(seq: number): string {
 
 export function buildSimSignal(key: TemplateKey, activatedAtMs: number): SimSignal {
   const t = TEMPLATES[key];
-  const buy = t.side === 'BUY';
   const generatedMs = activatedAtMs - t.minutesAgo * MINUTE_MS;
+  return {
+    signal: buildSignalFrom(t, generatedMs),
+    status: t.status,
+    stop: t.status === 'TP1_HIT' ? t.entry : t.stop,
+    mfeR: t.mfeR,
+    maeR: t.maeR,
+    tp1HitAt: t.status === 'TP1_HIT' ? new Date(generatedMs + 25 * MINUTE_MS).toISOString() : null,
+  };
+}
+
+/** A valid signal for a spec, produced at `generatedMs`. The schema checks every rule of the signal. */
+export function buildSignalFrom(t: SignalSpec, generatedMs: number): Signal {
+  const buy = t.side === 'BUY';
   const iso = (ms: number) => new Date(ms).toISOString();
   const risk = round3(Math.abs(t.entry - t.stop));
   const direction = buy ? 1 : -1;
@@ -342,9 +392,9 @@ export function buildSimSignal(key: TemplateKey, activatedAtMs: number): SimSign
     riskDistance: risk,
     atr5: t.atr5,
     timeStopAt: iso(generatedMs + 120 * MINUTE_MS),
-    regime: buy ? 'TREND_UP' : 'RANGE',
+    regime: t.regime ?? (buy ? 'TREND_UP' : 'RANGE'),
     session: sessionAt(generatedMs),
-    volBucket: 'NORMAL',
+    volBucket: t.volBucket ?? 'NORMAL',
     newsState: 'CLEAR',
     setupKey: `${t.strategyKey}:15m:simulated-${String(t.seq)}`,
     openSignalsAtEntry: t.open.count,
@@ -363,14 +413,7 @@ export function buildSimSignal(key: TemplateKey, activatedAtMs: number): SimSign
     createdAt: iso(generatedMs + 400),
   });
 
-  return {
-    signal,
-    status: t.status,
-    stop: t.status === 'TP1_HIT' ? t.entry : t.stop,
-    mfeR: t.mfeR,
-    maeR: t.maeR,
-    tp1HitAt: t.status === 'TP1_HIT' ? iso(generatedMs + 25 * MINUTE_MS) : null,
-  };
+  return signal;
 }
 
 /** Unrealised R of an open signal at the current quote: sells at the bid for a BUY, buys back at the ask for a SELL. */

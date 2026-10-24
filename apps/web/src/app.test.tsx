@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import { labelOf } from './format/format';
 import { MOCK_PASSWORD, MOCK_USERNAME, createMockClient } from './mocks/mockClient';
+import { mockSignalId } from './mocks/signals';
 import { memoryStorage, renderApp } from './test-utils';
 
 async function logIn(user: ReturnType<typeof userEvent.setup>, password = MOCK_PASSWORD) {
@@ -190,10 +191,10 @@ describe('navigation', () => {
       quoteIntervalMs: 60_000,
     });
     await client.login({ username: MOCK_USERNAME, password: MOCK_PASSWORD });
-    renderApp({ client, route: '/signals/S-0042' });
+    renderApp({ client, route: `/signals/${mockSignalId(41)}` });
     expect(
       await screen.findByRole('heading', { name: 'Signal detail', level: 1 }),
     ).toBeInTheDocument();
-    expect(screen.getByText('S-0042')).toBeInTheDocument();
+    expect(await screen.findByTestId('detail-id')).toHaveTextContent('S-0041');
   });
 });

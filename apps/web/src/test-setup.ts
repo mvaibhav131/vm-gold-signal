@@ -8,11 +8,23 @@ vi.mock('./dashboard/chart/PriceChart', () => ({
   default: () => createElement('div', { 'data-testid': 'price-chart-stub' }),
 }));
 
-// Mantine needs a few browser APIs that jsdom does not have.
+// Mantine needs a few browser APIs that jsdom does not have. The screen is 1280 px wide (a desktop):
+// a width query is true or false by that width, which the data table of the history screen relies on.
+const SCREEN_WIDTH_PX = 1280;
+
+function matchesWidth(query: string): boolean {
+  // The empty query matches everything, as in a browser (the data table asks for it)
+  if (query.trim() === '') return true;
+  const match = /\((min|max)-width:\s*([\d.]+)(px|em)?\)/.exec(query);
+  if (!match) return false;
+  const limit = Number(match[2]) * (match[3] === 'em' ? 16 : 1);
+  return match[1] === 'min' ? SCREEN_WIDTH_PX >= limit : SCREEN_WIDTH_PX <= limit;
+}
+
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
-    matches: false,
+    matches: matchesWidth(query),
     media: query,
     onchange: null,
     addEventListener: vi.fn(),

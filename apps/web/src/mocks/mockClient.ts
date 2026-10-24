@@ -9,11 +9,10 @@ import {
   openSignalsResponseSchema,
   overviewQuerySchema,
   settingsSchema,
-  signalHistoryPageSchema,
-  signalHistoryQuerySchema,
   strategyInfoSchema,
   type CandlesQuery,
   type CandlesResponse,
+  type FeatureSnapshotResponse,
   type HeadlinesQuery,
   type HeadlinesResponse,
   type LoginRequest,
@@ -25,6 +24,7 @@ import {
   type OverviewResponse,
   type QuoteData,
   type Settings,
+  type SignalDetail,
   type SignalHistoryPage,
   type SignalHistoryQuery,
   type SseEvent,
@@ -34,9 +34,18 @@ import {
 import { ApiError, type ApiClient } from '../api/client';
 import { midOf } from '../format/format';
 import { headlinesAt, newsStateAt } from './news';
-import { overviewFor, recentRows } from './history';
+import { allRows, detailOfOpen, overviewFor, queryHistory } from './history';
 import { SCENARIOS, scenarioById, type Scenario } from './scenarios';
 import { buildSimSignal, currentPrice, unrealisedR, type SimSignal } from './signals';
+import {
+  buildFreshLoss,
+  buildTrades,
+  detailOfTrade,
+  snapshotOfSignal,
+  tradeCandles,
+  tradeForWindow,
+  type Trade,
+} from './trades';
 import { candlesResponse, priceAt, round3 } from './world';
 
 /** Credentials of the preview. They only exist in the mock; the live API never sees them. */
@@ -140,14 +149,22 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
   let scenario: Scenario = scenarioById(startingScenario(options, storage));
   let activatedAt = now().getTime();
   let open: SimSignal[] = [];
+  // The finished signals are fixed for the life of the client; a preview state can add one more.
+  const trades: Trade[] = buildTrades(activatedAt);
+  let freshLoss: Trade | null = null;
   let pause: PauseState | null = null;
   let frozen: QuoteData | null = null;
   let lastQuote: QuoteData;
+
+  function allTrades(): readonly Trade[] {
+    return freshLoss ? [...trades, freshLoss] : trades;
+  }
 
   function activate(next: Scenario): void {
     scenario = next;
     activatedAt = now().getTime();
     open = next.signals.map((key) => buildSimSignal(key, activatedAt));
+    freshLoss = next.freshLoss ? buildFreshLoss(activatedAt) : null;
     pause = next.paused ? { since: activatedAt - 12 * MINUTE_MS, until: null } : null;
     // A stale, disconnected or closed feed keeps the last tick it saw; only its age grows.
     frozen = null;
@@ -321,6 +338,21 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
     async getCandles(query: CandlesQuery): Promise<CandlesResponse> {
       await wait();
       const parsed = candlesQuerySchema.parse(query);
+      const nowMs = now().getTime();
+      const beforeMs = parsed.before === undefined ? null : Date.parse(parsed.before);
+      // The chart of a finished trade asks for the candles around it (`before` its end).
+      const trade = beforeMs === null ? undefined : tradeForWindow(allTrades(), beforeMs);
+      if (trade && beforeMs !== null) {
+        const candles = tradeCandles(trade, nowMs)
+          .filter((candle) => Date.parse(candle.t) < beforeMs)
+          .slice(-parsed.limit);
+        return candlesResponseSchema.parse({
+          candles,
+          overlays: {},
+          levels: [],
+          objects: trade.signal.chartObjects,
+        });
+      }
       return candlesResponseSchema.parse(
         candlesResponse(
           {
@@ -329,7 +361,7 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
             overlays: parsed.overlays,
             objects: parsed.objects,
           },
-          now().getTime(),
+          beforeMs ?? nowMs,
         ),
       );
     },
@@ -362,11 +394,30 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
 
     async getSignals(query: SignalHistoryQuery): Promise<SignalHistoryPage> {
       await wait();
-      const parsed = signalHistoryQuerySchema.parse(query);
-      return signalHistoryPageSchema.parse({
-        items: recentRows(open, now().getTime(), parsed.limit),
-        nextCursor: null,
-      });
+      return queryHistory(allRows(open, allTrades(), now().getTime()), query);
+    },
+
+    async getSignalDetail(id: string): Promise<SignalDetail> {
+      await wait();
+      const at = now().getTime();
+      const sim = open.find((candidate) => candidate.signal.id === id);
+      if (sim) return detailOfOpen(sim, at);
+      const trade = allTrades().find((candidate) => candidate.signal.id === id);
+      if (trade) return detailOfTrade(trade, at);
+      throw new ApiError(404, 'not_found', 'There is no signal with this id.');
+    },
+
+    async getSignalSnapshot(id: string): Promise<FeatureSnapshotResponse> {
+      await wait();
+      const sim = open.find((candidate) => candidate.signal.id === id);
+      const trade = allTrades().find((candidate) => candidate.signal.id === id);
+      const signal = sim?.signal ?? trade?.signal;
+      if (!signal) throw new ApiError(404, 'not_found', 'There is no signal with this id.');
+      const snapshot = snapshotOfSignal(signal, trade?.snapshotPruned ?? false);
+      if (!snapshot) {
+        throw new ApiError(404, 'snapshot_pruned', 'The snapshot was removed by retention.');
+      }
+      return snapshot;
     },
 
     async getOverview(query: OverviewQuery): Promise<OverviewResponse> {

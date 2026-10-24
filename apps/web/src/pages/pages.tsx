@@ -1,43 +1,45 @@
 import { Anchor, Stack, Text, Title } from '@mantine/core';
-import { Link, useParams } from 'react-router';
+import { Suspense, lazy, type ReactNode } from 'react';
+import { Link } from 'react-router';
 
 import { usePageTitle } from '../hooks';
 import { PlaceholderPage } from './PlaceholderPage';
 
 export { DashboardPage } from '../dashboard/DashboardPage';
 
+const HistoryPage = lazy(() => import('../history/HistoryPage'));
+const SignalDetailScreen = lazy(() => import('../detail/SignalDetailPage'));
+
+/** What a lazily loaded screen shows for a moment: its heading, so the page is never without one. */
+function Loading({ title, testId }: { title: string; testId: string }) {
+  return (
+    <Stack gap="md" data-testid={testId}>
+      <Title order={1} size="h2">
+        {title}
+      </Title>
+      <Text c="dimmed">Loading…</Text>
+    </Stack>
+  );
+}
+
+function Lazy({ title, testId, children }: { title: string; testId: string; children: ReactNode }) {
+  return <Suspense fallback={<Loading title={title} testId={testId} />}>{children}</Suspense>;
+}
+
+/** The history table is loaded when the screen is opened, so it does not weigh on the dashboard (05_UI_Spec section 1). */
 export function SignalsPage() {
   return (
-    <PlaceholderPage
-      testId="page-signals"
-      title="Signals"
-      phase="U2"
-      summary="The history of every signal with its result and the reason it failed, if it did."
-      planned={[
-        'Filters: date range, result, strategy, side, session, regime, cause, grade',
-        'Table with levels, result, net R, duration, primary cause and the evidence shown at creation',
-        'A summary strip: signals, valid results, win rate with interval, net R, profit factor',
-      ]}
-    />
+    <Lazy title="Signals" testId="page-signals">
+      <HistoryPage />
+    </Lazy>
   );
 }
 
 export function SignalDetailPage() {
-  const { id } = useParams();
-  usePageTitle('Signal detail');
   return (
-    <Stack gap="md" data-testid="page-signal-detail">
-      <Title order={1} size="h2">
-        Signal detail
-      </Title>
-      <Text c="dimmed">
-        Built in U2. This page will show signal <b>{id}</b>: levels, result, timeline, why it was
-        produced, the automatic review and the stored evidence.
-      </Text>
-      <Anchor component={Link} to="/signals">
-        Back to signals
-      </Anchor>
-    </Stack>
+    <Lazy title="Signal detail" testId="page-signal-detail">
+      <SignalDetailScreen />
+    </Lazy>
   );
 }
 

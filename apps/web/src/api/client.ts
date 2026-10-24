@@ -1,6 +1,7 @@
 import type {
   CandlesQuery,
   CandlesResponse,
+  FeatureSnapshotResponse,
   HeadlinesQuery,
   HeadlinesResponse,
   LoginRequest,
@@ -11,6 +12,7 @@ import type {
   OverviewQuery,
   OverviewResponse,
   Settings,
+  SignalDetail,
   SignalHistoryPage,
   SignalHistoryQuery,
   SseEvent,
@@ -65,6 +67,10 @@ export interface ApiClient {
   getCandles(query: CandlesQuery): Promise<CandlesResponse>;
   getOpenSignals(): Promise<OpenSignalsResponse>;
   getSignals(query: SignalHistoryQuery): Promise<SignalHistoryPage>;
+  /** GET /signals/:id. Fails with `ApiError` 404 `not_found` for an unknown id. */
+  getSignalDetail(id: string): Promise<SignalDetail>;
+  /** GET /signals/:id/snapshot. Fails with `ApiError` 404 `snapshot_pruned` after the retention window. */
+  getSignalSnapshot(id: string): Promise<FeatureSnapshotResponse>;
   getOverview(query: OverviewQuery): Promise<OverviewResponse>;
   getNewsState(): Promise<NewsStateResponse>;
   getHeadlines(query: HeadlinesQuery): Promise<HeadlinesResponse>;

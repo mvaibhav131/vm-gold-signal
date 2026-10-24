@@ -22,7 +22,7 @@ import { formatPrice } from '../../format/format';
 import { crosshairLabel, tickLabel } from './chartTime';
 import { ZonePrimitive } from './ZonePrimitive';
 
-/** An open signal drawn on the chart: its levels as lines and its entry as an arrow. */
+/** An open signal drawn on the chart: its levels as lines and its entry as an arrow. A finished one also has its exit. */
 export interface ChartSignal {
   readonly label: string;
   readonly side: Side;
@@ -31,6 +31,8 @@ export interface ChartSignal {
   readonly stop: number;
   readonly tp1: number;
   readonly tp2: number | null;
+  /** Where and how a finished trade ended: a circle at the candle of the exit, with this text. */
+  readonly exit?: { readonly at: string; readonly label: string };
 }
 
 export interface PriceChartProps {
@@ -317,20 +319,37 @@ export default function PriceChart(props: PriceChartProps) {
   useEffect(() => {
     const h = handle.current;
     if (!h) return;
-    const markers: SeriesMarker<Time>[] = signals
-      .map((signal) => ({
+    const entries: { time: number; marker: SeriesMarker<Time> }[] = [];
+    for (const signal of signals) {
+      entries.push({
         time: bucketStart(tf, Date.parse(signal.generatedAt)) / 1000,
-        signal,
-      }))
-      .sort((x, y) => x.time - y.time)
-      .map(({ time, signal }) => ({
-        time: time as UTCTimestamp,
-        position: signal.side === 'BUY' ? ('belowBar' as const) : ('aboveBar' as const),
-        color: signal.side === 'BUY' ? UP : DOWN,
-        shape: signal.side === 'BUY' ? ('arrowUp' as const) : ('arrowDown' as const),
-        text: `${signal.label} ${signal.side}`,
-      }));
-    h.markers.setMarkers(markers);
+        marker: {
+          time: 0 as UTCTimestamp,
+          position: signal.side === 'BUY' ? 'belowBar' : 'aboveBar',
+          color: signal.side === 'BUY' ? UP : DOWN,
+          shape: signal.side === 'BUY' ? 'arrowUp' : 'arrowDown',
+          text: `${signal.label} ${signal.side}`,
+        },
+      });
+      // A finished trade also shows where and how it ended.
+      if (signal.exit) {
+        entries.push({
+          time: bucketStart(tf, Date.parse(signal.exit.at)) / 1000,
+          marker: {
+            time: 0 as UTCTimestamp,
+            position: signal.side === 'BUY' ? 'aboveBar' : 'belowBar',
+            color: GOLD,
+            shape: 'circle',
+            text: signal.exit.label,
+          },
+        });
+      }
+    }
+    h.markers.setMarkers(
+      entries
+        .sort((x, y) => x.time - y.time)
+        .map(({ time, marker }) => ({ ...marker, time: time as UTCTimestamp })),
+    );
   }, [signals, tf, candles, scheme, timeZone]);
 
   // The live price follows the quote stream without redrawing anything else.

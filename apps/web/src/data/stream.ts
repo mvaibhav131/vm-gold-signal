@@ -27,6 +27,8 @@ export function applyStreamEvent(queryClient: QueryClient, event: SseEvent): voi
         queryClient,
         KEYS.openSignals,
         KEYS.recentSignals,
+        KEYS.signalHistory,
+        KEYS.signalDetail,
         KEYS.overviewToday,
         KEYS.overviewMonth,
         KEYS.snapshot,
@@ -36,7 +38,14 @@ export function applyStreamEvent(queryClient: QueryClient, event: SseEvent): voi
     case 'signal_update': {
       const { id, status, unrealisedR, stop } = event.data;
       if (status === 'CLOSED') {
-        invalidate(queryClient, KEYS.openSignals, KEYS.recentSignals, KEYS.snapshot);
+        invalidate(
+          queryClient,
+          KEYS.openSignals,
+          KEYS.recentSignals,
+          KEYS.signalHistory,
+          KEYS.signalDetail,
+          KEYS.snapshot,
+        );
         return;
       }
       queryClient.setQueryData<OpenSignalsResponse>(

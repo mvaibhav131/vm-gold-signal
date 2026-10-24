@@ -28,6 +28,7 @@ import {
   settingsPatchSchema,
   settingsSchema,
   signalDetailSchema,
+  signalHistoryPageSchema,
   signalHistoryQuerySchema,
   signalHistoryRowSchema,
   sseEventIdSchema,
@@ -124,6 +125,18 @@ describe('pagination and queries', () => {
     expect(
       ok(signalHistoryQuerySchema, { from: '2026-10-24T00:00:00Z', to: '2026-10-23T00:00:00Z' }),
     ).toBe(false);
+  });
+
+  it('sorts the history by a known column in either direction, and by nothing else', () => {
+    expect(signalHistoryQuerySchema.parse({ sort: 'realizedRNet', order: 'asc' })).toMatchObject({
+      sort: 'realizedRNet',
+      order: 'asc',
+    });
+    for (const sort of ['generatedAt', 'qualityScore', 'realizedRNet', 'durationS']) {
+      expect(ok(signalHistoryQuerySchema, { sort })).toBe(true);
+    }
+    expect(ok(signalHistoryQuerySchema, { sort: 'entry' })).toBe(false);
+    expect(ok(signalHistoryQuerySchema, { order: 'up' })).toBe(false);
   });
 
   it('parses candle query lists and applies defaults', () => {
@@ -310,6 +323,36 @@ describe('signal endpoints', () => {
   it('accepts a history row of an open signal', () => {
     expect(roundTrip(signalHistoryRowSchema, historyRow)).toEqual(historyRow);
     expect(ok(signalHistoryRowSchema, { ...historyRow, extra: 1 })).toBe(false);
+  });
+
+  it('puts the summary of the whole filtered list next to a page of rows', () => {
+    const summary = {
+      generated: 1,
+      resolvedValid: 0,
+      wins: 0,
+      partials: 0,
+      losses: 0,
+      timeExits: 0,
+      cancelled: 0,
+      dataInvalid: 0,
+      winRate: null,
+      ci95: null,
+      netR: 0,
+      expectancyR: null,
+      profitFactor: null,
+      maxDrawdownR: 0,
+      avgDurationS: null,
+      tp1Rate: null,
+      tp2Rate: null,
+      currentStreak: null,
+    };
+    const page = { items: [historyRow], nextCursor: null, summary };
+    expect(roundTrip(signalHistoryPageSchema, page)).toEqual(page);
+    expect(ok(signalHistoryPageSchema, { items: [historyRow], nextCursor: null })).toBe(false);
+    // the summary obeys the rule for percentages: none below 30 valid results
+    expect(ok(signalHistoryPageSchema, { ...page, summary: { ...summary, winRate: 0.5 } })).toBe(
+      false,
+    );
   });
 
   it('shows an open signal with state and no outcome', () => {

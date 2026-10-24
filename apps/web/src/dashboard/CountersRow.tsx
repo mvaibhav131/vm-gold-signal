@@ -1,12 +1,11 @@
 import { Group, Paper, Stack, Text } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import type { OverviewResponse } from '@vmgs/contracts';
 import { addCivilDays, zonedParts, zonedWallTimeToUtc } from '@vmgs/core';
 import { useMemo } from 'react';
 
 import { useApi } from '../api/context';
 import { KEYS, useDisplayTz, useSnapshot } from '../data/queries';
-import { formatInterval, formatPercent, formatR } from '../format/signal';
+import { formatR, winRateText } from '../format/signal';
 import { useNow } from '../hooks';
 
 /** Start of today and of tomorrow, and of this month and next month, in the display time zone (UTC instants). */
@@ -36,14 +35,6 @@ function Stat({ label, children, testId }: { label: string; children: string; te
       </Text>
     </div>
   );
-}
-
-function winRateText(overview: OverviewResponse): string {
-  // A percentage only from 30 valid results (rule C6); below that the counts speak.
-  if (overview.winRate === null || overview.ci95 === null) {
-    return `Insufficient evidence (${String(overview.resolvedValid)} results)`;
-  }
-  return `${formatPercent(overview.winRate)} (95% CI ${formatInterval(overview.ci95)})`;
 }
 
 /** TODAY and MONTH counters (05_UI_Spec section 4). "Properly tracked" means resolvedValid. */

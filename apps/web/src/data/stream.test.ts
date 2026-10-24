@@ -65,6 +65,9 @@ describe('applyStreamEvent', () => {
     });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.openSignals });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.recentSignals });
+    // the history list and the open pages of a signal follow too
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.signalHistory });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: KEYS.signalDetail });
   });
 
   it('updates the engine state and reloads the snapshot when the owner pauses', async () => {
