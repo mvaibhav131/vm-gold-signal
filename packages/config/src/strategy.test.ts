@@ -51,6 +51,7 @@ describe('default strategy configs (v0.1.0)', () => {
       advisory: { newsWindow: 'warn', rollover: 'warn', offHours: 'warn', nearLevel: 'warn' },
       risk: {
         simSlippageUsd: 0.05,
+        execDelaySec: 0,
         entryValidSec: 180,
         maxChaseAtr: 0.15,
         exitProfile: 'EP1_PARTIAL',
@@ -265,6 +266,17 @@ describe('quality, policy, advisory, risk and stats', () => {
     expect(ok(riskConfigSchema, { ...risk, commissionUsdPerOz: -1 })).toBe(false);
     expect(ok(riskConfigSchema, { ...risk, timeStopMin: 0 })).toBe(false);
     expect(ok(riskConfigSchema, { ...risk, entryValidSec: 0 })).toBe(false);
+  });
+
+  it('takes the delay of the owner as zero or more seconds, and requires it', () => {
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: 20 })).toBe(true);
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: 0 })).toBe(true);
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: 12.5 })).toBe(true);
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: -1 })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: Number.NaN })).toBe(false);
+    expect(ok(riskConfigSchema, { ...risk, execDelaySec: '20' })).toBe(false);
+    const { execDelaySec: _removed, ...without } = risk;
+    expect(ok(riskConfigSchema, without)).toBe(false);
   });
 
   it('keeps the evidence thresholds fixed at 30 and 100 (rule C6)', () => {

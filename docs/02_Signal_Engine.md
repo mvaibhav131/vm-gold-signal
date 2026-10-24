@@ -352,6 +352,28 @@ Group states: `STRONG` (>= 0.75), `OK` (0.5-0.75), `WEAK` (0.25-0.5), `FAIL` (< 
 
 Grades: 65-74 Moderate, 75-89 Strong, 90+ Very strong. The score is a setup-quality measure, not a probability.
 
+### 8.1 Quality score, details (B20)
+
+Code: `packages/core/src/scoring` (`ramp`, `band`, `meanOf`, the seven group functions, `qualityStrengths`, `scoreQuality`) and `qualityWeightsOf` in `packages/config`. The weights and the group states above are fixed. **The formulas that turn the facts of a setup into a strength are hypotheses of this phase**, like the thresholds of the strategies: they are not tuned by feeling but on training data in B27/B28, and a change is a new strategy version.
+
+**Shape.** A component is a `ramp(value, zero, full)` (0 at `zero`, 1 at `full`, a straight line between, nothing beyond; lower is better when `full` is below `zero`) or a `band` (0 at the first number, 1 from the second to the third, 0 again at the fourth). The strength of a group is the mean of its components that have data; a group with no component with data is `NA`.
+
+| Group | Components (each 0 to 1) |
+|---|---|
+| Trend | EMA order: each of the pairs 20/50 and 50/200 in the order of the trade gives 0.5. Slope of the 1h EMA 50 over 3 hours in ATR(1h), signed to the trade: ramp 0 to 0.5. ADX(1h): ramp 15 to 35, and 0 when the DI points the other way. Supertrend: 1 with the trade, 0 against |
+| Structure | 15m and 5m state (1 with the trade, 0.5 range, 0 against; the mean of the two). Newest BOS/CHoCH: with 1, none 0.5, against 0. Sweep (strategy B only): the mean of the depth, ramp 0.1 to 0.6 ATR, and the wick, ramp 50 to 80 percent. Confluence of trendlines and zones: ramp 0 to 2. Pattern (strategy E only): measured move in R, ramp 1.5 to 3 |
+| Trigger and momentum | Range of the trigger candle in ATR(5m): ramp 0.6 to 1.6. Close location towards the trade: ramp 0.5 to 0.9 (a SELL uses 1 minus the location). RSI reset away from the pullback extreme: ramp 5 to 20 points. MACD histogram candles in a row in the direction of the trade: ramp 0 to 3 |
+| Volatility | ATR percentile: band 10, 30, 70, 90. Squeeze: just released 1, none 0.7, still on 0.3 |
+| Execution | Spread percentile: ramp 95 to 40 (1 up to the 40th, 0 from the 95th). Stop distance in ATR: band 0.8, 1.1, 1.7, 2.0 (the outer numbers are the limits of `STOP_OK`) |
+| Session and macro | Session: London 1, overlap 1, New York 0.9, Asia 0.5, rollover 0.2. News: inside a window 0, unknown left out, clear with no event known 1, else ramp 45 to 240 minutes to the next event |
+| Reward feasibility | Distance to TP1 in ATR(5m): ramp 2.5 to 1.5 (2.5 is the limit of `TARGET_OK`). Room to the nearest opposing level as a multiple of the distance to TP1: ramp 0.5 to 1.2, and 1 when no level is ahead |
+
+**Score.** `scoreQuality` rounds each strength to 4 decimals first (so the stored state always agrees with the stored strength), then score = 100 x the sum of weight x strength over the groups with data, divided by the weight of those groups, rounded to 2 decimals. `coverage` is the weight with data over the total weight; the gate `QUALITY_OK` (section 6) takes both. The grade is by the bands above, and none below 65. It refuses (throws on) a strength outside 0 to 1 or a weight that is negative or not finite.
+
+**Sides.** A SELL is the BUY seen upside down: what the chart shows as it is (the EMAs, the slope, the DI, where the candle closed, the RSI, the MACD run, the 15m and 5m state) is mirrored by the side, and what is relative to the trade (the break event, the spread, the ATR) is not. A test feeds mirrored facts and expects equal strengths.
+
+**To review in the research phases (B27 onward).** Every number above; whether the components of a group should have equal weight; ADX counting 0 (not negative) when the DI is against; the session map; the news ramp.
+
 ## 9. Risk, exit profiles, entry and fill model
 
 V1 uses market entries only, confirmed at the 5m candle close.
@@ -360,9 +382,9 @@ V1 uses market entries only, confirmed at the 5m candle close.
 - Simulated fill = `entry` plus `simSlippage` adverse (default 0.05 USD). All outcome math uses the fill.
 - `maxValidEntry`: entry plus min(0.15 x ATR(5m), 0.25 x risk distance) for BUY (minus for SELL). Beyond this the owner should skip the trade.
 - `entryValidUntil`: 3 minutes after the signal.
-- Risk distance R = |fill - stop|.
+- Risk distance R = |fill - stop|. With a delayed fill the unit stays the risk distance of the signal (section 9.1).
 
-**Owner execution cost (decision of 2026-10-24, built in B20, used in B28).** The owner places the order by hand: later than the confirming tick and at a worse price than a fill at that tick. The paper statistics must not hide that. The fill model therefore has two inputs, both configurable per strategy version: `simSlippageUsd` (default 0.05, as above) and `execDelaySec` (default 0, B20 adds it to `risk` of the strategy config). With a delay the simulated fill is the first tick at or after the signal time plus the delay (ask for a BUY, bid for a SELL) plus the slippage. If the price at that moment is already beyond `maxValidEntry`, or the entry validity has run out, the owner would have skipped the trade, so it is counted as skipped and not as a trade. Live signals keep the defaults (the confirming tick); the delay matters for the cost scenarios of section 15.
+**Owner execution cost (decision of 2026-10-24, built in B20, used in B28).** The owner places the order by hand: later than the confirming tick and at a worse price than a fill at that tick. The paper statistics must not hide that. The fill model therefore has two inputs, both configurable per strategy version: `simSlippageUsd` (default 0.05, as above) and `execDelaySec` (default 0; B20 added it to `risk` of the strategy config). With a delay the simulated fill is the first tick at or after the signal time plus the delay (ask for a BUY, bid for a SELL) plus the slippage. If the price at that moment is already beyond `maxValidEntry`, or the entry validity has run out, the owner would have skipped the trade, so it is counted as skipped and not as a trade. Live signals keep the defaults (the confirming tick); the delay matters for the cost scenarios of section 15.
 
 Exit profiles are a finite, predefined list, chosen by the strategy configuration. The live engine never searches for TP/SL combinations.
 
@@ -381,6 +403,36 @@ R accounting for `EP1_PARTIAL`:
 - Time stop: close at the current price; R is whatever it is (`TIME_EXIT`).
 - Costs: spread is inside bid/ask fills. An optional `commissionUsdPerOz` (default 0) is subtracted as R. `realized_r_net` is what statistics use.
 - A trade is a win in statistics when `realized_r_net > 0`.
+
+### 9.1 Trade model, details (B20)
+
+Code: `packages/core/src/trade` (`planTrade`, `findFill`, `tradeSpecOf`, `TradeTracker`, `cancelledOutcome`, `RISK_DEFAULTS`, `COST_SCENARIOS`) and `riskParamsOf` in `packages/config`. It is pure (no I/O): B23 feeds it the ticks from Postgres, B28 the ticks or the bars of history.
+
+**The plan** (`planTrade`), made at the decision:
+- `entry` (the fill of a live signal) = ask for a BUY, bid for a SELL of the confirming tick, plus the slippage against the trade, at 3 decimals. R = |entry - stop|. A stop that is not beyond the entry gives no plan (`STOP_NOT_BEYOND_ENTRY`).
+- `maxValidEntry` = entry plus (minus for a SELL) min(`maxChaseAtr` x ATR(5m), `maxChaseRiskFraction` x R).
+- Levels: `EP1_PARTIAL` TP1 at 1R and TP2 at 2R; `EP2_SINGLE` TP1 at 1.5R; `EP3_STRUCTURE` TP1 at the structure target in R, bounded to 1.0R-3.0R, and 3.0R when no level is known.
+- Strategy E's 1.5R rule is checked again with the real entry (`minMeasuredMoveR`; `MEASURED_MOVE_TOO_SMALL` when not enough), as 7.5 says.
+- `entryValidUntil` = decision + `entryValidSec`; `timeStopAt` = decision + `timeStopMin` (from the decision, not from the fill). `costR` = `commissionUsdPerOz` / R, once per trade, even with a partial.
+
+**The fill** (`findFill`). The order is placed at decision + `execDelaySec`, and the fill is the first tick at or after that moment, at the ask (BUY) or bid (SELL) plus the slippage. The owner would skip the trade, and it is a skip (counted as a skipped trade, never as an outcome, so the statistics can say how many were missed), when: the order time or the first tick after it is later than `entryValidUntil` (a tick exactly at it is in time; `ENTRY_EXPIRED`), the fill is strictly beyond `maxValidEntry` (equal is fine; `BEYOND_MAX_VALID_ENTRY`), the fill is at or through the stop (`BEYOND_STOP`), or there is no tick (`NO_TICK`). With a delay of 0 the fill is the confirming tick and equals the `entry` of the signal.
+
+**The unit R stays the one of the signal.** With a late fill the stop and the targets stay where the signal put them, and the unit of every result is still the risk distance of the signal. The price of being late shows as a bigger loss (more than 1R) and smaller wins, not as a changed unit (decision of B20; with a delay of 0 it is the same as R = |fill - stop|). The cost scenarios of section 15 are `COST_SCENARIOS`: A 0.05 USD and 0 s, B 0.30 USD and 0 s, C 0.05 USD and 20 s; B28 shows all three.
+
+**The tracker** (`TradeTracker`). It is fed, in time order from the fill on, with ticks (`observeTick`: the bid for a BUY, the ask for a SELL) or with stretches of closing-side prices (`observe`: open, high and low of a bar), and returns the events of the signal log (`TP1_HIT`, `STOP_MOVED_TO_ENTRY`, `TP2_HIT`, `SL_HIT`, `TIME_EXIT`, `DATA_INVALID`) and, at the end, the outcome with the fields of `signal_outcomes`. The rules:
+1. In a stretch the order is: feed gap, time stop, stop, TP1, TP2 (after the stop moved).
+2. The stop is hit when the low reaches it. It fills at the open of the stretch when that is already through it (a gap, or the price of a tick), else at the stop. A target is hit when the high reaches it and fills at the target, never better: a tick that jumps past TP2 still pays TP2 (conservative).
+3. A stop and a target crossed in the same stretch: the stop wins and `ambiguous` is set. A tick is one price, so this only happens with bars (B28).
+4. `EP1_PARTIAL`: at TP1 half is closed and the stop moves to the actual fill. Then TP2 gives `WIN` (1.5R) and the stop at the entry gives `PARTIAL_WIN` (+0.5R, less when gapped through). `EP2_SINGLE` and `EP3_STRUCTURE`: reaching the target is a `WIN` (reason `TARGET`).
+5. The first stretch at or after `timeStopAt` closes the trade at its open, before anything else; only that open counts for the excursions. The result is `TIME_EXIT`, with the R it has.
+6. A gap of more than 60 s between stretches (or from the fill to the first one) closes the trade as `DATA_INVALID`: not counted, R and costs empty, and the tick after the gap is not used.
+7. net = gross - `costR`; `isWin` is net > 0 after rounding (a net that rounds to 0.000 is not a win). `WIN`, `PARTIAL_WIN`, `LOSS` and `TIME_EXIT` count in the statistics.
+8. MFE is 0 or more and MAE 0 or less, in R, from the fill to the close, at the real extreme (also beyond the stop inside a bar). Prices and R have 3 decimals and are never -0.
+9. A SELL is the exact mirror of a BUY.
+
+The tests: each rule for both sides, a from-scratch first-passage reference over 4000 random tick paths (all result classes, both sides, every profile), and the contract tests that parse the output with the schemas of the API.
+
+**To review in the research phases (B27 onward).** Not loosened here: targets filled at the target price and not at the next tick, gaps filled at the price seen, the time stop counted from the decision, 3.0R when `EP3_STRUCTURE` has no level, the commission once per trade, a skip when the fill is only a little beyond `maxValidEntry`, and the 60 s limit for a feed gap.
 
 ## 10. Signal policy
 
@@ -590,7 +642,7 @@ The classifier states topics and impact only. It never claims "bullish" or "bear
   "quality": {"min": 65, "minCoverage": 0.7},
   "policy": {"throttles": "none", "dedupe": "per_setup_instance"},
   "advisory": {"newsWindow": "warn", "rollover": "warn", "offHours": "warn", "nearLevel": "warn"},
-  "risk": {"simSlippageUsd": 0.05, "entryValidSec": 180, "maxChaseAtr": 0.15, "exitProfile": "EP1_PARTIAL", "timeStopMin": 120},
+  "risk": {"simSlippageUsd": 0.05, "execDelaySec": 0, "entryValidSec": 180, "maxChaseAtr": 0.15, "exitProfile": "EP1_PARTIAL", "timeStopMin": 120},
   "stats": {"minN": 30, "lowSampleBelow": 100}
 }
 ```
