@@ -97,3 +97,61 @@ export function sessionWindowAt(ms: number): SessionSegment {
   if (!found) throw new Error(`no session segment covers ${String(ms)}`);
   return found;
 }
+
+/** A venue that is open: when its day opened and closes, and how far `ms` is from each. */
+export interface VenueClock {
+  readonly openMs: number;
+  readonly closeMs: number;
+  readonly minutesSinceOpen: number;
+  readonly minutesToClose: number;
+}
+
+/**
+ * `ms` against the opening hours of a venue, or null when it is closed. A venue never opens or
+ * closes across a daylight-saving change (they happen at the weekend), so the day's open and close
+ * are found by counting back and forward from the local time of day.
+ */
+function venueClockAt(ms: number, venue: Venue): VenueClock | null {
+  if (!isOpen(ms, venue)) return null;
+  const p = zonedParts(ms, venue.zone);
+  const secondOfDay = p.hour * 3600 + p.minute * 60 + p.second;
+  const wholeSecondMs = Math.floor(ms / 1000) * 1000;
+  const openMs = wholeSecondMs - (secondOfDay - venue.openMinute * 60) * 1000;
+  const closeMs = openMs + (venue.closeMinute - venue.openMinute) * 60_000;
+  return {
+    openMs,
+    closeMs,
+    minutesSinceOpen: (ms - openMs) / 60_000,
+    minutesToClose: (closeMs - ms) / 60_000,
+  };
+}
+
+export interface SessionClock {
+  readonly session: Session;
+  /** The stretch of time that carries this label: from `startMs` (included) to `endMs` (excluded). */
+  readonly startMs: number;
+  readonly endMs: number;
+  readonly minutesSinceStart: number;
+  readonly minutesToEnd: number;
+  /**
+   * The opening hours of London and New York, null while closed. The label's own end is not the
+   * close of a market (LONDON ends when New York opens, OVERLAP when London closes), so a rule about
+   * "the last minutes of a session" reads these.
+   */
+  readonly london: VenueClock | null;
+  readonly newYork: VenueClock | null;
+}
+
+/** The session label at an instant with the minutes since it started and until it ends, and the open venues. */
+export function sessionClockAt(ms: number): SessionClock {
+  const window = sessionWindowAt(ms);
+  return {
+    session: window.session,
+    startMs: window.startMs,
+    endMs: window.endMs,
+    minutesSinceStart: (ms - window.startMs) / 60_000,
+    minutesToEnd: (window.endMs - ms) / 60_000,
+    london: venueClockAt(ms, LONDON),
+    newYork: venueClockAt(ms, NEW_YORK),
+  };
+}

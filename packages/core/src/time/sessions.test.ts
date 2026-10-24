@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Session } from '../domain';
-import { sessionAt, sessionSegments, sessionWindowAt } from './sessions';
+import { sessionAt, sessionClockAt, sessionSegments, sessionWindowAt } from './sessions';
 
 const utc = (iso: string) => Date.parse(iso);
 const DAY = 86_400_000;
@@ -166,5 +166,119 @@ describe('sessionWindowAt', () => {
     expect(sessionWindowAt(open).startMs).toBe(open);
     expect(sessionWindowAt(open - 1).session).toBe('ASIA');
     expect(sessionWindowAt(open - 1).endMs).toBe(open);
+  });
+});
+
+describe('sessionClockAt', () => {
+  const at = (iso: string) => sessionClockAt(utc(iso));
+  const iso = (ms: number) => new Date(ms).toISOString();
+
+  it('gives the label, the stretch that carries it and the minutes since it began and until it ends', () => {
+    const clock = at('2026-01-14T14:00:00Z');
+    expect(clock.session).toBe('OVERLAP');
+    expect(iso(clock.startMs)).toBe('2026-01-14T13:00:00.000Z');
+    expect(iso(clock.endMs)).toBe('2026-01-14T16:30:00.000Z');
+    expect(clock.minutesSinceStart).toBe(60);
+    expect(clock.minutesToEnd).toBe(150);
+  });
+
+  it('starts at 0 minutes on the first instant of a session and has all of it left', () => {
+    const clock = at('2026-01-14T08:00:00Z');
+    expect(clock.session).toBe('LONDON');
+    expect(clock.minutesSinceStart).toBe(0);
+    expect(clock.minutesToEnd).toBe(300);
+  });
+
+  it('counts the open venues from their own opening hours: London alone in the morning', () => {
+    const clock = at('2026-01-14T09:00:00Z');
+    expect(clock.london).toEqual({
+      openMs: utc('2026-01-14T08:00:00Z'),
+      closeMs: utc('2026-01-14T16:30:00Z'),
+      minutesSinceOpen: 60,
+      minutesToClose: 450,
+    });
+    expect(clock.newYork).toBeNull();
+  });
+
+  it('both venues during the overlap', () => {
+    const clock = at('2026-01-14T14:00:00Z');
+    expect(clock.london).toMatchObject({ minutesSinceOpen: 360, minutesToClose: 150 });
+    expect(clock.newYork).toEqual({
+      openMs: utc('2026-01-14T13:00:00Z'),
+      closeMs: utc('2026-01-14T22:00:00Z'),
+      minutesSinceOpen: 60,
+      minutesToClose: 480,
+    });
+  });
+
+  it('only New York after London has closed', () => {
+    const clock = at('2026-01-14T17:00:00Z');
+    expect(clock.session).toBe('NEW_YORK');
+    expect(clock.london).toBeNull();
+    expect(clock.newYork).toMatchObject({ minutesSinceOpen: 240, minutesToClose: 300 });
+  });
+
+  it('neither venue in the Asian morning', () => {
+    const clock = at('2026-01-14T03:00:00Z');
+    expect(clock.session).toBe('ASIA');
+    expect(clock.london).toBeNull();
+    expect(clock.newYork).toBeNull();
+    expect(clock.minutesSinceStart).toBe(180);
+    expect(clock.minutesToEnd).toBe(300);
+  });
+
+  it('the end of a label is not the close of a market: LONDON ends when New York opens', () => {
+    const clock = at('2026-01-14T12:30:00Z');
+    expect(clock.session).toBe('LONDON');
+    expect(clock.minutesToEnd).toBe(30);
+    expect(clock.london?.minutesToClose).toBe(240);
+  });
+
+  it('ROLLOVER wins over the last minutes of New York, which stays open until 22:00 UTC in winter', () => {
+    const clock = at('2026-01-14T21:50:00Z');
+    expect(clock.session).toBe('ROLLOVER');
+    expect(clock.newYork?.minutesToClose).toBe(10);
+  });
+
+  it('follows daylight saving: the venues open and close one hour earlier in UTC in summer', () => {
+    const clock = at('2026-07-15T12:30:00Z');
+    expect(clock.session).toBe('OVERLAP');
+    expect(iso(clock.startMs)).toBe('2026-07-15T12:00:00.000Z');
+    expect(clock.london).toEqual({
+      openMs: utc('2026-07-15T07:00:00Z'),
+      closeMs: utc('2026-07-15T15:30:00Z'),
+      minutesSinceOpen: 330,
+      minutesToClose: 180,
+    });
+    expect(clock.newYork).toEqual({
+      openMs: utc('2026-07-15T12:00:00Z'),
+      closeMs: utc('2026-07-15T21:00:00Z'),
+      minutesSinceOpen: 30,
+      minutesToClose: 510,
+    });
+  });
+
+  it('a venue opens at its opening instant and is closed at its closing instant', () => {
+    expect(at('2026-01-14T08:00:00Z').london?.minutesSinceOpen).toBe(0);
+    expect(at('2026-01-14T07:59:59Z').london).toBeNull();
+    expect(at('2026-01-14T16:29:59Z').london?.minutesToClose).toBeCloseTo(1 / 60, 9);
+    expect(at('2026-01-14T16:30:00Z').london).toBeNull();
+    expect(at('2026-01-14T13:00:00Z').newYork?.minutesSinceOpen).toBe(0);
+    expect(at('2026-01-14T22:00:00Z').newYork).toBeNull();
+  });
+
+  it('counts part of a minute, and a moment inside a second', () => {
+    const clock = sessionClockAt(utc('2026-01-14T09:00:00Z') + 30_500);
+    expect(clock.minutesSinceStart).toBeCloseTo(60 + 30.5 / 60, 9);
+    expect(clock.london?.minutesSinceOpen).toBeCloseTo(60 + 30.5 / 60, 9);
+    expect(clock.london?.openMs).toBe(utc('2026-01-14T08:00:00Z'));
+  });
+
+  it('has no venue open at the weekend, and the label is ROLLOVER or ASIA by the clock alone', () => {
+    const saturday = at('2026-01-17T10:00:00Z');
+    expect(saturday.london).toBeNull();
+    expect(saturday.newYork).toBeNull();
+    expect(saturday.session).toBe('ROLLOVER');
+    expect(at('2026-01-17T03:00:00Z').session).toBe('ASIA');
   });
 });

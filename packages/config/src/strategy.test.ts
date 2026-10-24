@@ -1,4 +1,4 @@
-import { STRATEGY_KEYS } from '@vmgs/core';
+import { STRATEGY_KEYS, macroProximity } from '@vmgs/core';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -200,6 +200,18 @@ describe('gates', () => {
     expect(
       ok(gatesConfigSchema, { ...gates, newsWindow: { ...w, currency: ['USD', 'EUR'] } }),
     ).toBe(true);
+  });
+
+  it('has a news window that the engine reads as it is: 45 minutes before and 20 after a high USD event', () => {
+    const at = Date.UTC(2026, 0, 14, 13, 30);
+    const cpi = { id: 'cpi', scheduledAt: at, importance: 'high' as const, currency: 'USD' };
+    const inWindow = (now: number) => macroProximity([cpi], now, gates.newsWindow).inWindow;
+    expect(inWindow(at - 45 * 60_000)).toBe(true);
+    expect(inWindow(at - 46 * 60_000)).toBe(false);
+    expect(inWindow(at + 20 * 60_000)).toBe(true);
+    expect(inWindow(at + 21 * 60_000)).toBe(false);
+    const euro = { ...cpi, id: 'euro', currency: 'EUR' };
+    expect(macroProximity([euro], at, gates.newsWindow).inWindow).toBe(false);
   });
 });
 
