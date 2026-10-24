@@ -38,6 +38,7 @@ import {
   signalStateSchema,
 } from '../signal';
 import { checkRange, pageQueryShape, pageSchema, rangeShape } from './common';
+import { overviewResponseSchema } from './analytics';
 
 export const openSignalLiveSchema = z.strictObject({
   status: z.enum(['ACTIVE', 'TP1_HIT']),
@@ -113,8 +114,22 @@ export const signalHistoryRowSchema = z.strictObject({
 });
 export type SignalHistoryRow = z.infer<typeof signalHistoryRowSchema>;
 
-export const signalHistoryPageSchema = pageSchema(signalHistoryRowSchema);
+/**
+ * One page of the history plus the summary of the WHOLE filtered list (not only this page): the same
+ * counters as `GET /analytics/overview`, so the strip above the table does not depend on how many
+ * pages were loaded. A win rate and its interval are null below 30 resolved signals (rule C6).
+ */
+export const signalHistoryPageSchema = pageSchema(signalHistoryRowSchema).extend({
+  summary: overviewResponseSchema,
+});
 export type SignalHistoryPage = z.infer<typeof signalHistoryPageSchema>;
+
+/** Columns the list can be sorted by. Rows without a value (open signals) come last in both directions. */
+export const SIGNAL_SORTS = ['generatedAt', 'qualityScore', 'realizedRNet', 'durationS'] as const;
+export const signalSortSchema = z.enum(SIGNAL_SORTS);
+export type SignalSort = z.infer<typeof signalSortSchema>;
+export const sortOrderSchema = z.enum(['asc', 'desc']);
+export type SortOrder = z.infer<typeof sortOrderSchema>;
 
 export const signalHistoryQuerySchema = z
   .strictObject({
@@ -126,6 +141,9 @@ export const signalHistoryQuerySchema = z
     regime: regimeSchema.optional(),
     cause: causeCodeSchema.optional(),
     grade: gradeSchema.optional(),
+    /** Newest first (`generatedAt`, `desc`) when absent. A cursor is only valid with the sort it was made for. */
+    sort: signalSortSchema.optional(),
+    order: sortOrderSchema.optional(),
     ...pageQueryShape,
   })
   .check((ctx) => {
@@ -162,3 +180,4 @@ export const featureSnapshotResponseSchema = z.strictObject({
   signalId: uuidSchema,
   features: jsonRecordSchema,
 });
+export type FeatureSnapshotResponse = z.infer<typeof featureSnapshotResponseSchema>;

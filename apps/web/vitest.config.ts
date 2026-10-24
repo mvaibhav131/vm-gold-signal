@@ -9,5 +9,7 @@ export default defineConfig({
     include: ['src/**/*.test.{ts,tsx}'],
     setupFiles: ['src/test-setup.ts'],
     css: false,
+    // The component tests render whole screens and the chart-object test is a long loop: leave room when the machine is busy.
+    testTimeout: 20_000,
   },
 });

@@ -95,8 +95,10 @@ const SEMANTIC_COLORS = ['gold', 'positive', 'negative', 'warning', 'info'] as c
  */
 export const cssVariablesResolver: CSSVariablesResolver = () => ({
   variables: {},
-  dark: {},
+  // Form error text ("The end date is before the start date") uses the readable shade of the result red.
+  dark: { '--mantine-color-error': 'var(--mantine-color-negative-4)' },
   light: {
+    '--mantine-color-error': 'var(--mantine-color-negative-9)',
     '--mantine-color-dimmed': 'var(--mantine-color-gray-7)',
     '--mantine-color-anchor': 'var(--mantine-color-gold-9)',
     ...Object.fromEntries(

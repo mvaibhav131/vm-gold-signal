@@ -31,9 +31,12 @@ function factText(fact: Fact): string {
 export function WhyPanel({
   explanation,
   signalSeq,
+  showTitle = true,
 }: {
   explanation: Explanation;
   signalSeq: number;
+  /** The detail page has its own heading above the panel. */
+  showTitle?: boolean;
 }) {
   const isPhone = useMediaQuery('(max-width: 47.99em)', undefined, {
     getInitialValueInEffect: false,
@@ -42,7 +45,7 @@ export function WhyPanel({
 
   return (
     <Stack gap="sm" data-testid={`signal-why-${String(signalSeq)}`}>
-      <Text fw={600}>Why this signal</Text>
+      {showTitle && <Text fw={600}>Why this signal</Text>}
       <Accordion multiple variant="separated" radius="md" chevronPosition="left">
         {QUALITY_GROUPS.map((key) => {
           const group = byKey.get(key);

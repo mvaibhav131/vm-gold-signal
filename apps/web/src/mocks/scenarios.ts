@@ -21,6 +21,8 @@ export interface Scenario {
   /** Age of the newest tick in milliseconds, or null while the quote stream is alive. */
   readonly tickAgeMs: number | null;
   readonly waitReasons: readonly WaitReason[];
+  /** A loss closed 35 minutes before the scenario started: its review is still preliminary. */
+  readonly freshLoss?: boolean;
 }
 
 const READY = { ready: true, progressPct: 100, missingTimeframes: [] } as const;
@@ -126,6 +128,19 @@ export const SCENARIOS: readonly Scenario[] = [
     warmup: READY,
     tickAgeMs: 7_200_000,
     waitReasons: [{ code: 'MARKET_CLOSED', label: 'Market closed until the weekly reopening' }],
+  },
+  {
+    id: 'review-pending',
+    label: 'A loss just closed (its review is still preliminary)',
+    feedState: 'LIVE',
+    regime: 'RANGE',
+    signals: [],
+    paused: false,
+    news: 'CLEAR',
+    warmup: READY,
+    tickAgeMs: null,
+    waitReasons: NO_SETUP,
+    freshLoss: true,
   },
   {
     id: 'paused',

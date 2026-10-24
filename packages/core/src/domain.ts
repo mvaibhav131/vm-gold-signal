@@ -150,6 +150,27 @@ export type CauseCode = (typeof CAUSE_CODES)[number];
 export const CAUSE_CATEGORIES = ['SETUP_FAILURE', 'MARKET_EVENT', 'EXECUTION', 'DATA'] as const;
 export type CauseCategory = (typeof CAUSE_CATEGORIES)[number];
 
+/**
+ * The category of every cause code (02_Signal_Engine section 12). The review stores only the cause;
+ * the screens and the failure analysis group causes by this category. A signal that failed because
+ * of bad data is `DATA_INVALID`, which has no cause code, so no cause maps to `DATA` yet.
+ */
+export const CAUSE_CATEGORY_OF: Readonly<Record<CauseCode, CauseCategory>> = {
+  NO_FOLLOW_THROUGH: 'SETUP_FAILURE',
+  STOP_HUNT_REVERSAL: 'SETUP_FAILURE',
+  NEWS_SHOCK: 'MARKET_EVENT',
+  HTF_STRUCTURE_BREAK: 'SETUP_FAILURE',
+  REGIME_SHIFT: 'MARKET_EVENT',
+  LIQUIDITY_DROP: 'MARKET_EVENT',
+  SPREAD_COST: 'EXECUTION',
+  TIME_DECAY: 'SETUP_FAILURE',
+  NORMAL_LOSS: 'SETUP_FAILURE',
+};
+
+export function causeCategory(code: CauseCode): CauseCategory {
+  return CAUSE_CATEGORY_OF[code];
+}
+
 export const AUTOPSY_STATUSES = ['PRELIMINARY', 'FINAL'] as const;
 export type AutopsyStatus = (typeof AUTOPSY_STATUSES)[number];
 

@@ -20,11 +20,11 @@ export async function logIn(page: Page, options: { scenario?: string } = {}): Pr
   await expect(page.getByTestId('status-strategy')).toHaveText('FORWARD-TEST');
 }
 
-/** The routes of 05_UI_Spec section 2 that sit behind the login. */
+/** The routes of 05_UI_Spec section 2 that sit behind the login. The signal is S-0041, a finished one in every preview state. */
 export const PRIVATE_ROUTES = [
   { path: '/', heading: 'Dashboard' },
   { path: '/signals', heading: 'Signals' },
-  { path: '/signals/S-0042', heading: 'Signal detail' },
+  { path: '/signals/00000000-0000-4000-8000-000000000029', heading: 'Signal detail' },
   { path: '/analytics', heading: 'Analytics' },
   { path: '/news', heading: 'News' },
   { path: '/system', heading: 'System' },

@@ -73,3 +73,6 @@ export function formatCountdown(seconds: number): string {
   if (total >= 60) return `${String(Math.floor(total / 60))} min`;
   return `${String(total)} s`;
 }
+
+/** How long a trade lasted, in the same words as a countdown. */
+export const formatDuration = formatCountdown;

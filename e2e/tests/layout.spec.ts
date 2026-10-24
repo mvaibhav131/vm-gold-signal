@@ -125,3 +125,60 @@ test.describe('phone layout', () => {
     await expect(tabs.locator('svg')).toHaveCount(5);
   });
 });
+
+test.describe('the history and the detail fit the screen', () => {
+  const screens = [
+    { path: '/signals', ready: 'history-row-43' },
+    { path: '/signals/00000000-0000-4000-8000-000000000028', ready: 'detail-header' },
+    { path: '/signals/00000000-0000-4000-8000-000000000029', ready: 'detail-header' },
+  ] as const;
+
+  for (const { path, ready } of screens) {
+    test(`${path} has no sideways scroll of the page`, async ({ page }) => {
+      await logIn(page);
+      await page.goto(path);
+      await expect(page.getByTestId(ready)).toBeVisible();
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+    });
+  }
+
+  test('the table is wider than a phone and scrolls inside its own box', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    await logIn(page);
+    await page.goto('/signals');
+    await expect(page.getByTestId('history-row-43')).toBeVisible();
+    const viewport = page.getByTestId('history-table').locator('.mantine-ScrollArea-viewport');
+    expect(await viewport.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+    const pageOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(pageOverflow).toBeLessThanOrEqual(0);
+  });
+
+  test('on a phone the filters are folded and the chart of a trade starts closed; on a desktop both are open', async ({
+    page,
+    isMobile,
+  }) => {
+    await logIn(page);
+    await page.goto('/signals');
+    await expect(page.getByTestId('history-row-43')).toBeVisible();
+    const fold = page.getByRole('button', { name: /^Filters/ });
+    if (isMobile) {
+      await expect(fold).toBeVisible();
+      await expect(fold).toHaveAttribute('aria-expanded', 'false');
+      await expect(page.getByRole('combobox', { name: 'Result' })).toBeHidden();
+    } else {
+      await expect(fold).toHaveCount(0);
+      await expect(page.getByRole('combobox', { name: 'Result' })).toBeVisible();
+    }
+    await page.goto('/signals/00000000-0000-4000-8000-000000000028');
+    await expect(page.getByTestId('detail-header')).toBeVisible();
+    await expect(page.getByTestId('detail-chart')).toHaveCount(isMobile ? 0 : 1);
+  });
+});

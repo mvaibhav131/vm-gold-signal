@@ -154,6 +154,7 @@ describe('scenarios', () => {
       'stale',
       'disconnected',
       'market-closed',
+      'review-pending',
       'paused',
     ]);
     expect(api.scenarios?.current()).toBe('two-open');
@@ -505,11 +506,134 @@ describe('counters and recent signals', () => {
       [40, 'CLOSED', 'LOSS'],
       [39, 'CLOSED', 'PARTIAL_WIN'],
     ]);
-    expect(page.nextCursor).toBeNull();
+    // the rest of the history is on the next pages, with the summary of the whole list
+    expect(page.nextCursor).not.toBeNull();
+    expect(page.summary.generated).toBe(43);
   });
 
   it('headlines are labelled as simulated', async () => {
     const { items } = await client().getHeadlines({ limit: 3 });
     expect(items.every((item) => item.title.startsWith('Simulated headline'))).toBe(true);
+  });
+});
+
+describe('signal detail, snapshot and the chart around a trade', () => {
+  const idOf = async (api: ReturnType<typeof client>, seq: number) => {
+    const page = await api.getSignals({ limit: 200 });
+    const row = page.items.find((item) => item.seq === seq);
+    if (!row) throw new Error(`no signal ${String(seq)}`);
+    return row.signalId;
+  };
+
+  it('gives an open signal a state and no outcome, with its events', async () => {
+    const api = client({ scenario: 'tp1-hit' });
+    const detail = await api.getSignalDetail(await idOf(api, 42));
+    expect(detail.outcome).toBeNull();
+    expect(detail.autopsy).toBeNull();
+    expect(detail.state).toMatchObject({ status: 'TP1_HIT' });
+    expect(detail.events.map((e) => e.eventType)).toEqual([
+      'CREATED',
+      'ALERT_QUEUED',
+      'TP1_HIT',
+      'STOP_MOVED_TO_ENTRY',
+    ]);
+  });
+
+  it('gives a finished signal an outcome, its events and a review', async () => {
+    const api = client();
+    const detail = await api.getSignalDetail(await idOf(api, 40));
+    expect(detail.state).toBeNull();
+    expect(detail.outcome).toMatchObject({ result: 'LOSS', realizedRNet: -1.04 });
+    expect(detail.autopsy).toMatchObject({ status: 'FINAL', primaryCause: 'NO_FOLLOW_THROUGH' });
+    expect(detail.events.map((e) => e.eventType)).toContain('AUTOPSY_FINAL');
+  });
+
+  it('answers 404 not_found for an id that does not exist', async () => {
+    const api = client();
+    await expect(api.getSignalDetail('00000000-0000-4000-8000-ffffffffffff')).rejects.toMatchObject(
+      {
+        status: 404,
+        code: 'not_found',
+      },
+    );
+    await expect(
+      api.getSignalSnapshot('00000000-0000-4000-8000-ffffffffffff'),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
+  });
+
+  it('returns the snapshot of a signal, and 404 snapshot_pruned for the one that retention removed', async () => {
+    const api = client();
+    const snapshot = await api.getSignalSnapshot(await idOf(api, 12));
+    expect(snapshot.features).toHaveProperty('groups');
+    await expect(api.getSignalSnapshot(await idOf(api, 1))).rejects.toMatchObject({
+      status: 404,
+      code: 'snapshot_pruned',
+    });
+    const detail = await api.getSignalDetail(await idOf(api, 1));
+    expect(detail.snapshotAvailable).toBe(false);
+    // an open signal has its snapshot too
+    expect((await api.getSignalSnapshot(await idOf(api, 42))).features).toHaveProperty(
+      'indicators',
+    );
+  });
+
+  it('draws the candles around a finished trade when the chart asks for the ones before its end', async () => {
+    const api = client();
+    const detail = await api.getSignalDetail(await idOf(api, 12));
+    const exit = Date.parse(detail.outcome?.closedAt ?? '');
+    const before = new Date(exit + 61 * 300_000).toISOString();
+    const page = await api.getCandles({ tf: '5m', limit: 300, before });
+    const times = page.candles.map((c) => Date.parse(c.t));
+    expect(Math.max(...times)).toBeLessThan(Date.parse(before));
+    expect(Math.min(...times)).toBeLessThanOrEqual(
+      Date.parse(detail.signal.generatedAt) - 60 * 300_000,
+    );
+    // the trade's levels are inside the picture
+    const highs = Math.max(...page.candles.map((c) => c.h));
+    expect(highs).toBeGreaterThanOrEqual(detail.signal.tp2 ?? 0);
+    expect(page.levels).toEqual([]);
+    // limit counts from the end
+    expect((await api.getCandles({ tf: '5m', limit: 10, before })).candles).toHaveLength(10);
+  });
+
+  it('falls back to the simulated market for a time that is not around a trade', async () => {
+    const page = await client().getCandles({
+      tf: '5m',
+      limit: 20,
+      before: new Date().toISOString(),
+    });
+    expect(page.candles).toHaveLength(20);
+  });
+});
+
+describe('the preview state with a fresh loss', () => {
+  it('adds one more signal whose review turns final 60 minutes after its close', async () => {
+    let nowMs = Date.parse('2026-10-23T12:00:00Z');
+    const api = client({ scenario: 'review-pending', now: () => new Date(nowMs) });
+    const page = await api.getSignals({ limit: 5 });
+    expect(page.items.map((row) => [row.seq, row.result, row.autopsyStatus])).toEqual([
+      [42, 'LOSS', 'PRELIMINARY'],
+      [41, 'WIN', null],
+      [40, 'LOSS', 'FINAL'],
+      [39, 'PARTIAL_WIN', 'FINAL'],
+      [38, 'WIN', null],
+    ]);
+    const id = page.items[0]?.signalId ?? '';
+    expect((await api.getSignalDetail(id)).autopsy).toMatchObject({ status: 'PRELIMINARY' });
+    nowMs += 24 * 60_000;
+    expect((await api.getSignalDetail(id)).autopsy).toMatchObject({ status: 'PRELIMINARY' });
+    nowMs += 2 * 60_000;
+    const final = await api.getSignalDetail(id);
+    expect(final.autopsy).toMatchObject({ status: 'FINAL' });
+    expect(final.autopsy?.counterfactual).not.toBeNull();
+    expect((await api.getSignals({ limit: 1 })).items[0]?.autopsyStatus).toBe('FINAL');
+  });
+
+  it('does not exist in the other states', async () => {
+    const page = await client({ scenario: 'wait' }).getSignals({ limit: 1 });
+    expect(page.items[0]?.seq).toBe(41);
   });
 });
