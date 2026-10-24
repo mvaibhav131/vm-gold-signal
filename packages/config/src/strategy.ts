@@ -101,6 +101,8 @@ export const advisoryConfigSchema = z.strictObject({
 export const riskConfigSchema = z.strictObject({
   exitProfile: exitProfileSchema,
   simSlippageUsd: z.number().nonnegative(),
+  /** The owner places the order this long after the signal (seconds); 0 is the confirming tick. */
+  execDelaySec: z.number().nonnegative(),
   commissionUsdPerOz: z.number().nonnegative(),
   entryValidSec: z.int().positive(),
   /** maxValidEntry = entry + min(maxChaseAtr x ATR(5m), maxChaseRiskFraction x risk distance). */
@@ -243,6 +245,7 @@ function defaultCommon(exitProfile: RiskConfig['exitProfile']) {
     risk: {
       exitProfile,
       simSlippageUsd: 0.05,
+      execDelaySec: 0,
       commissionUsdPerOz: 0,
       entryValidSec: 180,
       maxChaseAtr: 0.15,
