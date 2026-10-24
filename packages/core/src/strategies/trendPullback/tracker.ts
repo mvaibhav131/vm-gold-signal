@@ -10,6 +10,7 @@ import {
   type StructureCandle,
 } from '../../structure/types';
 import type { Side } from '../../domain';
+import { mirrorCandle } from '../mirror';
 import { keyTime, type StrategyTimeframe } from '../types';
 import { allChecksPass, judgePullback, pullbackStop, zoneReached } from './rules';
 import {
@@ -19,11 +20,6 @@ import {
   type PullbackSideEvaluation,
   type TrendPullbackParams,
 } from './types';
-
-/** The same candle in a market where every price is negated: highs become lows and the other way round. */
-function mirrored(candle: StructureCandle): StructureCandle {
-  return { openTime: candle.openTime, o: -candle.o, h: -candle.l, l: -candle.h, c: -candle.c };
-}
 
 function assertParams(params: TrendPullbackParams): void {
   const { periods } = params;
@@ -107,7 +103,7 @@ class PullbackSide {
   }
 
   update(tf: StrategyTimeframe, real: StructureCandle): void {
-    const candle = this.sign === 1 ? real : mirrored(real);
+    const candle = this.sign === 1 ? real : mirrorCandle(real);
     if (tf === '1h') this.updateHourly(candle);
     else if (tf === '15m') this.updateQuarter(candle);
     else this.updateFive(candle);

@@ -30,7 +30,7 @@ Rule for every phase: `pnpm typecheck`, `pnpm lint` and all tests pass before th
 | B17 Strategy C | Squeeze breakout and retest | Same |
 | B18 Strategy D | Trendline break and retest | Same |
 | B19 Strategy E | Chart pattern breakout | Same |
-| B20 Scoring, risk, fills | Quality score, risk, exit profiles, fill and outcome model | R accounting for every exit path; ties resolved against the trade |
+| B20 Scoring, risk, fills | Quality score, risk, exit profiles, fill and outcome model with configurable slippage and manual-execution delay (`02` section 9) | R accounting for every exit path; ties resolved against the trade; a delay moves the fill to the first tick after it, and a delayed price beyond `maxValidEntry` is skipped |
 | B21 Explanation and messages | Explanation builder, Telegram and Web Push formatters (English, plus Hinglish labels) | Golden tests; every required field present; length limits |
 | B22 Review and statistics | Failure attribution rules, Wilson interval, expectancy, profit factor, drawdown, bucket fallback | One test per cause code; statistics checked against known samples |
 | B23 Lifecycle | Signal transaction, `signal_state`, outcome tracker (many open signals), restart recovery | Integration tests on Postgres incl. kill and restart mid-trade |
@@ -39,7 +39,7 @@ Rule for every phase: `pnpm typecheck`, `pnpm lint` and all tests pass before th
 | B25b Headlines and market moves | RSS and Biquote news pollers (conditional requests, backoff), classifier, relevance filter and clustering, impact measurement per topic, `NEWS_HEADLINE` and `MARKET_MOVE` alerts, headline context in signals and reviews | Classification golden tests per topic; duplicate clustering; move-detection fixtures; recorded feed samples; HTML entities such as &#39; decoded; outage banner; no causal wording without "possible cause" |
 | B26 Rollups and maintenance | Bucket, monthly, evidence-group and failure rollups with nightly reconciliation; retention jobs; size guard | Rollups equal a full recomputation; retention test (seed 30 days, prune, history intact) |
 | B27 Research data | HistData importer (zip via fflate; fixed UTC-5 to UTC; M1 bars are bid-only while tick files carry bid and ask, so ticks are preferred if available for XAUUSD), spread model from recorded ticks | Import checks, gap report |
-| B28 Backtester | Replay on `core`, costs, walk-forward splits, experiment registry, holdout guard, ablation CLI, report. **Decision gate** | Deterministic and look-ahead free; first written report |
+| B28 Backtester | Replay on `core`, costs, walk-forward splits, experiment registry, holdout guard, ablation CLI, report. **Decision gate** | Deterministic and look-ahead free; first written report that shows the three execution cost scenarios A, B and C of `02` section 15; the gate needs a positive net expectancy in B and C too |
 | B29 Auth and security | Login, sessions, throttling, optional TOTP, headers | Security tests: no registration route, cookie flags, CSRF, throttling, revocation |
 | B30 API and stream | All endpoints of `04_API_and_Notifications.md`, SSE | Contract, SSE and replay tests |
 | B31 Deployment | Compose stack, Caddyfile, DuckDNS update, deploy script, VM hardening, backups, restore drill, external health check | Smoke test on the public URL; restore drill; failure drills (kill worker, stop DB, block the feed) |
