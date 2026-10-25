@@ -98,6 +98,13 @@ export const workerEnvSchema = z
   });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;
 
+/** Environment of the research tools (`tools/research`): they write history with the rights of the worker role. */
+export const researchEnvSchema = z.object({
+  ...baseShape,
+  DATABASE_URL_WORKER: postgresUrl('vmgs_worker'),
+});
+export type ResearchEnv = z.infer<typeof researchEnvSchema>;
+
 /** Variables read by the backup scripts; validated by the CLI before a backup runs. */
 export const backupEnvSchema = z.object({
   BACKUP_AGE_RECIPIENT: z

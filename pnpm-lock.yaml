@@ -229,6 +229,28 @@ importers:
         specifier: 8.22.0
         version: 8.22.0
 
+  tools/research:
+    dependencies:
+      '@vmgs/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@vmgs/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@vmgs/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
+    devDependencies:
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
+
 packages:
 
   '@adobe/css-tools@4.5.0':
@@ -1465,6 +1487,9 @@ packages:
 
   fetch-cookie@2.2.0:
     resolution: {integrity: sha512-h9AgfjURuCgA2+2ISl8GbavpUdR+WGAM2McW/ovn4tVccegp8ZqCKWSBR8uRdM8dDNlx5WdKRWxBYUwteLDCNQ==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   file-entry-cache@11.1.5:
     resolution: {integrity: sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==}
@@ -3768,6 +3793,8 @@ snapshots:
     dependencies:
       set-cookie-parser: 2.7.3
       tough-cookie: 4.1.4
+
+  fflate@0.8.3: {}
 
   file-entry-cache@11.1.5:
     dependencies:

@@ -13,6 +13,9 @@ coverage/
 playwright-report/
 test-results/
 
+# downloaded research data (HistData zips); never committed
+data/
+
 # logs and OS files
 *.log
 .DS_Store

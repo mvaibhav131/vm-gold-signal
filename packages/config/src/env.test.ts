@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { EnvError, apiEnvSchema, backupEnvSchema, parseEnv, workerEnvSchema } from './env';
+import {
+  EnvError,
+  apiEnvSchema,
+  backupEnvSchema,
+  parseEnv,
+  researchEnvSchema,
+  workerEnvSchema,
+} from './env';
 
 const KEY_BASE64 = 'qT3r0wq1L1m0b9m5dD2hQ4Zb8mQm2kz0Yc2m0m2k0aA=';
 const TOKEN = '123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw-secret';
@@ -109,6 +116,30 @@ describe('apiEnvSchema', () => {
     expect(problems(apiEnvSchema, { ...api, API_PORT: '0' })).toHaveLength(1);
     expect(problems(apiEnvSchema, { ...api, API_PORT: '70000' })).toHaveLength(1);
     expect(problems(apiEnvSchema, { ...api, API_PORT: 'http' })).toHaveLength(1);
+  });
+});
+
+describe('researchEnvSchema', () => {
+  it('needs only the database of the worker role', () => {
+    const env = parseEnv(researchEnvSchema, { DATABASE_URL_WORKER: worker.DATABASE_URL_WORKER });
+    expect(env.DATABASE_URL_WORKER).toBe(worker.DATABASE_URL_WORKER);
+    expect(env.NODE_ENV).toBe('development');
+    expect('PUBLIC_HOST' in env).toBe(false);
+  });
+
+  it('refuses a missing URL, another role, and a disabled TLS check', () => {
+    expect(problems(researchEnvSchema, {})).toEqual([
+      expect.stringMatching(/^DATABASE_URL_WORKER:/),
+    ]);
+    expect(problems(researchEnvSchema, { DATABASE_URL_WORKER: api.DATABASE_URL_API })).toEqual([
+      'DATABASE_URL_WORKER: must connect as database role vmgs_worker',
+    ]);
+    expect(
+      problems(researchEnvSchema, {
+        DATABASE_URL_WORKER: worker.DATABASE_URL_WORKER,
+        NODE_TLS_REJECT_UNAUTHORIZED: '0',
+      }),
+    ).toHaveLength(1);
   });
 });
 
