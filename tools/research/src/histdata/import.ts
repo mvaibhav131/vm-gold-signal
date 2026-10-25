@@ -56,6 +56,8 @@ export interface ImportReport {
 }
 
 export interface ImportResult {
+  /** The bid bars that were kept, in time order (M1 files; empty for ticks): what a backtest follows a trade on. */
+  readonly bars: readonly BidBar[];
   /** 1m candles of mid prices, `source = histdata_bootstrap`. */
   readonly minutes: readonly MarketCandle[];
   /** 5m, 15m, 1h, 4h and 1d candles from the minutes, only those whose time has fully passed. */
@@ -84,7 +86,7 @@ function asBootstrap(candle: MarketCandle): MarketCandle {
 }
 
 /** A bid bar as a candle of mid prices: the model spread is added to every bid price, half of it up. */
-function midBar(bar: BidBar, spreadUsd: number): MarketCandle {
+export function midCandleOf(bar: BidBar, spreadUsd: number): MarketCandle {
   const spread = toMilli(spreadUsd);
   const mid = (price: number): number => {
     const bid = toMilli(price);
@@ -188,10 +190,15 @@ function importBars(files: readonly HistSource[], options: ImportOptions): Impor
     }
   }
   const bars = [...kept.values()].sort((a, b) => a.ts - b.ts);
-  const minutes = bars.map((bar) => midBar(bar, options.spreadAt(bar.ts)));
+  const minutes = bars.map((bar) => midCandleOf(bar, options.spreadAt(bar.ts)));
   const candles = aggregateMinutes(TRADED_SYMBOL, minutes).map(asBootstrap);
   const reordered = bars.filter((bar) => bar.behind).length;
-  return { minutes, candles, report: reportOf('M1', files, tally, minutes, candles, reordered) };
+  return {
+    bars,
+    minutes,
+    candles,
+    report: reportOf('M1', files, tally, minutes, candles, reordered),
+  };
 }
 function importTicks(files: readonly HistSource[]): ImportResult {
   const tally = new Tally();
@@ -225,7 +232,7 @@ function importTicks(files: readonly HistSource[]): ImportResult {
   const all = built.map(asBootstrap);
   const minutes = all.filter((candle) => candle.tf === '1m');
   const candles = all.filter((candle) => candle.tf !== '1m');
-  return { minutes, candles, report: reportOf('TICK', files, tally, minutes, candles) };
+  return { bars: [], minutes, candles, report: reportOf('TICK', files, tally, minutes, candles) };
 }
 
 /**

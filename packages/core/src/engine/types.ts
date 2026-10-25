@@ -20,7 +20,7 @@ import type { TrendPullbackParams } from '../strategies/trendPullback/types';
 import type { TrendlineRetestParams } from '../strategies/trendlineRetest/types';
 import type { StrategySetup } from '../strategies/types';
 import type { StructureCandle } from '../structure/types';
-import type { QuoteTick, RiskParams } from '../trade/types';
+import type { QuoteTick, RiskParams, TradePlan } from '../trade/types';
 import type { SetupSource } from '../explain/setupFacts';
 
 /** The three timeframes of the engine: the 5m trigger, the 15m context and the 1h bias (docs/02 section 2). */
@@ -164,7 +164,13 @@ export interface Rejection {
 }
 
 export type Outcome =
-  | { readonly kind: 'SIGNAL'; readonly candidate: Candidate; readonly draft: EngineSignalDraft }
+  | {
+      readonly kind: 'SIGNAL';
+      readonly candidate: Candidate;
+      readonly draft: EngineSignalDraft;
+      /** The trade as planned at the confirming quote (the levels of the draft, with what the fill model needs). */
+      readonly plan: TradePlan;
+    }
   | { readonly kind: 'REJECTED'; readonly candidate: Candidate; readonly rejection: Rejection };
 
 /** The market's own state at the decision, with or without a setup (the engine snapshot of the dashboard and `/status`). */

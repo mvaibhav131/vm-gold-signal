@@ -378,7 +378,7 @@ export class DecisionEngine {
       dataLatencyMs: ctx.dataLatencyMs,
       featureSnapshot: featureSnapshotOf(view, now.spread, now.proximity),
     };
-    return { kind: 'SIGNAL', candidate, draft };
+    return { kind: 'SIGNAL', candidate, draft, plan };
   }
 }
 
