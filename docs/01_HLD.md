@@ -109,7 +109,7 @@ Everything between the provider and the worker. The worker (B12) only wires it t
 3. When a 5m candle closes, the decision step runs once (no repaint, no intrabar signals): features, regime, strategies, gates, risk, quality score.
 4. If a setup passes, a single DB transaction writes: `signals` row (immutable), `signal_state`, `signal_events(CREATED)`, `signal_explanations` content inside the signal, and `notification_outbox` rows. After commit the worker issues `NOTIFY` and the sender picks up the outbox.
 5. API process receives `NOTIFY`, reads the canonical row, pushes an SSE event to browsers.
-6. For every tick the outcome tracker checks open signals (stop, targets, time stop) and writes events. On close it writes `signal_outcomes`, updates statistics rollups in the same transaction, queues result alerts, and schedules the post-mortem.
+6. For every tick the outcome tracker checks open signals (stop, targets, time stop) and writes events. On close it writes `signal_outcomes`, updates statistics rollups in the same transaction, queues result alerts, and schedules the post-mortem. B23 follows the signals on the ticks the recorder has already stored (so a restart can rebuild every open signal from the tick table) and the rollups join the closing transaction in B26; details in `02_Signal_Engine.md` section 11.1.
 7. The post-trade review (section 12 of 02_Signal_Engine) runs after the close and finalizes after an observation window.
 
 Nothing in this path calls an external service except the database. Telegram, calendar and any later LLM run off the critical path.

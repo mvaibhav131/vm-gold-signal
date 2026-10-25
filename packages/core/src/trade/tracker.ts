@@ -185,6 +185,19 @@ export class TradeTracker {
     return events;
   }
 
+  /**
+   * The feed has been silent for longer than the gap limit and no tick has come to show it: the trade
+   * closes as DATA_INVALID at `at` (the instant the limit was passed), as the next tick would have done.
+   */
+  closeOnGap(at: number): TradeEvent[] {
+    if (this.closed !== null) return [];
+    assertFinite(at, 'gap time');
+    if (at < this.lastAt) throw new RangeError('the gap cannot end before the last stretch');
+    this.lastAt = at;
+    this.closeInvalid(at);
+    return [{ type: 'DATA_INVALID', at, price: null }];
+  }
+
   private real(frame: number): number {
     return roundPrice(this.sign * frame);
   }

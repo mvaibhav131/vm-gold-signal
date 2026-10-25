@@ -1,8 +1,12 @@
-import { workerEnvSchema, parseEnv } from '@vmgs/config';
+import { defaultStrategyConfig, workerEnvSchema, parseEnv } from '@vmgs/config';
+import { STRATEGY_KEYS } from '@vmgs/core';
 import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
 import { createPool } from '@vmgs/db';
 
+import { DatabaseCourseSource } from './lifecycle/course';
+import { PostgresLifecycleStore } from './lifecycle/postgresStore';
+import { OutcomeTracker } from './lifecycle/tracker';
 import { PostgresRecorderStore } from './postgresStore';
 import { RecorderWorker } from './recorder';
 
@@ -51,24 +55,47 @@ async function main(): Promise<void> {
     symbols: env.FEED_SYMBOLS,
     onListenerError: onFatalError,
   });
+
+  // The outcome tracker follows open signals on the ticks the recorder has stored. It starts first:
+  // it rebuilds every open signal from the stored ticks before the live feed adds to them.
+  const lifecycle = new PostgresLifecycleStore(pool);
+  for (const key of STRATEGY_KEYS)
+    await lifecycle.ensureStrategyVersion(defaultStrategyConfig(key));
+  const tracker = new OutcomeTracker({
+    store: lifecycle,
+    market: lifecycle,
+    course: new DatabaseCourseSource(lifecycle),
+    onFatalError,
+    log,
+  });
   const worker = new RecorderWorker({
     feed,
     store: new PostgresRecorderStore(pool),
     symbols: env.FEED_SYMBOLS,
     providerName: provider.name,
+    onPersistedTicks: (ticks) => {
+      tracker.onPersistedTicks(ticks);
+    },
     onFatalError,
   });
 
   try {
+    await tracker.start();
     await worker.start();
     log('info', 'record-only worker started', {
       provider: provider.name,
       symbols: env.FEED_SYMBOLS,
+      openSignals: tracker.stats.open,
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
     await worker.stop();
-    log('info', 'record-only worker stopped', { reason, stats: worker.stats });
+    await tracker.stop().catch(() => undefined);
+    log('info', 'record-only worker stopped', {
+      reason,
+      stats: worker.stats,
+      tracker: tracker.stats,
+    });
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);

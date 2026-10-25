@@ -226,6 +226,59 @@ describe('record-only worker', () => {
     });
     await expect(worker.stop()).rejects.toBe(failure);
   });
+
+  it('hands the ticks of a batch on only after they were written, in the order they came', async () => {
+    const provider = new ManualProvider(T, false);
+    const store = new MemoryRecorderStore();
+    const handed: { ticks: number[]; storedThen: number }[] = [];
+    const worker = makeWorker(provider, store, {
+      onPersistedTicks: (ticks) => {
+        handed.push({ ticks: ticks.map((tick) => tick.ts), storedThen: store.ticks.length });
+      },
+    });
+    await worker.start();
+    provider.push({ type: 'connection', connected: true, at: T });
+    provider.push(quote(TRADED_SYMBOL, T + 5_000, 4000));
+    provider.push(quote('DXY', T + 6_000, 100));
+    provider.push(quote(TRADED_SYMBOL, T + 7_000, 4000.2));
+    await worker.stop();
+    expect(handed).toEqual([{ ticks: [T + 5_000, T + 7_000], storedThen: 2 }]);
+  });
+
+  it('hands nothing on for a batch that has no ticks, or that could not be written', async () => {
+    const provider = new ManualProvider(T, false);
+    const store = new MemoryRecorderStore();
+    const handed: unknown[] = [];
+    const worker = makeWorker(provider, store, {
+      onPersistedTicks: (ticks) => {
+        handed.push(ticks);
+      },
+      persistTicks: false,
+    });
+    await worker.start();
+    provider.push({ type: 'connection', connected: true, at: T });
+    provider.push(quote(TRADED_SYMBOL, T + 5_000, 4000));
+    provider.push(quote(TRADED_SYMBOL, T + 65_000, 4000.2));
+    await worker.stop();
+    expect(handed).toEqual([]);
+
+    const failing = new MemoryRecorderStore();
+    failing.writeBatch = () => Promise.reject(new Error('database unavailable'));
+    const lost: unknown[] = [];
+    const failingProvider = new ManualProvider(T, false);
+    const other = makeWorker(failingProvider, failing, {
+      batchSize: 1,
+      onPersistedTicks: (ticks) => {
+        lost.push(ticks);
+      },
+      onFatalError: () => undefined,
+    });
+    await other.start();
+    failingProvider.push(quote(TRADED_SYMBOL, T + 5_000, 4000));
+    await other.stop().catch(() => undefined);
+    expect(lost).toEqual([]);
+    expect(failing.ticks).toEqual([]);
+  });
 });
 
 describe('recording soak', () => {

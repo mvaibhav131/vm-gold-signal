@@ -428,6 +428,43 @@ describe.each(['BUY', 'SELL'] as const)('a %s trade', (side) => {
       expect(r.tick(10.001, 4018)).toEqual([r.ev('DATA_INVALID', 10.001, null)]);
       expect(MAX_TRADE_GAP_MS).toBe(60_000);
     });
+
+    it('closes on the clock when the feed stays silent, at the instant given, with what it had', () => {
+      const r = rig({ timeStopMin: 10, commissionUsdPerOz: 1 });
+      r.tick(20, 4023.84);
+      expect(r.tracker.closeOnGap(r.at(80))).toEqual([r.ev('DATA_INVALID', 80, null)]);
+      expect(r.out).toEqual({
+        result: 'DATA_INVALID',
+        countsInStats: false,
+        closedAt: r.at(80),
+        exitPrice: null,
+        exitReason: 'DATA_GAP',
+        realizedRGross: null,
+        costR: 0,
+        realizedRNet: null,
+        durationS: 80,
+        mfeR: 1,
+        maeR: 0,
+        tp1Hit: true,
+        tp2Hit: false,
+        ambiguous: false,
+        isWin: false,
+      });
+      expect(r.tracker.state.status).toBe('CLOSED');
+    });
+
+    it('does nothing to a closed trade, and refuses a time before the last stretch', () => {
+      const r = rig({ timeStopMin: 10 });
+      r.tick(20, 4018);
+      expect(() => r.tracker.closeOnGap(r.at(19))).toThrow(RangeError);
+      expect(() => r.tracker.closeOnGap(Number.NaN)).toThrow(RangeError);
+      expect(r.tracker.outcome).toBeNull();
+      r.tracker.closeOnGap(r.at(20));
+      const closed = r.out;
+      expect(r.tracker.closeOnGap(r.at(500))).toEqual([]);
+      expect(r.tick(30, 4000)).toEqual([]);
+      expect(r.tracker.outcome).toBe(closed);
+    });
   });
 
   describe('stretches of prices such as bars', () => {

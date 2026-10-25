@@ -103,6 +103,8 @@ The figures of the overview, the monthly rows, the breakdowns and the equity cur
 
 Event ids are `<bootId>:<n>`. The API keeps the last 200 non-quote events in memory for `Last-Event-ID` replay. After an API restart the first reconnect receives `resync`. Quotes are never replayed.
 
+The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `vmgs_signals` (sent inside the transaction, so it arrives only after the commit), payload `{"id": "<signal id>", "change": "created" | "state" | "closed" | "review"}`: `created` is a new signal, `state` an event such as TP1 with a new working state, `closed` the outcome, `review` the final review. The API listens, reads the canonical row and turns the notification into a `signal` or `signal_update` event. Changes of the excursions alone are not announced (the API reads `signal_state` itself at most once per 5 s while a signal is open).
+
 ## 4. Telegram
 
 ### Setup and security
@@ -126,7 +128,7 @@ Event ids are `<bootId>:<n>`. The API keeps the last 200 non-quote events in mem
 
 ### Delivery rules
 
-- Every message is written to `notification_outbox` inside the same transaction as the event that causes it, and is sent only after commit. `UNIQUE(event_key, channel)` prevents duplicates.
+- Every message is written to `notification_outbox` inside the same transaction as the event that causes it, and is sent only after commit. `UNIQUE(event_key, channel)` prevents duplicates. For the messages about a signal the row already holds the finished message, written in the language and the time zone of the settings of that moment: `payload` is `{text, level, dropped}` for Telegram and `{title, body, url, ttlSec, urgency, tag}` for Web Push, and the sender delivers it as it is. A signal's messages go only to the channels that were told about its entry (`02` section 11.1).
 - A single sender loop with a 1 message per second limit. Priority: `SIGNAL_NEW`, then `SIGNAL_TP1` and `SIGNAL_CLOSED`, then everything else.
 - Retry with backoff 2 s, 5 s, 15 s, 45 s, 2 min, then every 5 min until `expires_at`. `429` honours `retry_after`.
 - `expires_at`: `SIGNAL_NEW` = entry validity (3 min; a late entry alert is dropped as `EXPIRED`), `SIGNAL_TP1` and `SIGNAL_CLOSED` = 6 h (results are still useful late), calendar news = event time, headlines and market moves = 30 min, system = 1 h.

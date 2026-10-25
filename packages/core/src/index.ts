@@ -11,6 +11,7 @@ export * from './explain';
 export * from './gates';
 export * from './indicators';
 export * from './levels';
+export * from './lifecycle';
 export * from './messages';
 export * from './patterns';
 export * from './quality';

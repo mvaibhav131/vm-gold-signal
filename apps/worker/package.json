@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@vmgs/config": "workspace:*",
+    "@vmgs/contracts": "workspace:*",
     "@vmgs/core": "workspace:*",
     "@vmgs/db": "workspace:*",
     "@vmgs/feed": "workspace:*"

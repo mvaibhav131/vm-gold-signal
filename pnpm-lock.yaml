@@ -111,6 +111,9 @@ importers:
       '@vmgs/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@vmgs/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@vmgs/core':
         specifier: workspace:*
         version: link:../../packages/core

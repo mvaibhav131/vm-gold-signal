@@ -1,4 +1,10 @@
-import { CandleBuilder, TRADED_SYMBOL, findCandleGaps, type MarketCandle } from '@vmgs/core';
+import {
+  CandleBuilder,
+  TRADED_SYMBOL,
+  findCandleGaps,
+  type MarketCandle,
+  type TickInput,
+} from '@vmgs/core';
 import type { Feed, FeedEvent, FeedStats, RejectReason } from '@vmgs/feed';
 
 import {
@@ -27,6 +33,12 @@ export interface RecorderWorkerOptions {
   readonly partitionCheckEveryMs?: number;
   /** Replay inputs are already in the ticks table, so only their candles and gaps are persisted. */
   readonly persistTicks?: boolean;
+  /**
+   * Called with the ticks of a batch after the batch was written to the database, in the order they
+   * were received (the outcome tracker follows signals on stored ticks only). It must not throw or
+   * wait: hand the ticks on and return.
+   */
+  readonly onPersistedTicks?: (ticks: readonly TickInput[]) => void;
   readonly onFatalError?: (error: unknown) => void;
 }
 
@@ -74,6 +86,7 @@ export class RecorderWorker {
   private readonly batchSize: number;
   private readonly maxQueuedFrames: number;
   private readonly persistTicks: boolean;
+  private readonly onPersistedTicks: ((ticks: readonly TickInput[]) => void) | undefined;
   private readonly onFatalError: (error: unknown) => void;
   private readonly builders = new Map<string, CandleBuilder>();
   private readonly rejected: Record<RejectReason, number> = {
@@ -126,6 +139,7 @@ export class RecorderWorker {
     this.heartbeatEveryMs = options.heartbeatEveryMs ?? HEARTBEAT_EVERY_MS;
     this.partitionCheckEveryMs = options.partitionCheckEveryMs ?? PARTITION_CHECK_EVERY_MS;
     this.persistTicks = options.persistTicks ?? true;
+    this.onPersistedTicks = options.onPersistedTicks;
     this.onFatalError =
       options.onFatalError ??
       ((error) => {
@@ -377,6 +391,7 @@ export class RecorderWorker {
         this.fail(error);
         throw error;
       }
+      if (batch.ticks.length > 0) this.onPersistedTicks?.(batch.ticks);
     }
   }
 
