@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+    <channel>
+        <title><![CDATA[BBC News]]></title>
+        <description><![CDATA[BBC News - World]]></description>
+        <link>https://www.bbc.co.uk/news/world</link>
+        <image>
+            <url>https://news.bbcimg.co.uk/nol/shared/img/bbc_news_120x60.gif</url>
+            <title>BBC News</title>
+            <link>https://www.bbc.co.uk/news/world</link>
+        </image>
+        <generator>RSS for Node</generator>
+        <lastBuildDate>Sun, 25 Oct 2026 10:57:00 GMT</lastBuildDate>
+        <atom:link href="https://feeds.bbci.co.uk/news/world/rss.xml" rel="self" type="application/rss+xml"/>
+        <language><![CDATA[en-gb]]></language>
+        <ttl>15</ttl>
+        <item>
+            <title><![CDATA[More than 1,300 arrested as clashes follow another day of mass protests across France]]></title>
+            <description><![CDATA[Hundreds of thousands took part in demonstrations in France, with protests also taking place in other European countries.]]></description>
+            <link>https://www.bbc.co.uk/news/articles/c95ynd587ynzo?at_medium=RSS&amp;at_campaign=rss</link>
+            <guid isPermaLink="false">https://www.bbc.co.uk/news/articles/c95ynd587ynzo#0</guid>
+            <pubDate>Sun, 25 Oct 2026 10:38:15 GMT</pubDate>
+            <media:thumbnail width="240" height="134" url="https://ichef.bbci.co.uk/ace/standard/240/cpsprodpb/3d00/live/edf93830-cffb-11f1-b444-6fb1f13f8d87.jpg"/>
+        </item>
+        <item>
+            <title><![CDATA[Israel to close West Bank crossings on election day as crackdown escalates]]></title>
+            <description><![CDATA[The Israeli Defense Forces announces restrictions on the movement of Palestinian workers in the run-up to Tuesday's election.]]></description>
+            <link>https://www.bbc.co.uk/news/articles/c6y93ylpl5p2o?at_medium=RSS&amp;at_campaign=rss</link>
+            <guid isPermaLink="false">https://www.bbc.co.uk/news/articles/c6y93ylpl5p2o#0</guid>
+            <pubDate>Sun, 25 Oct 2026 05:15:52 GMT</pubDate>
+            <media:thumbnail width="240" height="135" url="https://ichef.bbci.co.uk/ace/standard/240/cpsprodpb/5815/live/ca832c30-d019-11f1-b441-2b33b063138f.jpg"/>
+        </item>
+        <item>
+            <title><![CDATA[Musk says SpaceX restricted Ukraine's Starlink connection as service restored]]></title>
+            <description><![CDATA[The tech billionaire accuses Ukraine of violating its terms of service by using the network for military activity.]]></description>
+            <link>https://www.bbc.co.uk/news/articles/cvx28ljp8n4xo?at_medium=RSS&amp;at_campaign=rss</link>
+            <guid isPermaLink="false">https://www.bbc.co.uk/news/articles/cvx28ljp8n4xo#0</guid>
+            <pubDate>Sat, 24 Oct 2026 22:41:10 GMT</pubDate>
+        </item>
+    </channel>
+</rss>

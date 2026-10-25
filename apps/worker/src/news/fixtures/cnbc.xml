@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><rss xmlns:metadata="http://search.cnbc.com/rss/2.0/modules/siteContentMetadata" version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <atom:link rel="self" type="application/rss+xml" href="https://www.cnbc.com/id/100003114/device/rss/rss.html"/>
+    <language>en-us</language>
+    <ttl>60</ttl>
+    <title>US Top News and Analysis</title>
+    <feed_asset>
+      <id>100003114</id>
+      <type>franchise</type>
+      <subtype>section</subtype>
+      <seo>https://www.cnbc.com/us-top-news-and-analysis/</seo>
+    </feed_asset>
+    <lastBuildDate>Sun, 25 Oct 2026 08:56 GMT</lastBuildDate>
+    <pubDate>Sun, 25 Oct 2026 08:56 GMT</pubDate>
+    <link>https://www.cnbc.com/us-top-news-and-analysis/</link>
+    <description><![CDATA[CNBC is the world leader in business news and real-time financial market coverage. Find fast, actionable information.]]></description>
+    <item>
+      <link>https://www.cnbc.com/2026/10/24/amgen-imdelltra-lung-cancer-data.html</link>
+      <guid isPermaLink="false">108452907</guid>
+      <metadata:type>cnbcnewsstory</metadata:type>
+      <metadata:id>108452907</metadata:id>
+      <metadata:sponsored>false</metadata:sponsored>
+      <title>Amgen says drug combo cuts risk of death by 58% in patients with aggressive lung cancer</title>
+      <description><![CDATA[A drug from Amgen could give patients with an aggressive form of lung cancer significantly more time to live when added to an immunotherapy from AstraZeneca. ]]></description>
+      <pubDate>Sat, 24 Oct 2026 14:30:01 GMT</pubDate>
+    </item>
+    <item>
+      <link>https://www.cnbc.com/2026/10/24/alaska-senate-doj-certification-lawsuit.html</link>
+      <guid isPermaLink="false">108456383</guid>
+      <metadata:type>cnbcnewsstory</metadata:type>
+      <metadata:id>108456383</metadata:id>
+      <metadata:sponsored>false</metadata:sponsored>
+      <title>Democrats, voting-rights groups challenge Trump&apos;s bid to block Alaska Senate certification</title>
+      <description><![CDATA[Lawsuits filed by candidate Mary Peltola and a voters' rights group challenge Trump's preemptive efforts to block a Democratic Senate victory in Alaska.]]></description>
+      <pubDate>Sat, 24 Oct 2026 19:57:24 GMT</pubDate>
+    </item>
+    <item>
+      <link>https://www.cnbc.com/2026/10/24/spirit-airlines-planes-scrapped-engine-shortage.html</link>
+      <guid isPermaLink="false">108372816</guid>
+      <metadata:type>cnbcnewsstory</metadata:type>
+      <metadata:id>108372816</metadata:id>
+      <metadata:sponsored>false</metadata:sponsored>
+      <title>Why popular airplanes are getting scrapped years early</title>
+      <description><![CDATA[Airplanes are getting dismantled for parts years ahead of schedule because engines and other components are in short supply.]]></description>
+      <pubDate>Sat, 24 Oct 2026 15:18:30 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

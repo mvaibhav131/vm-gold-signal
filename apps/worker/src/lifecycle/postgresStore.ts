@@ -267,7 +267,7 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
       locale: settings.locale,
       alerts: settings.alerts,
       strategyAlerts: settings.strategyAlerts,
-      newsAlerts: { minImpact: settings.newsAlerts.minImpact },
+      newsAlerts: settings.newsAlerts,
     };
   }
 

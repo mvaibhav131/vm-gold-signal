@@ -17,6 +17,8 @@ export const ICON = {
   review: '🔍',
   action: '👉',
   released: '📣',
+  spikeUp: '📈',
+  spikeDown: '📉',
   strong: '🟢',
   weak: '🟡',
   fail: '🔴',

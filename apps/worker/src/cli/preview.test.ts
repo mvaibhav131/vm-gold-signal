@@ -11,7 +11,7 @@ const TOKEN = '555:preview-token';
 const EN = { locale: 'en', displayTz: 'Asia/Kolkata' } as const;
 const HINGLISH = { locale: 'hinglish', displayTz: 'Asia/Kolkata' } as const;
 /** The samples, and the messages the command sends: the intro and one for each sample. */
-const SAMPLES = 13;
+const SAMPLES = 18;
 let fake: FakeTelegram | null = null;
 
 afterEach(async () => {
@@ -43,6 +43,11 @@ describe('sampleMessages', () => {
         'ENGINE_PAUSED',
         'NEWS_UPCOMING',
         'NEWS_RELEASED',
+        'NEWS_HEADLINE',
+        'MARKET_MOVE, with possible causes',
+        'MARKET_MOVE, no matching headline',
+        'SYSTEM_DEGRADED, the headline feeds',
+        'SYSTEM_RECOVERED, the headline feeds',
         'TEST',
       ]);
       expect(samples).toHaveLength(SAMPLES);
@@ -85,9 +90,35 @@ describe('sampleMessages', () => {
     expect(sampleMessages(EN)[last]?.text).not.toBe(sampleMessages(HINGLISH)[last]?.text);
   });
 
+  it('show the headline, the sudden move with and without possible causes, and the headline feeds going down and back', () => {
+    const texts = Object.fromEntries(
+      sampleMessages(EN).map((sample) => [sample.name, plain(sample.text)]),
+    );
+    const headline = texts.NEWS_HEADLINE;
+    expect(headline).toContain('📰 HEADLINE (HIGH) | Fed and rates');
+    expect(headline).toContain('Seen in: CNBC, BBC News. Published 11:33 IST, detected 11:35 IST');
+    expect(headline).toContain('Gold since publication: +2.400 USD (0.8 x ATR 5m), spread 0.120.');
+    expect(headline).toContain('(n=64, normal 18%)');
+    expect(headline).toContain('This is context, not a signal.');
+    const caused = texts['MARKET_MOVE, with possible causes'];
+    expect(caused).toContain('📈 GOLD SPIKE UP +10.000 USD in 4 min (3.3 x ATR 5m)');
+    expect(caused).toContain('1. HIGH  "Fed officials signal rates may stay higher for longer"');
+    expect(caused).toContain('2. (unclassified, timing only) "Local bakery wins a prize"');
+    expect(caused).toContain('Open signals: 🟢 #S-0046 BUY (+1.40R).');
+    expect(texts['MARKET_MOVE, no matching headline']).toContain(
+      'No matching headline found in the free feeds.',
+    );
+    expect(texts['SYSTEM_DEGRADED, the headline feeds']).toContain(
+      '🔴 HEADLINE FEEDS DOWN since 11:35 IST (no feed answered for 11 min)',
+    );
+    expect(texts['SYSTEM_RECOVERED, the headline feeds']).toContain(
+      '🟢 HEADLINE FEEDS BACK 11:48 IST after 13 min.',
+    );
+  });
+
   it('show the calendar messages on the CPI of the example: 30 minutes ahead, and the release', () => {
     const [upcoming, released] = sampleMessages(EN)
-      .filter((sample) => sample.name.startsWith('NEWS_'))
+      .filter((sample) => ['NEWS_UPCOMING', 'NEWS_RELEASED'].includes(sample.name))
       .map((sample) => plain(sample.text));
     expect(upcoming).toContain('HIGH-IMPACT USD EVENT in 30 min: CPI m/m (16:00 IST)');
     expect(upcoming).toContain('from 15:15 IST');

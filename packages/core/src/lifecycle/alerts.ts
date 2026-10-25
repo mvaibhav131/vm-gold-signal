@@ -3,6 +3,7 @@ import {
   type Grade,
   type Locale,
   type NewsImpact,
+  type NewsTopic,
   type NotificationKind,
   type StrategyKey,
 } from '../domain';
@@ -53,8 +54,15 @@ export interface AlertSettings {
   };
   /** A strategy that is off runs in shadow mode: its signals are stored and followed, nobody is told. */
   readonly strategyAlerts: Readonly<Record<StrategyKey, 'on' | 'off'>>;
-  /** The news alerts: the least impact that is told (calendar events and headlines). */
-  readonly newsAlerts: { readonly minImpact: NewsImpact };
+  /**
+   * The news alerts: the least impact that is told (calendar events and headlines), which headline
+   * topics are on, and whether sudden moves of gold are told.
+   */
+  readonly newsAlerts: {
+    readonly minImpact: NewsImpact;
+    readonly topics: Readonly<Record<NewsTopic, 'on' | 'off'>>;
+    readonly marketMoves: 'on' | 'off';
+  };
 }
 
 export function displayOptionsOf(settings: AlertSettings): DisplayOptions {

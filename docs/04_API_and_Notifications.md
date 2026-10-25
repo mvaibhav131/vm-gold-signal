@@ -113,7 +113,7 @@ The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `v
 2. `pnpm cli telegram:link` asks Telegram who the bot is (a wrong token is found now), then prints a one-time code of 8 digits (`1234-5678`). The database keeps only a hash of it (`app_settings.telegramLink`). The code works once, for 10 minutes, and is void after 5 wrong tries.
 3. The owner sends `/link <code>` to the bot. The worker stores the chat id (`app_settings.telegramChat`) and forgets the code. From then on only that chat is served; all other chats are ignored silently. A new code from `telegram:link` moves the link to another chat.
 4. The worker uses long polling (`getUpdates`), so no inbound port is needed. Messages are sent with `sendMessage` using HTML parse mode (bold, italic, `code`, quotes; see section 4.1, "The look"), with all dynamic text escaped, and without link previews.
-5. `pnpm cli telegram:preview` is for the first look at the formats: it needs only the bot token (no database, no worker). The owner presses START in the bot; the command then sends one example of every message (`SIGNAL_NEW` as a BUY and as a SELL, `SIGNAL_TP1`, `SIGNAL_CLOSED` as a win and as a loss with its review, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`, `SYSTEM_DEGRADED`, `SYSTEM_RECOVERED`, `ENGINE_PAUSED`, `NEWS_UPCOMING`, `NEWS_RELEASED`, `TEST`) made by the real formatters from fixed example data, each marked `[SAMPLE n/13: ..., not a real signal]`. `pnpm cli telegram:preview hinglish` sends them in Hinglish. It does not link the chat.
+5. `pnpm cli telegram:preview` is for the first look at the formats: it needs only the bot token (no database, no worker). The owner presses START in the bot; the command then sends one example of every message (`SIGNAL_NEW` as a BUY and as a SELL, `SIGNAL_TP1`, `SIGNAL_CLOSED` as a win and as a loss with its review, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`, `SYSTEM_DEGRADED`, `SYSTEM_RECOVERED`, `ENGINE_PAUSED`, `NEWS_UPCOMING`, `NEWS_RELEASED`, `NEWS_HEADLINE`, `MARKET_MOVE` (with possible causes and with none), `SYSTEM_DEGRADED` and `SYSTEM_RECOVERED` for the headline feeds, `TEST`) made by the real formatters from fixed example data, each marked `[SAMPLE n/18: ..., not a real signal]`. `pnpm cli telegram:preview hinglish` sends them in Hinglish. It does not link the chat.
 6. `pnpm cli telegram:test` queues a clearly labelled `TEST` message in the outbox, so the whole delivery path (outbox, sender, Telegram) can be checked. The worker must be running.
 
 Who is answered: a private chat that is the linked one, and nobody else. Groups, other chats, plain text and anything that is not a command get no answer. The only command a stranger can send is `/link`, and the bot answers it only while a code is pending, so it does not show itself to a stranger. A command addressed to another bot (`/status@OtherBot`) is not ours.
@@ -159,6 +159,14 @@ A reply is never longer than Telegram allows: long lists are cut with an "and N 
 - **NEWS_UPCOMING** is queued when an event with an exact time is 30 minutes or less ahead, and is valid until the event (a late alert is worthless). It goes out for the currencies of the news window of the strategies (USD) and at least `settings.newsAlerts.minImpact` (default HIGH). An event with a tentative time or only a date is stored and shown but never counted down to, because its time may move. The window line is there only when the event opens a news window (the impact and the currency of `gates.newsWindow`).
 - **NEWS_RELEASED** is queued when the released value was first seen, at the earliest 20 s after the scheduled time so that the second at which gold is measured is stored, and is valid for 30 minutes. It is not sent for a value first seen more than 30 minutes after its time (a backfill, or a worker that was down: that is old news). `Gold 15 s after` is the move of the mid price from the last tick at the time to the last tick 15 s later (each at most 10 s old) and the spread of the later one; the line is left out when no tick is near. The surprise is told in sigma only when at least 6 past releases of the indicator have both an actual and a forecast: the history of the provider (about 90 days) joined with what the worker archived itself, each release counted once. It is also kept in `raw.surprise`. The `goldMoveAfter` of the API (5 minutes, from 1-minute candles) belongs to B30.
 - **Keys and channels.** `news:<macro_events.id>:upcoming` and `news:<macro_events.id>:released`, so a restart or a second pass never tells an event twice (an event whose time moves after the alert is not told again). The channels follow the system rule (Telegram when on and the kind is switched on, Web Push when on). The Web Push text is English, with the page `/news`.
+
+### Headline alerts, sudden moves and the headline feeds (as built in B25b)
+
+- **Who sends what.** `NewsPoller` reads the feeds into `news_items`, `NewsAlerts` queues `NEWS_HEADLINE`, `MarketMoveDetector` queues `MARKET_MOVE`, `NewsFeedWatcher` queues the notice that the headline feeds are down or back, and `ImpactMeasurer` keeps the measured moves and rebuilds `news_topic_stats`. All run inside the worker (the rules and numbers are in `02` section 16, "As built (B25b)"). They need the database only: without a Telegram token the rows wait or expire like every other row.
+- **NEWS_HEADLINE** is valid for 30 minutes and is queued once for each story: `news:<cluster id>:headline`, so a restart or a second pass never tells a story twice. It is queued when the impact is at least `settings.newsAlerts.minImpact` (default HIGH), at least one topic of the story is `on` in `settings.newsAlerts.topics`, and the story is at most 30 minutes old. The text says where gold stands since publication (the last tick at or before the published time against the latest tick, each at most 30 s old, with the ATR(5m) and the spread; "no tick could measure it" otherwise) and the history of the topic from `news_topic_stats` when it has 30 or more measured stories ("not enough data yet" otherwise). The Web Push text is English and opens `/news?tab=headlines`.
+- **MARKET_MOVE** is valid for 30 minutes under `move:<market_events.id>:spike`, and only when `settings.newsAlerts.marketMoves` is `on`; the move itself is stored in `market_events` either way. It lists up to 5 classified stories (HIGH first, the newest first) and up to 3 unclassified headlines of the previous 30 minutes as possible causes, and the open signals with their result in R if they were closed now (the bid for a BUY, the ask for a SELL, from a tick at most 2 minutes old; no result without one). Without a matching headline it says "No matching headline found in the free feeds. ..."; while the headline feeds are all disabled or down it says that they are unavailable. The page is `/news?tab=moves`.
+- **Headline feeds down or back.** `SYSTEM_DEGRADED` with the title `HEADLINE FEEDS DOWN` when every enabled feed has been silent for more than 10 minutes, `SYSTEM_RECOVERED` with `HEADLINE FEEDS BACK` when one is read again. The keys are `health:HEADLINES@<start of the outage in epoch ms>:degraded` and `:recovered`. These notices expire after 1 hour like the other system messages.
+- **Preview.** `pnpm cli telegram:preview` sends these five messages as well (18 samples in all).
 
 ### 4.1 Message catalogue
 
@@ -289,6 +297,10 @@ FEED STALE since 14:02 IST (no tick for 18 s). New signals are blocked. Open tra
 ```text
 FEED RECOVERED 14:07 IST. Gap back-filled. New signals resume after 12 five-minute candles of warm-up (about 15:07 IST).
 ```
+```text
+HEADLINE FEEDS DOWN since 14:02 IST (no feed answered for 11 min)
+Headline alerts and the news line of new signals are unavailable. The price feed, the calendar and open signals are not affected.
+```
 
 **ENGINE_PAUSED** (only when the owner pauses; the system never pauses itself)
 ```text
@@ -337,7 +349,7 @@ A win means net R above zero after costs. Time exits count as wins or losses by 
 ```text
 signal:<id>:confirmed   signal:<id>:tp1   signal:<id>:closed   signal:<id>:review
 news:<eventId>:upcoming   news:<eventId>:released   news:<clusterId>:headline   move:<id>:spike
-health:<kind>@<startMs>:degraded   health:<kind>@<startMs>:recovered      (kind: STALE or DISCONNECT; the start of the incident in epoch ms)
+health:<kind>@<startMs>:degraded   health:<kind>@<startMs>:recovered      (kind: STALE, DISCONNECT or HEADLINES; the start of the incident in epoch ms)
 engine:<pauseId>:paused   storage:<yyyymmdd>:warning                      (pauseId: the epoch ms at which the pause began)
 report:daily:<yyyymmdd>   report:monthly:<yyyymm>
 test:<uuid>

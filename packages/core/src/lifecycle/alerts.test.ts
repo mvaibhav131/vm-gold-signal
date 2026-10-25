@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { NOTIFICATION_KINDS } from '../domain';
 import { RESULT_TTL_SEC, signalEventKey } from '../messages/push';
+import { NEWS_ALERTS } from '../news/test-data';
 import {
   renderFinalReview,
   renderSignalCancelled,
@@ -44,7 +45,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
   },
-  newsAlerts: { minImpact: 'HIGH' },
+  newsAlerts: NEWS_ALERTS,
 };
 
 const settings = (change: {

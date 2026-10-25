@@ -2,9 +2,14 @@ import {
   enginePausedMessage,
   feedDegradedMessage,
   feedRecoveredMessage,
+  headlineFeedsBackMessage,
+  headlineFeedsDownMessage,
+  marketMoveMessage,
+  newsHeadlineMessage,
   newsReleasedMessage,
   newsUpcomingMessage,
   parseCommand,
+  possibleCauses,
   renderFinalReview,
   renderSignalCancelled,
   renderSignalClosed,
@@ -13,6 +18,9 @@ import {
   testMessage,
   type CalendarRecord,
   type DisplayOptions,
+  type HeadlineCluster,
+  type MoveDetection,
+  type UnclassifiedHeadline,
 } from '@vmgs/core';
 
 import {
@@ -55,6 +63,37 @@ const CPI: CalendarRecord = {
   timeMode: 'exact',
   firstSeenAt: DECIDED_AT,
   actualFirstSeenAt: null,
+};
+
+/** A story two outlets ran, 2 minutes before the example time, and one that no rule recognised. */
+const STORY: HeadlineCluster = {
+  id: 'sample',
+  title: 'Fed officials signal rates may stay higher for longer',
+  url: 'https://example.com/fed-officials-signal-rates',
+  sources: [
+    { key: 'cnbc_top', name: 'CNBC' },
+    { key: 'bbc_world', name: 'BBC News' },
+  ],
+  topics: ['FED_RATES'],
+  impact: 'HIGH',
+  publishedAt: DECIDED_AT - 2 * MINUTE,
+  firstSeenAt: DECIDED_AT - MINUTE,
+};
+const OTHER_STORY: UnclassifiedHeadline = {
+  title: 'Local bakery wins a prize',
+  url: 'https://example.com/bakery',
+  sourceName: 'Al Jazeera',
+  publishedAt: DECIDED_AT - 3 * MINUTE,
+  firstSeenAt: DECIDED_AT - 2 * MINUTE,
+};
+const SPIKE: MoveDetection = {
+  kind: 'SPIKE_UP',
+  windowS: 240,
+  moveUsd: 10,
+  moveAtr: 3.3,
+  basis: '5m',
+  atr: 3,
+  at: DECIDED_AT,
 };
 
 /**
@@ -128,6 +167,48 @@ export function sampleMessages(options: DisplayOptions): Sample[] {
         },
         options,
       ).telegram.text,
+    },
+    {
+      name: 'NEWS_HEADLINE',
+      text: newsHeadlineMessage(
+        {
+          cluster: STORY,
+          detectedAt: DECIDED_AT,
+          since: { usd: 2.4, atr: 0.8, spread: 0.12 },
+          history: { topic: 'FED_RATES', impact: 'HIGH', n: 64, share: 0.42, baseline: 0.18 },
+        },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'MARKET_MOVE, with possible causes',
+      text: marketMoveMessage(
+        {
+          detection: SPIKE,
+          spread: 0.2,
+          causes: possibleCauses([STORY], [OTHER_STORY], DECIDED_AT),
+          feed: 'AVAILABLE',
+          open: [{ seq: 46, side: 'BUY', unrealisedR: 1.4 }],
+        },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'MARKET_MOVE, no matching headline',
+      text: marketMoveMessage(
+        { detection: SPIKE, spread: 0.2, causes: [], feed: 'AVAILABLE', open: [] },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'SYSTEM_DEGRADED, the headline feeds',
+      text: headlineFeedsDownMessage({ since: DECIDED_AT, silentMs: 11 * MINUTE }, options).telegram
+        .text,
+    },
+    {
+      name: 'SYSTEM_RECOVERED, the headline feeds',
+      text: headlineFeedsBackMessage({ at: DECIDED_AT + 13 * MINUTE, downMs: 13 * MINUTE }, options)
+        .telegram.text,
     },
     { name: 'TEST', text: testMessage(DECIDED_AT, options).telegram.text },
   ];

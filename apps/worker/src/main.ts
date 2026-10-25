@@ -1,5 +1,5 @@
 import { defaultStrategyConfig, workerEnvSchema, parseEnv } from '@vmgs/config';
-import { STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows } from '@vmgs/core';
+import { STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows, unrealisedR } from '@vmgs/core';
 import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
 import { createPool } from '@vmgs/db';
@@ -16,6 +16,15 @@ import { BiquoteCalendarClient } from './calendar/provider';
 import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
 import { OutcomeTracker } from './lifecycle/tracker';
+import { NewsAlerts } from './news/alerts';
+import { UnclassifiedBuffer } from './news/buffer';
+import { DEFAULT_FEEDS, HeadlineFeedClient } from './news/feeds';
+import { ImpactMeasurer } from './news/impact';
+import { MarketMoveDetector } from './news/moves';
+import { NewsPoller } from './news/poller';
+import { PostgresMarketReader } from './news/postgresMarketReader';
+import { PostgresNewsStore } from './news/postgresStore';
+import { NewsFeedWatcher } from './news/watcher';
 import { PostgresRecorderStore } from './postgresStore';
 import { RecorderWorker } from './recorder';
 import { TelegramBot } from './telegram/bot';
@@ -81,6 +90,8 @@ async function main(): Promise<void> {
     onFatalError,
     log,
   });
+  // The move detector is built after the alert machinery; the recorder may deliver ticks before that.
+  let moves: MarketMoveDetector | null = null;
   const worker = new RecorderWorker({
     feed,
     store: new PostgresRecorderStore(pool),
@@ -88,6 +99,7 @@ async function main(): Promise<void> {
     providerName: provider.name,
     onPersistedTicks: (ticks) => {
       tracker.onPersistedTicks(ticks);
+      moves?.onTicks(ticks);
     },
     onFatalError,
   });
@@ -184,11 +196,77 @@ async function main(): Promise<void> {
       },
       log,
     });
+    // Headlines and sudden moves (B25b): the poller reads the free feeds into `news_items`, the alerts tell
+    // about the stories that matter, the watcher about the feeds themselves, the measurer records what gold
+    // did after each story, and the detector watches the stored ticks for a sudden move.
+    const newsStore = new PostgresNewsStore(pool);
+    const marketReader = new PostgresMarketReader(pool, TRADED_SYMBOL);
+    const unclassified = new UnclassifiedBuffer();
+    const newsAlerts = new NewsAlerts({
+      news: newsStore,
+      impact: newsStore,
+      market: marketReader,
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
+    const newsPoller = new NewsPoller({
+      feeds: DEFAULT_FEEDS,
+      client: new HeadlineFeedClient(),
+      store: newsStore,
+      buffer: unclassified,
+      onNew: () => {
+        newsAlerts.nudge();
+      },
+      log,
+    });
+    const newsWatcher = new NewsFeedWatcher({
+      store: newsStore,
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
+    const impactMeasurer = new ImpactMeasurer({ impact: newsStore, market: marketReader, log });
+    moves = new MarketMoveDetector({
+      market: marketReader,
+      news: newsStore,
+      moves: newsStore,
+      buffer: unclassified,
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      open: async () => {
+        const rows = await botStore.open();
+        const quote = rows.length === 0 ? null : await botStore.quote(Date.now(), 120_000);
+        return rows.map((row) => {
+          const price = quote === null ? null : row.side === 'BUY' ? quote.bid : quote.ask;
+          return {
+            seq: row.seq,
+            side: row.side,
+            unrealisedR: price === null ? null : unrealisedR(row, price),
+          };
+        });
+      },
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
     sender.start();
     health.start();
     bot?.start();
     calendarPoller.start();
     calendarAlerts.start();
+    newsPoller.start();
+    newsAlerts.start();
+    newsWatcher.start();
+    impactMeasurer.start();
+    moves.start();
 
     log('info', 'record-only worker started', {
       provider: provider.name,
@@ -197,9 +275,15 @@ async function main(): Promise<void> {
       telegram: bot !== null,
       webpush: VAPID_PUBLIC_KEY !== undefined,
       calendar: calendarProvider.name,
+      headlineFeeds: DEFAULT_FEEDS.map((source) => source.key),
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    await moves.stop();
+    await impactMeasurer.stop();
+    await newsWatcher.stop();
+    await newsAlerts.stop();
+    await newsPoller.stop();
     await calendarAlerts.stop();
     await calendarPoller.stop();
     await bot?.stop();
@@ -214,6 +298,7 @@ async function main(): Promise<void> {
       sender: sender.stats,
       bot: bot?.stats ?? null,
       calendar: calendarPoller.stats,
+      news: newsPoller.stats,
     });
   } finally {
     process.off('SIGINT', onSignal);

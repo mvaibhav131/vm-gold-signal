@@ -1,4 +1,11 @@
-import type { FeedState, Locale, MacroImportance, StrategyStatus } from '../domain';
+import type {
+  FeedState,
+  Locale,
+  MacroImportance,
+  NewsImpact,
+  NewsTopic,
+  StrategyStatus,
+} from '../domain';
 
 // The fixed words of the command replies and of the system messages, in English and in Hinglish
 // (Hindi in Latin letters), like `messages/words.ts`: only labels and sentences are translated, the
@@ -145,6 +152,54 @@ export interface AlertWords {
   readonly goldAfter: (seconds: number, move: string, spread: string | null) => string;
   readonly releasedWindowNote: string;
   readonly calendarUnavailable: string;
+  // Headlines, market moves and the headline feeds.
+  readonly topicName: Readonly<Record<NewsTopic, string>>;
+  readonly impactName: Readonly<Record<NewsImpact, string>>;
+  readonly headlineTitle: (impact: string, topics: string) => string;
+  readonly headlineSeen: (
+    sources: string,
+    published: string | null,
+    detected: string,
+    delay: string | null,
+  ) => string;
+  readonly goldSince: (move: string, atr: string | null, spread: string | null) => string;
+  readonly goldSinceNone: string;
+  readonly topicHistory: (
+    impact: string,
+    topic: string,
+    share: string,
+    n: number,
+    baseline: string | null,
+  ) => string;
+  readonly topicHistoryNone: string;
+  readonly headlineLink: (url: string) => string;
+  readonly headlineNote: string;
+  readonly moveTitle: (
+    direction: 'UP' | 'DOWN',
+    move: string,
+    span: string,
+    multiple: string,
+    basis: string,
+    spread: string | null,
+    at: string,
+  ) => string;
+  readonly causesTitle: string;
+  readonly causeLine: (
+    n: number,
+    impact: string,
+    title: string,
+    sources: string,
+    at: string,
+  ) => string;
+  readonly causeUnclassified: (n: number, title: string, sources: string, at: string) => string;
+  readonly noCause: string;
+  readonly causesUnavailable: string;
+  readonly moveOpen: (list: string | null) => string;
+  readonly headlineFeedsDownTitle: (since: string) => string;
+  readonly headlineFeedsSilent: (span: string) => string;
+  readonly headlineFeedsDownBody: string;
+  readonly headlineFeedsBackTitle: (at: string, span: string) => string;
+  readonly headlineFeedsBackBody: string;
   readonly sampleBanner: string;
   readonly sampleBannerLong: string;
 }
@@ -270,6 +325,48 @@ const en: AlertWords = {
   releasedWindowNote:
     'Signals in this window carry a NEWS WINDOW warning until spread and ATR normalise.',
   calendarUnavailable: 'Next HIGH-impact event: unknown (the calendar feed is unavailable)',
+  topicName: {
+    FED_RATES: 'Fed and rates',
+    USD_DOLLAR: 'US dollar',
+    INFLATION_JOBS: 'Inflation and jobs',
+    GEOPOLITICS_WAR: 'Geopolitics',
+    TRUMP_POLICY: 'Trump policy',
+    CENTRAL_BANK_GOLD: 'Central-bank gold',
+    GOLD_DIRECT: 'Gold',
+    RISK_OFF: 'Risk-off',
+  },
+  impactName: { HIGH: 'HIGH', MEDIUM: 'MED', LOW: 'LOW' },
+  headlineTitle: (impact, topics) => `HEADLINE (${impact}) | ${topics}`,
+  headlineSeen: (sources, published, detected, delay) =>
+    published === null || delay === null
+      ? `Seen in: ${sources}. No publication time given, detected ${detected}.`
+      : `Seen in: ${sources}. Published ${published}, detected ${detected} (${delay} later).`,
+  goldSince: (move, atr, spread) =>
+    `Gold since publication: ${move} USD${atr === null ? '' : ` (${atr} x ATR 5m)`}${spread === null ? '' : `, spread ${spread}`}.`,
+  goldSinceNone: 'Gold since publication: not measured (no recent tick).',
+  topicHistory: (impact, topic, share, n, baseline) =>
+    `Topic history: ${impact} ${topic} headlines moved gold by 1 ATR or more in ${share} of cases (n=${String(n)}${baseline === null ? '' : `, normal ${baseline}`}).`,
+  topicHistoryNone: 'Topic history: not enough data yet.',
+  headlineLink: (url) => `Link: ${url}`,
+  headlineNote: 'This is context, not a signal. Whether the headline caused the move is not known.',
+  moveTitle: (direction, move, span, multiple, basis, spread, at) =>
+    `GOLD SPIKE ${direction} ${move} USD in ${span} (${multiple} x ATR ${basis})${spread === null ? '' : `, spread ${spread}`} at ${at}.`,
+  causesTitle: 'Possible causes, not confirmed (headlines in the previous 30 min, by impact):',
+  causeLine: (n, impact, title, sources, at) =>
+    `${String(n)}. ${impact}  "${title}" (${sources}, ${at})`,
+  causeUnclassified: (n, title, sources, at) =>
+    `${String(n)}. (unclassified, timing only) "${title}" (${sources}, ${at})`,
+  noCause:
+    'No matching headline found in the free feeds. The move may be technical, flow-driven, or the news may not be in these feeds yet.',
+  causesUnavailable:
+    'The headline feeds are unavailable, so possible causes could not be checked. The move may be technical, flow-driven, or news.',
+  moveOpen: (list) => (list === null ? 'Open signals: none.' : `Open signals: ${list}.`),
+  headlineFeedsDownTitle: (since) => `HEADLINE FEEDS DOWN since ${since}`,
+  headlineFeedsSilent: (span) => `(no feed answered for ${span})`,
+  headlineFeedsDownBody:
+    'Headline alerts and the news line of new signals are unavailable. The price feed, the calendar and open signals are not affected.',
+  headlineFeedsBackTitle: (at, span) => `HEADLINE FEEDS BACK ${at} after ${span}.`,
+  headlineFeedsBackBody: 'Headline alerts and the news line of signals work again.',
   sampleBanner: 'SAMPLE, not a real signal',
   sampleBannerLong: 'SAMPLE MESSAGE for review: made-up numbers, not a signal, nothing to trade.',
 };
@@ -397,6 +494,48 @@ const hinglish: AlertWords = {
   releasedWindowNote:
     'Is window ke signals par NEWS WINDOW chetavni rahegi jab tak spread aur ATR normal nahi hote.',
   calendarUnavailable: 'Agla HIGH-impact event: pata nahi (calendar feed available nahi hai)',
+  topicName: {
+    FED_RATES: 'Fed aur rates',
+    USD_DOLLAR: 'US dollar',
+    INFLATION_JOBS: 'Inflation aur jobs',
+    GEOPOLITICS_WAR: 'Geopolitics',
+    TRUMP_POLICY: 'Trump policy',
+    CENTRAL_BANK_GOLD: 'Central bank gold',
+    GOLD_DIRECT: 'Gold',
+    RISK_OFF: 'Risk-off',
+  },
+  impactName: { HIGH: 'HIGH', MEDIUM: 'MED', LOW: 'LOW' },
+  headlineTitle: (impact, topics) => `HEADLINE (${impact}) | ${topics}`,
+  headlineSeen: (sources, published, detected, delay) =>
+    published === null || delay === null
+      ? `Dikhi: ${sources}. Publication time nahi diya, detect hui ${detected}.`
+      : `Dikhi: ${sources}. Published ${published}, detect hui ${detected} (${delay} baad).`,
+  goldSince: (move, atr, spread) =>
+    `Publication ke baad gold: ${move} USD${atr === null ? '' : ` (${atr} x ATR 5m)`}${spread === null ? '' : `, spread ${spread}`}.`,
+  goldSinceNone: 'Publication ke baad gold: naapa nahi gaya (haal ka tick nahi).',
+  topicHistory: (impact, topic, share, n, baseline) =>
+    `Topic ka record: ${impact} ${topic} headlines ke baad gold ${share} baar 1 ATR ya zyada hila (n=${String(n)}${baseline === null ? '' : `, normal ${baseline}`}).`,
+  topicHistoryNone: 'Topic ka record: abhi kaafi data nahi.',
+  headlineLink: (url) => `Link: ${url}`,
+  headlineNote: 'Ye context hai, signal nahi. Headline se move hua ya nahi, ye pata nahi.',
+  moveTitle: (direction, move, span, multiple, basis, spread, at) =>
+    `GOLD SPIKE ${direction} ${move} USD ${span} mein (${multiple} x ATR ${basis})${spread === null ? '' : `, spread ${spread}`}, ${at} par.`,
+  causesTitle: 'Possible causes, confirm nahi (pichhle 30 min ki headlines, impact ke hisaab se):',
+  causeLine: (n, impact, title, sources, at) =>
+    `${String(n)}. ${impact}  "${title}" (${sources}, ${at})`,
+  causeUnclassified: (n, title, sources, at) =>
+    `${String(n)}. (unclassified, sirf timing) "${title}" (${sources}, ${at})`,
+  noCause:
+    'Free feeds mein koi matching headline nahi mili. Move technical ya flow se ho sakta hai, ya news in feeds mein abhi aayi nahi.',
+  causesUnavailable:
+    'Headline feeds available nahi hain, isliye possible causes check nahi ho sake. Move technical, flow ya news se ho sakta hai.',
+  moveOpen: (list) => (list === null ? 'Khule signals: koi nahi.' : `Khule signals: ${list}.`),
+  headlineFeedsDownTitle: (since) => `HEADLINE FEEDS BAND, ${since} se`,
+  headlineFeedsSilent: (span) => `(${span} se kisi feed ne jawab nahi diya)`,
+  headlineFeedsDownBody:
+    'Headline alerts aur naye signals ki news line available nahi hain. Price feed, calendar aur khule signals par asar nahi.',
+  headlineFeedsBackTitle: (at, span) => `HEADLINE FEEDS WAPAS ${at}, ${span} baad.`,
+  headlineFeedsBackBody: 'Headline alerts aur signals ki news line phir chal rahi hain.',
   sampleBanner: 'SAMPLE, asli signal nahi',
   sampleBannerLong:
     'SAMPLE MESSAGE review ke liye: banaye hue numbers, signal nahi, trade karne ke liye kuch nahi.',

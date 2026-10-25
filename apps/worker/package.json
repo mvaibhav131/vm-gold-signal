@@ -16,6 +16,7 @@
     "@vmgs/core": "workspace:*",
     "@vmgs/db": "workspace:*",
     "@vmgs/feed": "workspace:*",
+    "fast-xml-parser": "5.11.2",
     "web-push": "3.6.7"
   },
   "devDependencies": {

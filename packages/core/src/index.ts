@@ -15,6 +15,7 @@ export * from './indicators';
 export * from './levels';
 export * from './lifecycle';
 export * from './messages';
+export * from './news';
 export * from './patterns';
 export * from './quality';
 export * from './regime';

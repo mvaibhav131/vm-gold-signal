@@ -6,6 +6,7 @@ import { checkTelegramHtml } from '../messages/markup';
 import { ICON } from '../messages/style';
 import { plain } from '../messages/test-html';
 import type { DisplayOptions } from '../messages/types';
+import { NEWS_ALERTS } from '../news/test-data';
 import {
   SYSTEM_TTL_MS,
   alreadyPausedReply,
@@ -253,7 +254,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
   },
-  newsAlerts: { minImpact: 'HIGH' },
+  newsAlerts: NEWS_ALERTS,
 };
 
 describe('systemChannels', () => {

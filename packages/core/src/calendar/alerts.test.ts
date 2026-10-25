@@ -6,6 +6,7 @@ import { checkTelegramHtml } from '../messages/markup';
 import { ICON } from '../messages/style';
 import { plain } from '../messages/test-html';
 import type { DisplayOptions } from '../messages/types';
+import { NEWS_ALERTS } from '../news/test-data';
 import {
   GOLD_AFTER_READY_MS,
   RELEASED_TTL_MS,
@@ -66,7 +67,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
   },
-  newsAlerts: { minImpact: 'HIGH' },
+  newsAlerts: NEWS_ALERTS,
 };
 
 describe('the keys and the numbers', () => {
@@ -314,20 +315,24 @@ describe('calendarChannels', () => {
     expect(calendarChannels(SETTINGS, 'NEWS_UPCOMING', 'medium')).toEqual([]);
     expect(
       calendarChannels(
-        { ...SETTINGS, newsAlerts: { minImpact: 'MEDIUM' } },
+        { ...SETTINGS, newsAlerts: { ...SETTINGS.newsAlerts, minImpact: 'MEDIUM' } },
         'NEWS_RELEASED',
         'medium',
       ),
     ).toEqual(['telegram', 'webpush']);
     expect(
       calendarChannels(
-        { ...SETTINGS, newsAlerts: { minImpact: 'MEDIUM' } },
+        { ...SETTINGS, newsAlerts: { ...SETTINGS.newsAlerts, minImpact: 'MEDIUM' } },
         'NEWS_RELEASED',
         'low',
       ),
     ).toEqual([]);
     expect(
-      calendarChannels({ ...SETTINGS, newsAlerts: { minImpact: 'LOW' } }, 'NEWS_RELEASED', 'low'),
+      calendarChannels(
+        { ...SETTINGS, newsAlerts: { ...SETTINGS.newsAlerts, minImpact: 'LOW' } },
+        'NEWS_RELEASED',
+        'low',
+      ),
     ).toEqual(['telegram', 'webpush']);
   });
 
