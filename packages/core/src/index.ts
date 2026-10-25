@@ -8,6 +8,7 @@ export * from './candlesticks';
 export * from './context';
 export * from './divergence';
 export * from './domain';
+export * from './engine';
 export * from './evidence';
 export * from './explain';
 export * from './gates';

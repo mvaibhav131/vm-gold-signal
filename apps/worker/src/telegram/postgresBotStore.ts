@@ -1,15 +1,19 @@
 import { engineStateSchema } from '@vmgs/contracts';
 import {
+  ENGINE_STATE_MAX_AGE_MS,
+  REGIMES,
   STRATEGY_KEYS,
   TRADED_SYMBOL,
   calendarAvailable,
   type PeriodRow,
+  type Regime,
   type StoredEngine,
   type TimeWindow,
 } from '@vmgs/core';
 import type { Pool } from 'pg';
 
 import { CALENDAR_HEARTBEAT } from '../calendar/postgresStore';
+import { ENGINE_STATE_KEY } from '../engine/postgresStore';
 import type { BotStore, OpenSignalRow, StatusFacts } from './botStore';
 import type { PendingLink } from './link';
 
@@ -27,6 +31,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const LAST_KINDS = ['SIGNAL_CLOSED', 'SIGNAL_CANCELLED', 'SIGNAL_REVIEW_FINAL'];
+
+/**
+ * The regime and the wait reasons of the engine state that the decision loop stored, when it is recent. What is
+ * stored is read defensively: a value that is not what the loop writes shows nothing rather than something wrong.
+ */
+function freshEngineState(
+  value: unknown,
+  now: number,
+): { regime: Regime | null; waitReasons: string[] } {
+  const none = { regime: null, waitReasons: [] };
+  if (!isRecord(value)) return none;
+  const { evaluatedAt, regime, waitReasons } = value;
+  if (typeof evaluatedAt !== 'number' || now - evaluatedAt > ENGINE_STATE_MAX_AGE_MS) return none;
+  return {
+    regime:
+      typeof regime === 'string' && (REGIMES as readonly string[]).includes(regime)
+        ? (regime as Regime)
+        : null,
+    waitReasons: Array.isArray(waitReasons)
+      ? (waitReasons as unknown[]).flatMap((item) =>
+          isRecord(item) && typeof item.label === 'string' ? [item.label] : [],
+        )
+      : [],
+  };
+}
 
 /**
  * The bot's facts from PostgreSQL. The link and the owner's pause live in `app_settings`
@@ -129,7 +158,7 @@ export class PostgresBotStore implements BotStore {
   }
 
   async status(now: number): Promise<StatusFacts> {
-    const [open, next, strategies, calendar] = await Promise.all([
+    const [open, next, strategies, calendar, engine] = await Promise.all([
       this.pool.query<{ status: 'ACTIVE' | 'TP1_HIT' }>(
         "SELECT status FROM signal_state WHERE status IN ('ACTIVE', 'TP1_HIT')",
       ),
@@ -151,12 +180,16 @@ export class PostgresBotStore implements BotStore {
         'SELECT heartbeat_at FROM worker_heartbeats WHERE worker_name = $1',
         [CALENDAR_HEARTBEAT],
       ),
+      this.setting(ENGINE_STATE_KEY),
     ]);
     const first = next.rows[0];
+    const state = freshEngineState(engine, now);
     return {
       nextHigh: first === undefined ? null : { name: first.name, at: first.scheduled_at.getTime() },
       calendarAvailable: calendarAvailable(calendar.rows[0]?.heartbeat_at.getTime() ?? null, now),
       openStatuses: open.rows.map((row) => row.status),
+      regime: state.regime,
+      waitReasons: state.waitReasons,
       strategies: strategies.rows
         .map((row) => ({ key: row.strategy_key, version: row.version, status: row.status }))
         .sort((a, b) => STRATEGY_KEYS.indexOf(a.key) - STRATEGY_KEYS.indexOf(b.key)),

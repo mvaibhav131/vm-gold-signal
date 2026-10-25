@@ -1,4 +1,5 @@
 export * from './canonical';
+export * from './engineSpec';
 export * from './env';
 export * from './gateParams';
 export * from './patternBreakoutParams';

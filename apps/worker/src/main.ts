@@ -1,4 +1,4 @@
-import { defaultStrategyConfig, workerEnvSchema, parseEnv } from '@vmgs/config';
+import { defaultStrategyConfig, strategySpecOf, workerEnvSchema, parseEnv } from '@vmgs/config';
 import { STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows, unrealisedR } from '@vmgs/core';
 import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
@@ -15,11 +15,13 @@ import { PostgresCalendarStore } from './calendar/postgresStore';
 import { BiquoteCalendarClient } from './calendar/provider';
 import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
+import { SignalCreator } from './lifecycle/signals';
 import { OutcomeTracker } from './lifecycle/tracker';
 import { RollupReconcileJob, RetentionJob, SizeGuard } from './maintenance/jobs';
 import { PostgresMaintenanceStore, StatfsDisk } from './maintenance/postgresStore';
 import { MaintenanceRunner } from './maintenance/runner';
 import { NewsAlerts } from './news/alerts';
+import { NewsContextReader } from './news/context';
 import { UnclassifiedBuffer } from './news/buffer';
 import { DEFAULT_FEEDS, HeadlineFeedClient } from './news/feeds';
 import { ImpactMeasurer } from './news/impact';
@@ -29,6 +31,9 @@ import { PostgresMarketReader } from './news/postgresMarketReader';
 import { PostgresNewsStore } from './news/postgresStore';
 import { NewsFeedWatcher } from './news/watcher';
 import { PostgresRecorderStore } from './postgresStore';
+import { calendarContextOf } from './engine/context';
+import { DecisionLoop } from './engine/loop';
+import { PostgresEngineStore } from './engine/postgresStore';
 import { RecorderWorker } from './recorder';
 import { PostgresReportStore } from './reports/postgresStore';
 import { ReportScheduler } from './reports/scheduler';
@@ -55,7 +60,7 @@ async function main(): Promise<void> {
     throw new Error('the record-only worker runtime currently requires FEED_PROVIDER=biquote');
   }
 
-  const pool = createPool(env.DATABASE_URL_WORKER, { max: 6 });
+  const pool = createPool(env.DATABASE_URL_WORKER, { max: 8 });
   let resolveStop: (reason: StopReason) => void = () => undefined;
   const stopRequested = new Promise<StopReason>((resolve) => {
     resolveStop = resolve;
@@ -87,12 +92,26 @@ async function main(): Promise<void> {
   // The outcome tracker follows open signals on the ticks the recorder has stored. It starts first:
   // it rebuilds every open signal from the stored ticks before the live feed adds to them.
   const lifecycle = new PostgresLifecycleStore(pool);
-  for (const key of STRATEGY_KEYS)
-    await lifecycle.ensureStrategyVersion(defaultStrategyConfig(key));
+  const configs = STRATEGY_KEYS.map((key) => defaultStrategyConfig(key));
+  const specs = [];
+  for (const config of configs) {
+    const stored = await lifecycle.ensureStrategyVersion(config);
+    specs.push(strategySpecOf(config, stored.status));
+  }
+  // The decision loop owns the candles and features of the engine, so it knows the regime at the close of a trade
+  // and the changes of character that the review asks for; it is built later, the tracker asks it once it is there.
+  let decisions: DecisionLoop | null = null;
   const tracker = new OutcomeTracker({
     store: lifecycle,
     market: lifecycle,
-    course: new DatabaseCourseSource(lifecycle),
+    course: new DatabaseCourseSource(lifecycle, {
+      contextOf: (trade, closedAt) =>
+        Promise.resolve(
+          decisions === null
+            ? { regimeAtClose: null, structureBreaks: [] }
+            : decisions.contextOf(trade, closedAt),
+        ),
+    }),
     onFatalError,
     log,
   });
@@ -106,6 +125,9 @@ async function main(): Promise<void> {
     onPersistedTicks: (ticks) => {
       tracker.onPersistedTicks(ticks);
       moves?.onTicks(ticks);
+    },
+    onPersistedCandles: () => {
+      decisions?.wake();
     },
     onFatalError,
   });
@@ -296,6 +318,30 @@ async function main(): Promise<void> {
       },
       log,
     });
+    // The decision loop (B26b): candles of the database to signals. It warms up from the stored candles, then
+    // follows the table and decides every 5m candle on its confirming quote; the recorder wakes it.
+    const creator = new SignalCreator({
+      store: lifecycle,
+      onCreated: (signalId) => tracker.register(signalId),
+    });
+    await creator.registerStrategies(configs);
+    const loop = new DecisionLoop({
+      specs,
+      store: new PostgresEngineStore(pool, TRADED_SYMBOL),
+      creator,
+      calendar: calendarContextOf(calendarStore),
+      news: new NewsContextReader(newsStore),
+      feed: () => {
+        const { connected, tickAgeMs, providerStale, marketState, clockSkewMs } = feed.health();
+        return { facts: { connected, tickAgeMs, providerStale, marketState }, clockSkewMs };
+      },
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
+    await loop.warmUp();
+    decisions = loop;
     sender.start();
     health.start();
     bot?.start();
@@ -308,6 +354,7 @@ async function main(): Promise<void> {
     moves.start();
     maintenance.start();
     reports.start();
+    loop.start();
 
     log('info', 'record-only worker started', {
       provider: provider.name,
@@ -317,9 +364,11 @@ async function main(): Promise<void> {
       webpush: VAPID_PUBLIC_KEY !== undefined,
       calendar: calendarProvider.name,
       headlineFeeds: DEFAULT_FEEDS.map((source) => source.key),
+      engineCandles: loop.counts,
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    await loop.stop();
     await reports.stop();
     await maintenance.stop();
     await moves.stop();
@@ -342,6 +391,7 @@ async function main(): Promise<void> {
       bot: bot?.stats ?? null,
       calendar: calendarPoller.stats,
       news: newsPoller.stats,
+      decisions: loop.stats,
     });
   } finally {
     process.off('SIGINT', onSignal);

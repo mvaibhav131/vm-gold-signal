@@ -130,7 +130,7 @@ Who is answered: a private chat that is the linked one, and nobody else. Groups,
 | `/pause [minutes]`, `/resume` | Pause or resume new signals. `/pause` lasts until `/resume`, `/pause 30` ends by itself after 30 minutes (1 to 10080); a timed pause that has run out counts as running. The pause is written to `app_settings.engine`. The reply to `/pause` is the `ENGINE_PAUSED` message itself; the other channel gets it through the outbox under the same event key. |
 | `/help`, `/start` | Command list; a short hello |
 
-A reply is never longer than Telegram allows: long lists are cut with an "and N more" line. `/open` needs a quote no older than 2 minutes for the live R, and says so instead of guessing when there is none. Until the decision engine exists (B26b), `/status` shows the regime as "not known yet" and `/open` shows no wait reasons.
+A reply is never longer than Telegram allows: long lists are cut with an "and N more" line. `/open` needs a quote no older than 2 minutes for the live R, and says so instead of guessing when there is none. `/status` shows the regime and `/open` the reasons for waiting from the engine state that the decision loop stores (`app_settings.engineState`, section 10.1 of `02`); when that state is older than 12 hours, or not there yet, `/status` shows the regime as "not known yet" and `/open` shows no wait reasons.
 
 ### Delivery rules
 

@@ -213,6 +213,63 @@ describe('the facts of /status and /open', () => {
     await query(world.database.url, "DELETE FROM worker_heartbeats WHERE worker_name = 'calendar'");
   });
 
+  describe('the engine state the decision loop stores', () => {
+    const put = (value: unknown) =>
+      query(
+        world.database.url,
+        `INSERT INTO app_settings (key, value) VALUES ('engineState', $1::jsonb)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [JSON.stringify(value)],
+      );
+    const state = (evaluatedAt: number, change: Record<string, unknown> = {}) => ({
+      evaluatedAt,
+      regime: 'TREND_UP',
+      waitReasons: [
+        { code: 'SPREAD_OK', label: 'Spread is too wide' },
+        { code: 'WARMUP', label: 'Engine is still warming up' },
+      ],
+      ...change,
+    });
+    const reset = () =>
+      query(world.database.url, "DELETE FROM app_settings WHERE key = 'engineState'");
+
+    it('reads the regime and the reasons it waits for', async () => {
+      await put(state(FILL_AT - 5 * MINUTE));
+      const facts = await store.status(FILL_AT);
+      expect(facts.regime).toBe('TREND_UP');
+      expect(facts.waitReasons).toEqual(['Spread is too wide', 'Engine is still warming up']);
+      await reset();
+    });
+
+    it('trusts the state for 12 hours and no longer', async () => {
+      const twelveHours = 12 * 60 * MINUTE;
+      await put(state(FILL_AT - twelveHours));
+      expect((await store.status(FILL_AT)).regime).toBe('TREND_UP');
+      await put(state(FILL_AT - twelveHours - 1));
+      expect(await store.status(FILL_AT)).toMatchObject({ regime: null, waitReasons: [] });
+      await reset();
+    });
+
+    it('knows nothing when there is no state yet', async () => {
+      await reset();
+      expect(await store.status(FILL_AT)).toMatchObject({ regime: null, waitReasons: [] });
+    });
+
+    it('keeps the good parts of a damaged state and ignores the rest', async () => {
+      await put(
+        state(FILL_AT, { regime: 'SIDEWAYS_AND_LOUD', waitReasons: [{ code: 'X' }, 7, 'x'] }),
+      );
+      expect(await store.status(FILL_AT)).toMatchObject({ regime: null, waitReasons: [] });
+      await put({ evaluatedAt: 'now', regime: 'TREND_UP' });
+      expect((await store.status(FILL_AT)).regime).toBeNull();
+      await put(['not', 'an', 'object']);
+      expect(await store.status(FILL_AT)).toMatchObject({ regime: null, waitReasons: [] });
+      await put(state(FILL_AT, { waitReasons: 'none' }));
+      expect(await store.status(FILL_AT)).toMatchObject({ regime: 'TREND_UP', waitReasons: [] });
+      await reset();
+    });
+  });
+
   it('lists only the newest version of each strategy', async () => {
     await world.store.ensureStrategyVersion({ ...STRATEGY, version: '0.2.0' });
     const { strategies } = await store.status(FILL_AT);

@@ -279,6 +279,33 @@ describe('record-only worker', () => {
     expect(lost).toEqual([]);
     expect(failing.ticks).toEqual([]);
   });
+
+  it('hands the closed candles of a batch on after they were written, and nothing for a batch that closed none', async () => {
+    const provider = new ManualProvider(T, false);
+    const store = new MemoryRecorderStore();
+    const handed: { closed: string[]; storedThen: number }[] = [];
+    const worker = makeWorker(provider, store, {
+      // one frame to a batch: the batch of the first quote has a tick and no candle
+      batchSize: 1,
+      onPersistedCandles: (candles) => {
+        handed.push({
+          closed: candles.map((candle) => `${candle.symbol}:${candle.tf}`),
+          storedThen: store.candles.size,
+        });
+      },
+    });
+    await worker.start();
+    provider.push({ type: 'connection', connected: true, at: T });
+    provider.push(quote(TRADED_SYMBOL, T + 5_000, 4000));
+    // still inside the first minute: no candle has closed
+    await expect.poll(() => store.ticks.length).toBe(1);
+    expect(handed).toEqual([]);
+    provider.push(quote(TRADED_SYMBOL, T + 65_000, 4000.2));
+    await worker.stop();
+    expect(handed).toHaveLength(1);
+    expect(handed[0]?.closed).toContain(`${TRADED_SYMBOL}:1m`);
+    expect(handed[0]?.storedThen).toBeGreaterThanOrEqual(1);
+  });
 });
 
 describe('recording soak', () => {

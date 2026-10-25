@@ -323,6 +323,8 @@ describe('/status', () => {
       nextHigh: { name: 'US CPI', at: NOW + 3_600_000 },
       calendarAvailable: true,
       openStatuses: ['ACTIVE', 'TP1_HIT'],
+      regime: null,
+      waitReasons: [],
       strategies: [{ key: 'trend_pullback', version: '1.0.0', status: 'FORWARD_TESTING' }],
     };
     await say(rig, OWNER, '/status');
@@ -358,6 +360,8 @@ describe('/status', () => {
       nextHigh: null,
       calendarAvailable: true,
       openStatuses: [],
+      regime: null,
+      waitReasons: [],
       strategies: [
         { key: 'trend_pullback', version: '1.0.0', status: 'FORWARD_TESTING' },
         { key: 'pattern_breakout', version: '1.0.0', status: 'FORWARD_TESTING' },
@@ -369,6 +373,16 @@ describe('/status', () => {
     expect(text).toContain('Chart Pattern Breakout v1.0.0: FORWARD TESTING, alerts off (shadow)');
   });
 
+  it('says the regime of the engine when it has made a decision lately, and "not known yet" when it has not', async () => {
+    const rig = await build();
+    rig.store.chat = OWNER;
+    await say(rig, OWNER, '/status');
+    expect(rig.fake.textsTo(OWNER)[0]).toContain('regime: not known yet');
+    rig.store.facts = { ...rig.store.facts, regime: 'TREND_UP' };
+    await say(rig, OWNER, '/status');
+    expect(rig.fake.textsTo(OWNER)[1]).toContain('trend up');
+  });
+
   it('says the next event is unknown, not "none known", when the calendar feed is down', async () => {
     const rig = await build();
     rig.store.chat = OWNER;
@@ -376,6 +390,8 @@ describe('/status', () => {
       nextHigh: null,
       calendarAvailable: false,
       openStatuses: [],
+      regime: null,
+      waitReasons: [],
       strategies: [],
     };
     await say(rig, OWNER, '/status');
@@ -405,6 +421,19 @@ describe('/open', () => {
     rig.store.chat = OWNER;
     await say(rig, OWNER, '/open');
     expect(rig.fake.textsTo(OWNER)[0]).toMatch(/no open/i);
+  });
+
+  it('says why no signal is coming when nothing is open, from what the engine stored', async () => {
+    const rig = await build();
+    rig.store.chat = OWNER;
+    rig.store.facts = {
+      ...rig.store.facts,
+      waitReasons: ['Spread too high: 0.90 USD', 'Warming up: 1h candles are still missing'],
+    };
+    await say(rig, OWNER, '/open');
+    expect(rig.fake.textsTo(OWNER)[0]).toContain(
+      'Waiting: Spread too high: 0.90 USD, Warming up: 1h candles are still missing',
+    );
   });
 
   it('shows the live R of a BUY at the bid and of a SELL at the ask', async () => {

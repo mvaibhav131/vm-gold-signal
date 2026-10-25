@@ -12,6 +12,8 @@ export class MemoryBotStore implements BotStore {
     nextHigh: null,
     calendarAvailable: true,
     openStatuses: [],
+    regime: null,
+    waitReasons: [],
     strategies: [],
   };
   openRows: OpenSignalRow[] = [];

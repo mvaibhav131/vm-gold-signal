@@ -39,6 +39,12 @@ export interface RecorderWorkerOptions {
    * wait: hand the ticks on and return.
    */
   readonly onPersistedTicks?: (ticks: readonly TickInput[]) => void;
+  /**
+   * Called with the candles of a batch after the batch was written (a candle that has closed, of any
+   * timeframe): the decision loop looks at the table when it hears of one. Like `onPersistedTicks` it
+   * must not throw or wait.
+   */
+  readonly onPersistedCandles?: (candles: readonly MarketCandle[]) => void;
   readonly onFatalError?: (error: unknown) => void;
 }
 
@@ -87,6 +93,7 @@ export class RecorderWorker {
   private readonly maxQueuedFrames: number;
   private readonly persistTicks: boolean;
   private readonly onPersistedTicks: ((ticks: readonly TickInput[]) => void) | undefined;
+  private readonly onPersistedCandles: ((candles: readonly MarketCandle[]) => void) | undefined;
   private readonly onFatalError: (error: unknown) => void;
   private readonly builders = new Map<string, CandleBuilder>();
   private readonly rejected: Record<RejectReason, number> = {
@@ -140,6 +147,7 @@ export class RecorderWorker {
     this.partitionCheckEveryMs = options.partitionCheckEveryMs ?? PARTITION_CHECK_EVERY_MS;
     this.persistTicks = options.persistTicks ?? true;
     this.onPersistedTicks = options.onPersistedTicks;
+    this.onPersistedCandles = options.onPersistedCandles;
     this.onFatalError =
       options.onFatalError ??
       ((error) => {
@@ -392,6 +400,7 @@ export class RecorderWorker {
         throw error;
       }
       if (batch.ticks.length > 0) this.onPersistedTicks?.(batch.ticks);
+      if (batch.candles.length > 0) this.onPersistedCandles?.(batch.candles);
     }
   }
 

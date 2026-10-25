@@ -325,7 +325,7 @@ export class TelegramBot {
       feed: this.options.feed?.() ?? null,
       engine: engineFactsOf(engine, now),
       session: sessionAt(now),
-      regime: null,
+      regime: facts.regime,
       nextHigh: facts.nextHigh,
       calendarAvailable: facts.calendarAvailable,
       openCount: facts.openStatuses.length,
@@ -340,7 +340,7 @@ export class TelegramBot {
 
   private async open(display: ReturnType<typeof displayOptionsOf>, now: number) {
     const { store } = this.options;
-    const rows = await store.open();
+    const [rows, facts] = await Promise.all([store.open(), store.status(now)]);
     const quote = rows.length === 0 ? null : await store.quote(now, QUOTE_MAX_AGE_MS);
     const lines = rows.map((row) => {
       const price = quote === null ? null : row.side === 'BUY' ? quote.bid : quote.ask;
@@ -359,7 +359,7 @@ export class TelegramBot {
       };
     });
     return openReply(
-      { at: now, lines, waitReasons: [] },
+      { at: now, lines, waitReasons: facts.waitReasons },
       display,
       openRiskR(rows.map((row) => row.status)),
     );

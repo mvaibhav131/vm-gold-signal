@@ -1,6 +1,7 @@
 import type {
   OpenFacts,
   PeriodRow,
+  Regime,
   StatusData,
   StoredEngine,
   StrategyKey,
@@ -25,6 +26,10 @@ export interface StatusFacts {
   /** The calendar was read recently; otherwise `nextHigh` says nothing. */
   readonly calendarAvailable: boolean;
   readonly openStatuses: readonly ('ACTIVE' | 'TP1_HIT')[];
+  /** The regime at the latest decision of the engine; null when it was not made lately or not known. */
+  readonly regime: Regime | null;
+  /** Why no signal can be sent now (the failed market gates of the latest decision), in words. */
+  readonly waitReasons: readonly string[];
   readonly strategies: readonly {
     readonly key: StrategyKey;
     readonly version: string;
