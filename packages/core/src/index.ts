@@ -1,6 +1,7 @@
 export { PRICE_DECIMALS, TRADED_SYMBOL } from './symbol';
 
 export * from './autopsy';
+export * from './alerts';
 export * from './candles';
 export * from './candlesticks';
 export * from './context';

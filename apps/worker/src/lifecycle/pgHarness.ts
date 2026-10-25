@@ -73,8 +73,8 @@ function makeHarness(database: TestDatabase, store: PostgresLifecycleStore): Sto
         event_key: string;
         channel: string;
         kind: string;
-        signal_id: string;
-        expires_at: Date;
+        signal_id: string | null;
+        expires_at: Date | null;
         payload: Record<string, unknown>;
       }>(
         database.url,
@@ -85,7 +85,7 @@ function makeHarness(database: TestDatabase, store: PostgresLifecycleStore): Sto
         channel: row.channel,
         kind: row.kind,
         signalId: row.signal_id,
-        expiresAt: row.expires_at.getTime(),
+        expiresAt: row.expires_at === null ? null : row.expires_at.getTime(),
         payload: row.payload,
       }));
     },

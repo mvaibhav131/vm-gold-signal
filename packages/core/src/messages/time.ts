@@ -1,6 +1,19 @@
 import { zonedParts } from '../time/zone';
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+export const SHORT_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
 
 /** `IST` for Asia/Kolkata, `UTC` for UTC, else the short name that Intl gives for the zone. */
 export function zoneName(timeZone: string, at: number): string {
@@ -27,5 +40,5 @@ export function clockText(ms: number, timeZone: string, reference?: number): str
   if (other.year === parts.year && other.month === parts.month && other.day === parts.day) {
     return base;
   }
-  return `${base} (${String(parts.day)} ${MONTHS[parts.month - 1] ?? ''})`;
+  return `${base} (${String(parts.day)} ${SHORT_MONTHS[parts.month - 1] ?? ''})`;
 }

@@ -7,6 +7,7 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=../../.env --import tsx src/main.ts",
+    "cli": "node --env-file-if-exists=../../.env --import tsx src/cli/main.ts",
     "soak": "tsx src/soak.ts"
   },
   "dependencies": {
@@ -14,10 +15,12 @@
     "@vmgs/contracts": "workspace:*",
     "@vmgs/core": "workspace:*",
     "@vmgs/db": "workspace:*",
-    "@vmgs/feed": "workspace:*"
+    "@vmgs/feed": "workspace:*",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "@types/pg": "8.23.1",
+    "@types/web-push": "3.6.4",
     "pg": "8.23.1"
   }
 }

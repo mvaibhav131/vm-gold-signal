@@ -9,7 +9,10 @@ import {
 } from '../explain/test-data';
 import type { ExplanationDoc, ExplanationHeadline } from '../explain/types';
 import { DECIDED_AT } from '../trade/test-data';
-import { TELEGRAM_SOFT_LIMIT, escapeHtml } from './text';
+import { TELEGRAM_SOFT_LIMIT } from './text';
+import { checkTelegramHtml, renderHtml } from './markup';
+import { ICON, STATE_ICON } from './style';
+import { plain } from './test-html';
 import { BUY_SIGNAL, EXPLANATION, SELL_EXPLANATION, SELL_SIGNAL, newSignal } from './test-data';
 import { SIGNAL_NEW_LEVELS, renderSignalNew, signalNewLines } from './signalNew';
 import type { DisplayOptions, SignalRef } from './types';
@@ -18,83 +21,97 @@ import { WORDS } from './words';
 const IST: DisplayOptions = { locale: 'en', displayTz: 'Asia/Kolkata' };
 const HINGLISH: DisplayOptions = { locale: 'hinglish', displayTz: 'Asia/Kolkata' };
 
-const text = (data = newSignal(), options = IST): string => renderSignalNew(data, options).text;
+/** The message as Telegram receives it (HTML), and as a reader sees it (`text`: no tags). */
+const html = (data = newSignal(), options = IST): string => renderSignalNew(data, options).text;
+const text = (data = newSignal(), options = IST): string => plain(html(data, options));
 const withDoc = (change: Partial<ExplanationDoc>) =>
   newSignal(BUY_SIGNAL, { ...EXPLANATION, ...change });
 
+const SIDE = `${ICON.buy} <b>BUY XAUUSD</b>  #S-0042`;
+const GROUPS_EN = [
+  `${ICON.strong} <b>Trend STRONG</b>: 1h EMA 20&gt;50&gt;200; 1h EMA 50 slope (3 h) +0.50 ATR(1h); ADX(1h) 31 (+DI 30 / -DI 10); Supertrend 1h up`,
+  `${ICON.strong} <b>Structure STRONG</b>: Structure 15m / 5m up / up; Latest 5m break with the trade; Trendline and zone confluence 2 agree; Pullback 4021.300 → 4012.800, EMA and Fibonacci zone; 5m swing level 4014.200, closed beyond it`,
+  `${ICON.strong} <b>Trigger and momentum STRONG</b>: Trigger candle range 1.4 x ATR, closed at 85% of its range; RSI(5m) 38 → 54; MACD histogram rising 3 candles; Displacement candle yes`,
+  `${ICON.strong} <b>Volatility STRONG</b>: ATR(5m) 4.3; ATR percentile 62nd; Squeeze none`,
+  `${ICON.strong} <b>Execution STRONG</b>: Spread 0.12; Spread percentile 35th; Stop distance 1.5 x ATR`,
+  `${ICON.strong} <b>Session and macro STRONG</b>: Session London; High-impact USD event in 4 h 25 min`,
+  `${ICON.strong} <b>Reward feasibility STRONG</b>: TP1 distance 1.5 x ATR; Room to the next level 2.3 x the distance to TP1`,
+];
+const GROUPS_HI = [
+  GROUPS_EN[0],
+  GROUPS_EN[1],
+  `${ICON.strong} <b>Trigger aur momentum STRONG</b>: Trigger candle range 1.4 x ATR, closed at 85% of its range; RSI(5m) 38 → 54; MACD histogram rising 3 candles; Displacement candle yes`,
+  GROUPS_EN[3],
+  GROUPS_EN[4],
+  `${ICON.strong} <b>Session aur macro STRONG</b>: Session London; High-impact USD event in 4 h 25 min`,
+  `${ICON.strong} <b>Reward (target kitna door hai) STRONG</b>: TP1 distance 1.5 x ATR; Room to the next level 2.3 x the distance to TP1`,
+];
+
 describe('the entry alert of the example, golden', () => {
   it('in English', () => {
-    expect(text()).toBe(
+    expect(html()).toBe(
       [
-        'FORWARD-TEST (paper) | Manual execution only.',
-        'BUY XAUUSD | Trend Pullback v0.1.0 | #S-0042',
+        '<b>FORWARD-TEST (paper)</b> | Manual execution only.',
+        SIDE,
+        '<i>Trend Pullback v0.1.0</i>',
+        `${ICON.quality} <b>Setup quality 95/100 (Very strong)</b>`,
         '',
-        'Entry  4017.370   (do not chase above 4018.015)',
-        'Stop   4010.900   (-6.470)',
-        'TP1    4023.840   (1.00R)  close 50%, move stop to entry',
-        'TP2    4030.310   (2.00R)  runner',
-        'Valid for 3 min (until 11:38 IST). Time stop 2 h (13:35 IST).',
+        `${ICON.entry} <b>Entry</b>  <code>4017.370</code>  (do not chase above 4018.015)`,
+        `${ICON.stop} <b>Stop</b>  <code>4010.900</code>  (-6.470)`,
+        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (1.00R)  close 50%, move stop to entry`,
+        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (2.00R)  runner`,
+        `${ICON.time} Valid for 3 min (until 11:38 IST). Time stop 2 h (13:35 IST).`,
         '',
-        'Setup quality 95/100 (Very strong)',
-        'WHY THIS SIGNAL',
-        '[+] Trend STRONG: 1h EMA 20&gt;50&gt;200; 1h EMA 50 slope (3 h) +0.50 ATR(1h); ADX(1h) 31 (+DI 30 / -DI 10); Supertrend 1h up',
-        '[+] Structure STRONG: Structure 15m / 5m up / up; Latest 5m break with the trade; Trendline and zone confluence 2 agree; Pullback 4021.300 → 4012.800, EMA and Fibonacci zone; 5m swing level 4014.200, closed beyond it',
-        '[+] Trigger and momentum STRONG: Trigger candle range 1.4 x ATR, closed at 85% of its range; RSI(5m) 38 → 54; MACD histogram rising 3 candles; Displacement candle yes',
-        '[+] Volatility STRONG: ATR(5m) 4.3; ATR percentile 62nd; Squeeze none',
-        '[+] Execution STRONG: Spread 0.12; Spread percentile 35th; Stop distance 1.5 x ATR',
-        '[+] Session and macro STRONG: Session London; High-impact USD event in 4 h 25 min',
-        '[+] Reward feasibility STRONG: TP1 distance 1.5 x ATR; Room to the next level 2.3 x the distance to TP1',
-        '[~] Weak: none',
-        '[?] Research only (not used): DXY 15m -0.2%; Silver 15m +0.3%',
-        'Macro: clear. Next high-impact event: CPI m/m at 16:00 IST (in 4 h 25 min).',
-        '[!] Warnings:',
+        `${ICON.warning} <b>Warnings</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
-        'News (last 60 min): no headline',
-        'Open signals now: none (open risk 0.00R)',
+        `${ICON.macro} <b>Macro</b>: clear. Next high-impact event: CPI m/m at 16:00 IST (in 4 h 25 min).`,
+        `${ICON.news} <b>News (last 60 min)</b>: no headline`,
+        `${ICON.open} <b>Open signals now</b>: none (open risk 0.00R)`,
         '',
-        'EVIDENCE (same setup type)',
+        `${ICON.evidence} <b>EVIDENCE (same setup type)</b>`,
         'Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50',
         'TP1 reached 70%, TP2 reached 40%.',
         'Source: forward paper trades. Match: strategy, side and session. Low sample.',
-        'This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.',
+        '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.</i>',
+        '',
+        `<blockquote expandable><b>WHY THIS SIGNAL</b>`,
+        ...GROUPS_EN,
+        `${ICON.weak} <b>Weak</b>: none`,
+        `${ICON.research} <b>Research only (not used)</b>: DXY 15m -0.2%; Silver 15m +0.3%</blockquote>`,
       ].join('\n'),
     );
   });
 
   it('in Hinglish: the same numbers, other labels', () => {
-    expect(text(newSignal(), HINGLISH)).toBe(
+    expect(html(newSignal(), HINGLISH)).toBe(
       [
-        'FORWARD-TEST (paper) | Order aapko khud haath se lagana hai.',
-        'BUY XAUUSD | Trend Pullback v0.1.0 | #S-0042',
+        '<b>FORWARD-TEST (paper)</b> | Order aapko khud haath se lagana hai.',
+        SIDE,
+        '<i>Trend Pullback v0.1.0</i>',
+        `${ICON.quality} <b>Setup quality 95/100 (Bahut strong)</b>`,
         '',
-        'Entry  4017.370   (4018.015 se upar entry mat lo)',
-        'Stop   4010.900   (-6.470)',
-        'TP1    4023.840   (1.00R)  50% band karo, stop entry par le aao',
-        'TP2    4030.310   (2.00R)  runner (bacha hua hissa)',
-        '3 min tak valid (11:38 IST tak). Time stop 2 h (13:35 IST).',
+        `${ICON.entry} <b>Entry</b>  <code>4017.370</code>  (4018.015 se upar entry mat lo)`,
+        `${ICON.stop} <b>Stop</b>  <code>4010.900</code>  (-6.470)`,
+        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (1.00R)  50% band karo, stop entry par le aao`,
+        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (2.00R)  runner (bacha hua hissa)`,
+        `${ICON.time} 3 min tak valid (11:38 IST tak). Time stop 2 h (13:35 IST).`,
         '',
-        'Setup quality 95/100 (Bahut strong)',
-        'YE SIGNAL KYUN AAYA',
-        '[+] Trend STRONG: 1h EMA 20&gt;50&gt;200; 1h EMA 50 slope (3 h) +0.50 ATR(1h); ADX(1h) 31 (+DI 30 / -DI 10); Supertrend 1h up',
-        '[+] Structure STRONG: Structure 15m / 5m up / up; Latest 5m break with the trade; Trendline and zone confluence 2 agree; Pullback 4021.300 → 4012.800, EMA and Fibonacci zone; 5m swing level 4014.200, closed beyond it',
-        '[+] Trigger aur momentum STRONG: Trigger candle range 1.4 x ATR, closed at 85% of its range; RSI(5m) 38 → 54; MACD histogram rising 3 candles; Displacement candle yes',
-        '[+] Volatility STRONG: ATR(5m) 4.3; ATR percentile 62nd; Squeeze none',
-        '[+] Execution STRONG: Spread 0.12; Spread percentile 35th; Stop distance 1.5 x ATR',
-        '[+] Session aur macro STRONG: Session London; High-impact USD event in 4 h 25 min',
-        '[+] Reward (target kitna door hai) STRONG: TP1 distance 1.5 x ATR; Room to the next level 2.3 x the distance to TP1',
-        '[~] Kamzor: koi nahi',
-        '[?] Sirf research (signal mein use nahi hua): DXY 15m -0.2%; Silver 15m +0.3%',
-        'Macro: clear. Agla bada event: CPI m/m, 16:00 IST (4 h 25 min mein).',
-        '[!] Chetavni:',
+        `${ICON.warning} <b>Chetavni</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
-        'News (pichhle 60 min): koi headline nahi',
-        'Abhi khule signals: koi nahi (khula risk 0.00R)',
+        `${ICON.macro} <b>Macro</b>: clear. Agla bada event: CPI m/m, 16:00 IST (4 h 25 min mein).`,
+        `${ICON.news} <b>News (pichhle 60 min)</b>: koi headline nahi`,
+        `${ICON.open} <b>Abhi khule signals</b>: koi nahi (khula risk 0.00R)`,
         '',
-        'EVIDENCE (isi tarah ke setup ka record)',
+        `${ICON.evidence} <b>EVIDENCE (isi tarah ke setup ka record)</b>`,
         'Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50',
         'TP1 tak 70% baar, TP2 tak 40% baar.',
         'Source: forward paper trades. Match: strategy, side and session. Sample kam hai.',
-        'Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per oz.',
+        '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per oz.</i>',
+        '',
+        `<blockquote expandable><b>YE SIGNAL KYUN AAYA</b>`,
+        ...GROUPS_HI,
+        `${ICON.weak} <b>Kamzor</b>: koi nahi`,
+        `${ICON.research} <b>Sirf research (signal mein use nahi hua)</b>: DXY 15m -0.2%; Silver 15m +0.3%</blockquote>`,
       ].join('\n'),
     );
   });
@@ -103,29 +120,50 @@ describe('the entry alert of the example, golden', () => {
     const message = renderSignalNew(newSignal(), IST);
     expect(message).toMatchObject({ kind: 'SIGNAL_NEW', level: 0, dropped: [] });
   });
+
+  it('is valid Telegram HTML, with the real tags and not the plain-text fallback', () => {
+    for (const options of [IST, HINGLISH]) {
+      for (const data of [newSignal(), newSignal(SELL_SIGNAL, SELL_EXPLANATION)]) {
+        const message = html(data, options);
+        expect(checkTelegramHtml(message)).toBeNull();
+        expect(message).toContain('<b>');
+        expect(message).toContain('<code>');
+        expect(message).toContain('<blockquote expandable>');
+        expect(message).not.toMatch(/[\uE000-\uE00F]/);
+      }
+    }
+  });
 });
 
 describe('a SELL', () => {
   it('has its stop above, its targets below and its chase limit below the entry', () => {
     const message = text(newSignal(SELL_SIGNAL, SELL_EXPLANATION));
-    expect(message).toContain('SELL XAUUSD | Trend Pullback v0.1.0 | #S-0043');
-    expect(message).toContain('Entry  3982.630   (do not chase below 3981.985)');
-    expect(message).toContain('Stop   4000.000   (+17.370)');
-    expect(message).toContain('TP1    3965.260   (1.00R)  close 50%, move stop to entry');
-    expect(message).toContain('TP2    3947.890   (2.00R)  runner');
+    expect(message).toContain(`${ICON.sell} SELL XAUUSD  #S-0043`);
+    expect(message).toContain(`${ICON.entry} Entry  3982.630  (do not chase below 3981.985)`);
+    expect(message).toContain(`${ICON.stop} Stop  4000.000  (+17.370)`);
+    expect(message).toContain(`${ICON.tp1} TP1  3965.260  (1.00R)  close 50%, move stop to entry`);
+    expect(message).toContain(`${ICON.tp2} TP2  3947.890  (2.00R)  runner`);
     expect(message).toContain('1R = 17.370 USD per oz.');
   });
 
   it('says below in Hinglish too', () => {
     expect(text(newSignal(SELL_SIGNAL, SELL_EXPLANATION), HINGLISH)).toContain(
-      'Entry  3982.630   (3981.985 se neeche entry mat lo)',
+      `${ICON.entry} Entry  3982.630  (3981.985 se neeche entry mat lo)`,
     );
+  });
+
+  it('puts every price in its own span, outside bold, so that one tap copies it', () => {
+    const message = html(newSignal(SELL_SIGNAL, SELL_EXPLANATION));
+    for (const price of ['3982.630', '4000.000', '3965.260', '3947.890']) {
+      expect(message).toContain(`<code>${price}</code>`);
+    }
+    expect(message).not.toMatch(/<b>[^<]*<code>/);
   });
 });
 
 describe('the label in the first line (rules C8 and C9)', () => {
   const first = (signal: SignalRef, options = IST) =>
-    renderSignalNew(newSignal(signal, EXPLANATION), options).text.split('\n')[0];
+    plain(renderSignalNew(newSignal(signal, EXPLANATION), options).text.split('\n')[0] ?? '');
 
   it('says FORWARD-TEST (paper) until a strategy is validated', () => {
     for (const strategyStatus of [
@@ -184,15 +222,17 @@ describe('the targets of the other exit profiles', () => {
 
   it('has no TP2 line and closes everything at the single target', () => {
     const message = messageOf('EP2_SINGLE', 4027.075, null);
-    expect(message).toContain('TP1    4027.075   (1.50R)  close all');
-    expect(message).not.toMatch(/^TP2 {2}/m);
+    expect(message).toContain(`${ICON.tp1} TP1  4027.075  (1.50R)  close all`);
+    expect(message).not.toContain(ICON.tp2);
     expect(message).not.toContain('runner');
   });
 
   it('words a structure target and shows a distance that is not a round R', () => {
     const message = messageOf('EP3_STRUCTURE', 4026, null);
-    expect(message).toContain('TP1    4026.000   (1.33R)  close all (nearest opposing level)');
-    expect(message).not.toMatch(/^TP2 {2}/m);
+    expect(message).toContain(
+      `${ICON.tp1} TP1  4026.000  (1.33R)  close all (nearest opposing level)`,
+    );
+    expect(message).not.toContain(ICON.tp2);
   });
 });
 
@@ -229,12 +269,12 @@ describe('the groups', () => {
       ...group,
       ...(change[index] ?? {}),
     }));
-    return text(withDoc({ groups }))
-      .split('\n')
-      .filter((line) => /^\[(\+|~|-|n\/a)\] /.test(line));
+    const lines = text(withDoc({ groups })).split('\n');
+    const why = lines.indexOf(WORDS.en.whyHeader);
+    return lines.slice(why + 1).filter((line) => /^[🟢🟡🔴⚪] /u.test(line));
   };
 
-  it('marks every state: + for strong and OK, ~ for weak, - for failed, n/a for no data', () => {
+  it('colours every state: green for strong and OK, yellow for weak, red for failed, white for no data', () => {
     const lines = marks([
       { state: 'OK' },
       { state: 'WEAK' },
@@ -242,22 +282,22 @@ describe('the groups', () => {
       { state: 'NA', facts: [] },
     ]);
     expect(lines.map((line) => line.split(' ')[0])).toEqual([
-      '[+]', // OK
-      '[~]', // WEAK
-      '[-]', // FAIL
-      '[n/a]', // NA
-      '[+]',
-      '[+]',
-      '[+]',
-      '[~]', // the weak line itself
+      STATE_ICON.OK,
+      STATE_ICON.WEAK,
+      STATE_ICON.FAIL,
+      STATE_ICON.NA,
+      STATE_ICON.STRONG,
+      STATE_ICON.STRONG,
+      STATE_ICON.STRONG,
+      ICON.weak, // the weak line itself
     ]);
     expect(lines[0]).toContain('Trend OK: ');
-    expect(lines[3]).toBe('[n/a] Volatility NA: no data');
+    expect(lines[3]).toBe(`${STATE_ICON.NA} Volatility NA: no data`);
   });
 
   it('shows a group with no facts as its state only', () => {
     const lines = marks([{ state: 'FAIL', facts: [] }]);
-    expect(lines[0]).toBe('[-] Trend FAIL');
+    expect(lines[0]).toBe(`${STATE_ICON.FAIL} Trend FAIL`);
   });
 
   it('lists the weak points and says none when there are none', () => {
@@ -265,13 +305,23 @@ describe('the groups', () => {
       withDoc({ weak: ['the 1h Supertrend is against the trade', 'a squeeze is still on'] }),
     );
     expect(message).toContain(
-      '[~] Weak: the 1h Supertrend is against the trade; a squeeze is still on',
+      `${ICON.weak} Weak: the 1h Supertrend is against the trade; a squeeze is still on`,
     );
-    expect(text()).toContain('[~] Weak: none');
+    expect(text()).toContain(`${ICON.weak} Weak: none`);
   });
 
   it('leaves out the research-only line when there is none', () => {
     expect(text(withDoc({ researchOnly: [] }))).not.toContain('Research only');
+  });
+
+  it('folds the whole "why" into one block at the end, and nothing else', () => {
+    const message = html();
+    const start = message.indexOf('<blockquote expandable>');
+    expect(start).toBeGreaterThan(0);
+    expect(message.endsWith('</blockquote>')).toBe(true);
+    expect(message.slice(0, start)).not.toContain('STRONG');
+    expect(message.slice(0, start)).toContain('Entry');
+    expect(message.slice(start)).toContain('Trend STRONG');
   });
 });
 
@@ -302,9 +352,9 @@ describe('macro, warnings and open signals', () => {
     ];
     const message = text(withDoc({ warnings }));
     expect(message).toContain(
-      '[!] Warnings:\n- News window: CPI m/m in 22 min\n- Opposes open signal #S-0041\n',
+      `${ICON.warning} Warnings:\n- News window: CPI m/m in 22 min\n- Opposes open signal #S-0041\n`,
     );
-    expect(text(withDoc({ warnings: [] }))).toContain('[!] Warnings: none');
+    expect(text(withDoc({ warnings: [] }))).toContain(`${ICON.warning} Warnings: none`);
   });
 
   it('shows the open signals and their risk', () => {
@@ -365,7 +415,7 @@ describe('news', () => {
   });
 
   it('escapes what a headline says, so that it cannot add a tag', () => {
-    const message = text(
+    const message = html(
       withDoc({
         news: {
           feed: 'AVAILABLE',
@@ -374,7 +424,28 @@ describe('news', () => {
       }),
     );
     expect(message).toContain('- [HIGH] Gold &lt;b&gt;spikes&lt;/b&gt; &amp; "falls" &gt; 1% (BBC');
-    expect(message).not.toContain('<b>');
+    expect(message).not.toContain('<b>spikes');
+    expect(checkTelegramHtml(message)).toBeNull();
+  });
+
+  it('removes the marker characters of the markup from what comes from outside', () => {
+    const forged = '\uE001forged\uE002 \uE009hidden\uE00A';
+    const message = html(
+      withDoc({
+        news: {
+          feed: 'AVAILABLE',
+          headlines: [headline({ title: forged, sources: [`Wire${forged}`] })],
+        },
+        macro: { state: 'CLEAR', next: { name: `CPI${forged}`, at: '2026-10-23T10:30:00.000Z' } },
+      }),
+    );
+    expect(message).toContain('- [HIGH] forged hidden (Wireforged hidden');
+    expect(message).toContain('CPIforged hidden at');
+    expect(message).not.toMatch(/[\uE000-\uE00F]/);
+    expect(message.match(/<blockquote expandable>/g)).toHaveLength(1);
+    expect(checkTelegramHtml(message)).toBeNull();
+    // the same text sent through the renderer by itself would have made tags
+    expect(renderHtml(forged)).toBe('<b>forged</b> <blockquote expandable>hidden</blockquote>');
   });
 });
 
@@ -425,11 +496,13 @@ describe('evidence', () => {
     expect(message).not.toContain('PF');
   });
 
-  it('always ends with the statement that this is not a guarantee, and the size of 1R', () => {
+  it('always says that this is not a guarantee, with the size of 1R, in italics', () => {
     for (const options of [IST, HINGLISH]) {
-      const lines = text(newSignal(), options).split('\n');
-      expect(lines.at(-1)).toMatch(/guarantee/);
-      expect(lines.at(-1)).toContain('1R = 6.470 USD per oz.');
+      const line = html(newSignal(), options)
+        .split('\n')
+        .find((candidate) => candidate.includes('1R = '));
+      expect(line).toMatch(/^<i>.*guarantee.*<\/i>$/);
+      expect(line).toContain('1R = 6.470 USD per oz.');
     }
   });
 });
@@ -530,6 +603,10 @@ function bigExplanation(
 }
 
 describe('length (04 section 4: under 3500 characters, optional parts go first)', () => {
+  /** What a reader sees of the lines of one level. */
+  const viewOf = (data: ReturnType<typeof newSignal>, level: number): string =>
+    plain(renderHtml(signalNewLines(data, IST, level).lines.join('\n')));
+
   const sweep = [
     [2, 2, 40, 35],
     [4, 8, 120, 35],
@@ -552,14 +629,14 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
       levels.add(chosen.level);
       const lengths = Array.from(
         { length: SIGNAL_NEW_LEVELS },
-        (_unused, level) => escapeHtml(signalNewLines(data, IST, level).lines.join('\n')).length,
+        (_unused, level) => renderHtml(signalNewLines(data, IST, level).lines.join('\n')).length,
       );
       const firstFit = lengths.findIndex((length) => length <= TELEGRAM_SOFT_LIMIT);
       expect(chosen.level, JSON.stringify([facts, research, title, value, lengths])).toBe(
         firstFit === -1 ? SIGNAL_NEW_LEVELS - 1 : firstFit,
       );
       expect(chosen.text).toBe(
-        escapeHtml(signalNewLines(data, IST, chosen.level).lines.join('\n')),
+        renderHtml(signalNewLines(data, IST, chosen.level).lines.join('\n')),
       );
     }
     expect([...levels].sort()).toEqual([0, 1, 2, 3, 4]);
@@ -569,16 +646,16 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
     for (const [facts, research, title, value] of sweep) {
       const data = newSignal(BUY_SIGNAL, bigExplanation(facts, research, title, value));
       for (let level = 0; level < SIGNAL_NEW_LEVELS; level += 1) {
-        const message = signalNewLines(data, IST, level).lines.join('\n');
+        const message = viewOf(data, level);
         for (const part of [
           'FORWARD-TEST (paper)',
-          'Entry  4017.370   (do not chase above 4018.015)',
-          'Stop   4010.900   (-6.470)',
-          'TP1    4023.840',
-          'TP2    4030.310',
+          `${ICON.entry} Entry  4017.370  (do not chase above 4018.015)`,
+          `${ICON.stop} Stop  4010.900  (-6.470)`,
+          'TP1  4023.840',
+          'TP2  4030.310',
           'Valid for 3 min',
           'Setup quality 95/100 (Very strong)',
-          '[!] Warnings:',
+          `${ICON.warning} Warnings:`,
           'Open signals now: none',
           'EVIDENCE (same setup type)',
           'Win rate 58%  (n=64, 95% CI 46-69%)',
@@ -587,7 +664,7 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
           expect(message, `level ${String(level)}: ${part}`).toContain(part);
         }
         // every group keeps its line with its state
-        expect(message.match(/^\[\+\] .* STRONG/gm)).toHaveLength(7);
+        expect(message.match(new RegExp(`^${ICON.strong} .* STRONG`, 'gm'))).toHaveLength(7);
       }
     }
   });
@@ -606,19 +683,19 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
     ]);
     expect(at(4).dropped).toEqual(['research only', 'headlines', 'all facts', 'weak beyond 1']);
 
-    expect(at(0).lines.join('\n')).toContain('Research only');
-    expect(at(1).lines.join('\n')).not.toContain('Research only');
-    expect(at(1).lines.join('\n')).toContain('- [HIGH] ');
-    expect(at(2).lines.join('\n')).toContain(
+    expect(viewOf(data, 0)).toContain('Research only');
+    expect(viewOf(data, 1)).not.toContain('Research only');
+    expect(viewOf(data, 1)).toContain('- [HIGH] ');
+    expect(viewOf(data, 2)).toContain(
       'News (last 60 min): 3 headlines in the last 60 min, see the dashboard',
     );
-    expect(at(2).lines.join('\n')).not.toContain('- [HIGH] ');
-    expect(at(2).lines.join('\n')).toContain('Fact 0-2');
-    expect(at(2).lines.join('\n')).not.toContain('Fact 0-3');
-    expect(at(3).lines.join('\n')).toContain('Fact 0-0');
-    expect(at(3).lines.join('\n')).not.toContain('Fact 0-1');
-    expect(at(4).lines.join('\n')).not.toContain('Fact 0-0');
-    expect(at(4).lines.join('\n')).toContain('[+] Trend STRONG\n');
+    expect(viewOf(data, 2)).not.toContain('- [HIGH] ');
+    expect(viewOf(data, 2)).toContain('Fact 0-2');
+    expect(viewOf(data, 2)).not.toContain('Fact 0-3');
+    expect(viewOf(data, 3)).toContain('Fact 0-0');
+    expect(viewOf(data, 3)).not.toContain('Fact 0-1');
+    expect(viewOf(data, 4)).not.toContain('Fact 0-0');
+    expect(viewOf(data, 4)).toContain(`${ICON.strong} Trend STRONG\n`);
   });
 
   it('keeps fewer weak points at the lower levels', () => {
@@ -627,13 +704,13 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
       weak: ['one', 'two', 'three', 'four', 'five'],
     };
     const weak = (level: number) =>
-      signalNewLines(newSignal(BUY_SIGNAL, many), IST, level).lines.find((line) =>
-        line.startsWith('[~] Weak'),
-      );
-    expect(weak(0)).toBe('[~] Weak: one; two; three; four; five');
-    expect(weak(2)).toBe('[~] Weak: one; two; three; four; five');
-    expect(weak(3)).toBe('[~] Weak: one; two; three');
-    expect(weak(4)).toBe('[~] Weak: one');
+      viewOf(newSignal(BUY_SIGNAL, many), level)
+        .split('\n')
+        .find((line) => line.startsWith(`${ICON.weak} Weak`));
+    expect(weak(0)).toBe(`${ICON.weak} Weak: one; two; three; four; five`);
+    expect(weak(2)).toBe(`${ICON.weak} Weak: one; two; three; four; five`);
+    expect(weak(3)).toBe(`${ICON.weak} Weak: one; two; three`);
+    expect(weak(4)).toBe(`${ICON.weak} Weak: one`);
   });
 
   it('refuses a message that is longer than Telegram accepts even at the lowest level', () => {
@@ -646,7 +723,7 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
     expect(() => renderSignalNew(huge, IST)).toThrow(RangeError);
   });
 
-  it('counts the length of the escaped text, which is what Telegram counts', () => {
+  it('counts the length of the text that is sent (escaped, with its tags), not of the lines', () => {
     let found = false;
     for (let research = 1; research <= 80 && !found; research += 1) {
       const doc: ExplanationDoc = {
@@ -658,9 +735,9 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
       };
       const data = newSignal(BUY_SIGNAL, doc);
       const raw = signalNewLines(data, IST, 0).lines.join('\n');
-      if (raw.length > TELEGRAM_SOFT_LIMIT || escapeHtml(raw).length <= TELEGRAM_SOFT_LIMIT)
+      if (raw.length > TELEGRAM_SOFT_LIMIT || renderHtml(raw).length <= TELEGRAM_SOFT_LIMIT)
         continue;
-      // the raw text fits and the escaped one does not: the escaped one is what counts
+      // the lines fit and the text that is sent does not: the text that is sent is what counts
       found = true;
       const message = renderSignalNew(data, IST);
       expect(message.level).toBeGreaterThan(0);
@@ -672,7 +749,20 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
 
   it('writes the angle brackets of a fact as entities', () => {
     const doc = { ...EXPLANATION, weak: ['spread > 2 & rising'] };
-    expect(text(newSignal(BUY_SIGNAL, doc))).toContain('[~] Weak: spread &gt; 2 &amp; rising');
+    expect(html(newSignal(BUY_SIGNAL, doc))).toContain(
+      `${ICON.weak} <b>Weak</b>: spread &gt; 2 &amp; rising`,
+    );
+  });
+
+  it('is valid Telegram HTML at every level of detail', () => {
+    for (const [facts, research, title, value] of sweep) {
+      const data = newSignal(BUY_SIGNAL, bigExplanation(facts, research, title, value));
+      for (let level = 0; level < SIGNAL_NEW_LEVELS; level += 1) {
+        const rendered = renderHtml(signalNewLines(data, IST, level).lines.join('\n'));
+        expect(checkTelegramHtml(rendered), `level ${String(level)}`).toBeNull();
+        expect(rendered).toContain('<blockquote expandable>');
+      }
+    }
   });
 });
 
@@ -692,7 +782,7 @@ describe('what the flags say reaches the message', () => {
       }),
     );
     expect(text(newSignal(BUY_SIGNAL, doc))).toContain(
-      '[!] Warnings:\n- Rollover hours: liquidity is thin and spreads can be wide\n- FORWARD-TEST: this strategy is not validated yet (paper signal)\n',
+      `${ICON.warning} Warnings:\n- Rollover hours: liquidity is thin and spreads can be wide\n- FORWARD-TEST: this strategy is not validated yet (paper signal)\n`,
     );
   });
 });

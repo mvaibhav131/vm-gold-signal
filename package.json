@@ -16,6 +16,7 @@
     "test:int": "vitest run --project int",
     "test:watch": "vitest",
     "worker:start": "pnpm --filter @vmgs/worker start",
+    "cli": "pnpm --filter @vmgs/worker cli",
     "worker:soak": "pnpm --filter @vmgs/worker soak",
     "web:dev": "pnpm --filter @vmgs/web dev",
     "web:build": "pnpm --filter @vmgs/web build",

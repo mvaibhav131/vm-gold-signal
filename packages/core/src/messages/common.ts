@@ -1,6 +1,7 @@
 import { CAUSE_CATEGORY_OF, type CauseCode } from '../domain';
 import { STRATEGY_NAMES } from '../explain/names';
 import { roundTo } from '../trade/round';
+import { bold } from './markup';
 import type { CauseEvidence, SignalRef } from './types';
 import type { Words } from './words';
 
@@ -14,10 +15,10 @@ export const signalTag = (seq: number): string => `#S-${String(seq).padStart(4, 
  */
 export function labelLine(signal: SignalRef, w: Words, withNote: boolean): string {
   if (signal.mode !== 'LIVE') {
-    return withNote ? `${w.simulatedLabel} | ${w.simulatedNote}` : w.simulatedLabel;
+    return withNote ? `${bold(w.simulatedLabel)} | ${w.simulatedNote}` : bold(w.simulatedLabel);
   }
   const label = signal.strategyStatus === 'VALIDATED' ? w.validatedLabel : w.paperLabel;
-  return withNote ? `${label} | ${w.manualOnly}` : label;
+  return withNote ? `${bold(label)} | ${w.manualOnly}` : bold(label);
 }
 
 /** `Trend Pullback v0.1.0`. */

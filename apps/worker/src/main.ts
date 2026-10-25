@@ -4,11 +4,20 @@ import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
 import { createPool } from '@vmgs/db';
 
+import { HealthWatcher } from './alerts/health';
+import { PostgresHealthStore } from './alerts/postgresHealthStore';
+import { PostgresOutboxStore } from './alerts/postgresOutboxStore';
+import { OutboxSender } from './alerts/sender';
+import { LibWebPushSink } from './alerts/webpush';
 import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
 import { OutcomeTracker } from './lifecycle/tracker';
 import { PostgresRecorderStore } from './postgresStore';
 import { RecorderWorker } from './recorder';
+import { TelegramBot } from './telegram/bot';
+import { TelegramClient } from './telegram/client';
+import { PostgresBotStore } from './telegram/postgresBotStore';
+import { TelegramTransport } from './telegram/transport';
 
 type StopReason = 'signal' | 'fatal';
 
@@ -82,19 +91,91 @@ async function main(): Promise<void> {
   try {
     await tracker.start();
     await worker.start();
+
+    // Alerts: the sender delivers what the lifecycle wrote into the outbox; the bot and the health
+    // watcher only run with the settings they need. Without a Telegram token or VAPID keys the
+    // channel is simply not served, and its messages wait or expire (04_API_and_Notifications).
+    const outboxStore = new PostgresOutboxStore(pool);
+    const botStore = new PostgresBotStore(pool);
+    const telegramClient =
+      env.TELEGRAM_BOT_TOKEN === undefined
+        ? null
+        : new TelegramClient({ token: env.TELEGRAM_BOT_TOKEN });
+    const transport =
+      telegramClient === null ? null : new TelegramTransport({ client: telegramClient });
+    const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = env;
+    const sender = new OutboxSender({
+      store: outboxStore,
+      ...(transport === null
+        ? {}
+        : { telegram: { transport, chatId: () => botStore.linkedChat() } }),
+      ...(VAPID_PUBLIC_KEY === undefined ||
+      VAPID_PRIVATE_KEY === undefined ||
+      VAPID_SUBJECT === undefined
+        ? {}
+        : {
+            webpush: {
+              sink: new LibWebPushSink({
+                subject: VAPID_SUBJECT,
+                publicKey: VAPID_PUBLIC_KEY,
+                privateKey: VAPID_PRIVATE_KEY,
+              }),
+              subscriptions: outboxStore,
+            },
+          }),
+      log,
+    });
+    const health = new HealthWatcher({
+      store: new PostgresHealthStore(pool),
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
+    const bot =
+      telegramClient === null || transport === null
+        ? null
+        : new TelegramBot({
+            client: telegramClient,
+            transport,
+            store: botStore,
+            outbox: outboxStore,
+            settings: () => lifecycle.loadSettings(),
+            feed: () => {
+              const { state, tickAgeMs, spread } = feed.health();
+              return { state, tickAgeMs, spread };
+            },
+            onQueued: () => {
+              sender.wake();
+            },
+            log,
+          });
+    sender.start();
+    health.start();
+    bot?.start();
+
     log('info', 'record-only worker started', {
       provider: provider.name,
       symbols: env.FEED_SYMBOLS,
       openSignals: tracker.stats.open,
+      telegram: bot !== null,
+      webpush: VAPID_PUBLIC_KEY !== undefined,
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    await bot?.stop();
+    await health.stop();
     await worker.stop();
     await tracker.stop().catch(() => undefined);
+    await sender.stop();
     log('info', 'record-only worker stopped', {
       reason,
       stats: worker.stats,
       tracker: tracker.stats,
+      sender: sender.stats,
+      bot: bot?.stats ?? null,
     });
   } finally {
     process.off('SIGINT', onSignal);

@@ -2,6 +2,8 @@ import { CAUSE_CATEGORY_OF } from '../domain';
 import { priceText, signedRText, spanText } from '../explain/format';
 import { EXIT_PROFILE_RULES } from '../trade/types';
 import { causeText, evidenceText, labelLine, rewardR, signalTag } from './common';
+import { bold, quote } from './markup';
+import { ICON } from './style';
 import { clockText } from './time';
 import { fitMessage } from './text';
 import type {
@@ -40,46 +42,48 @@ export function renderSignalTp1(data: Tp1Data, options: DisplayOptions): Telegra
   const share = EXIT_PROFILE_RULES.EP1_PARTIAL.partialShare;
   return single('SIGNAL_TP1', [
     labelLine(signal, w, false),
-    w.tp1HitTitle(
-      signalTag(signal.seq),
-      signedRText(rewardR(signal, signal.tp1)),
-      `${String(Math.round(share * 100))}%`,
-    ),
+    `${ICON.tp1} ${bold(
+      w.tp1HitTitle(
+        signalTag(signal.seq),
+        signedRText(rewardR(signal, signal.tp1)),
+        `${String(Math.round(share * 100))}%`,
+      ),
+    )}`,
     w.priceAt(priceText(data.price), at(data.at), spanText(data.at - signal.generatedAt)),
-    w.tp1Action(priceText(signal.entry)),
+    `${ICON.action} ${bold(w.tp1Action(priceText(signal.entry)))}`,
     w.runnerLine(priceText(signal.tp2), at(signal.timeStopAt)),
   ]);
 }
 
-/** The block that explains a loss (02_Signal_Engine section 14, "WHY IT FAILED"). */
+/** The block that explains a loss (02_Signal_Engine section 14, "WHY IT FAILED"): a title and the quoted reasons. */
 function reviewLines(review: ReviewData, w: Words, signal: SignalRef): string[] {
   const line = (label: string, code: ReviewData['primaryCause'], numbers: string): string =>
     `${label}: ${causeText(code, w)}${numbers === '' ? '' : ` - ${numbers}`}`;
-  const lines = [w.reviewTitle(review.status)];
+  const body: string[] = [];
   const primary = review.causes.find((cause) => cause.code === review.primaryCause);
-  lines.push(line(w.primary, review.primaryCause, primary ? evidenceText(primary.evidence) : ''));
-  lines.push(`${w.meaning}: ${w.causeRule[review.primaryCause]}`);
+  body.push(line(w.primary, review.primaryCause, primary ? evidenceText(primary.evidence) : ''));
+  body.push(`${w.meaning}: ${w.causeRule[review.primaryCause]}`);
   for (const cause of review.causes) {
     if (cause.code !== review.primaryCause) {
-      lines.push(line(w.also, cause.code, evidenceText(cause.evidence)));
+      body.push(line(w.also, cause.code, evidenceText(cause.evidence)));
     }
   }
   if (review.weakGroupsAtEntry.length > 0) {
-    lines.push(
+    body.push(
       `${w.weakAtEntry}: ${review.weakGroupsAtEntry.map((entry) => `${w.groupName[entry.group]} (${entry.state})`).join(', ')}`,
     );
   }
   const counterfactual = review.counterfactual;
   if (review.status === 'FINAL' && counterfactual !== null) {
-    lines.push(
+    body.push(
       counterfactual.reachedTp1 && counterfactual.candlesToTp1 !== null
         ? w.reachedTp1(priceText(signal.tp1), counterfactual.candlesToTp1)
         : w.notReachedTp1,
     );
   }
-  if (review.status === 'PRELIMINARY') lines.push(w.finalComing);
-  lines.push(w.heuristic);
-  return lines;
+  if (review.status === 'PRELIMINARY') body.push(w.finalComing);
+  body.push(w.heuristic);
+  return [`${ICON.review} ${bold(w.reviewTitle(review.status))}`, quote(body.join('\n'))];
 }
 
 /** One line for a trade that is not a loss: the primary cause of its review, when there is one. */
@@ -107,7 +111,7 @@ export function renderSignalClosed(data: ClosedData, options: DisplayOptions): T
     throw new RangeError('a cancelled signal has its own message (renderSignalCancelled)');
   }
   if (outcome.result === 'DATA_INVALID') {
-    lines.push(w.dataInvalidTitle(tag), w.dataInvalidBody);
+    lines.push(`${ICON.invalid} ${bold(w.dataInvalidTitle(tag))}`, w.dataInvalidBody);
     return single('SIGNAL_CLOSED', lines);
   }
   if (outcome.realizedRNet === null || outcome.exitPrice === null) {
@@ -119,10 +123,12 @@ export function renderSignalClosed(data: ClosedData, options: DisplayOptions): T
   const span = spanText(outcome.durationS * 1000);
   const closedAt = at(outcome.closedAt);
   const exit = w.exitName[outcome.exitReason](price);
+  const title = (icon: string, name: string, detail: string): string =>
+    `${icon} ${bold(`${name} ${tag}  ${net}`)}  (${detail})`;
 
   switch (outcome.result) {
     case 'WIN': {
-      lines.push(`WIN ${tag}  ${net}  (${w.closedDetail(exit, closedAt, span)})`);
+      lines.push(title(ICON.win, 'WIN', w.closedDetail(exit, closedAt, span)));
       lines.push(w.mfeMae(signedRText(outcome.mfeR ?? 0), signedRText(outcome.maeR ?? 0)));
       if (data.worked !== undefined && data.worked.length > 0) {
         lines.push(`${w.worked}: ${data.worked.join('; ')}.`);
@@ -131,7 +137,7 @@ export function renderSignalClosed(data: ClosedData, options: DisplayOptions): T
     }
     case 'PARTIAL_WIN': {
       lines.push(
-        `PARTIAL WIN ${tag}  ${net}  (${w.closedDetail(w.afterTp1(exit), closedAt, span)})`,
+        title(ICON.partial, 'PARTIAL WIN', w.closedDetail(w.afterTp1(exit), closedAt, span)),
       );
       lines.push(...causeLine(review, w));
       lines.push(
@@ -146,12 +152,12 @@ export function renderSignalClosed(data: ClosedData, options: DisplayOptions): T
       break;
     }
     case 'LOSS': {
-      lines.push(`LOSS ${tag}  ${net}  (${w.stoppedDetail(exit, closedAt, span)})`);
+      lines.push(title(ICON.loss, 'LOSS', w.stoppedDetail(exit, closedAt, span)));
       if (review !== null) lines.push(...reviewLines(review, w, signal));
       break;
     }
     case 'TIME_EXIT': {
-      lines.push(`TIME EXIT ${tag}  ${net}  (${w.timeExitDetail(span, price)})`);
+      lines.push(title(ICON.time, 'TIME EXIT', w.timeExitDetail(span, price)));
       lines.push(outcome.tp1Hit ? w.timeExitAfterTp1 : w.timeExitNone);
       lines.push(...causeLine(review, w));
       break;
@@ -169,7 +175,7 @@ export function renderSignalCancelled(
   const w = WORDS[options.locale];
   return single('SIGNAL_CANCELLED', [
     labelLine(signal, w, false),
-    w.cancelledTitle(signalTag(signal.seq)),
+    `${ICON.cancelled} ${bold(w.cancelledTitle(signalTag(signal.seq)))}`,
     w.cancelledReason(data.staleSeconds, spanText(signal.entryValidUntil - signal.generatedAt)),
     w.manageManually,
   ]);
@@ -182,7 +188,7 @@ export function renderFinalReview(data: FinalReviewData, options: DisplayOptions
   const category = w.categoryName[CAUSE_CATEGORY_OF[review.primaryCause]];
   const lines = [
     labelLine(signal, w, false),
-    w.finalTitle(signalTag(signal.seq)),
+    `${ICON.review} ${bold(w.finalTitle(signalTag(signal.seq)))}`,
     data.previousPrimary !== null && data.previousPrimary !== review.primaryCause
       ? w.causeUpdated(review.primaryCause, category, data.previousPrimary)
       : w.causeConfirmed(review.primaryCause, category),

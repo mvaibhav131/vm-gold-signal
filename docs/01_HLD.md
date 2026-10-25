@@ -83,10 +83,11 @@ candle close -> feature engine -> regime -> strategies -> blocking gates + advis
              -> signal transaction (signal + event + explanation + outbox) -> NOTIFY
 ticks        -> outcome tracker (open signals) -> outcome transaction -> autopsy queue
 outbox       -> sender loop (Telegram, Web Push) with retry and expiry
+Telegram     -> long-poll bot (owner chat only) -> commands, pause state; feed incidents -> health watcher -> outbox
 timers       -> calendar poll, headline poll + classify, move detector, REST market-state poll, heartbeats, maintenance
 ```
 
-The outbox sender runs on its own async loop with timeouts so a slow Telegram call can never delay signal evaluation.
+The outbox sender runs on its own async loop with timeouts so a slow Telegram call can never delay signal evaluation. The delivery rules, the retry table and the bot are in `04` section 4 (B24).
 
 ### 4.3 Feed package (`packages/feed`, B11)
 

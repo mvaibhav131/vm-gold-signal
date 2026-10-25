@@ -651,7 +651,7 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
           row.kind,
           row.signalId,
           json(row.payload),
-          new Date(row.expiresAt),
+          row.expiresAt === null ? null : new Date(row.expiresAt),
         ],
       );
     }

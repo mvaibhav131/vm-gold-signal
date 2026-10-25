@@ -115,11 +115,12 @@ export type SignalMessage =
 export interface OutboxRow {
   readonly eventKey: string;
   readonly channel: OutboxChannel;
-  readonly kind: SignalMessageKind;
-  readonly signalId: string;
+  readonly kind: NotificationKind;
+  /** The signal the message is about; null for a message that is not about one (system, news, test). */
+  readonly signalId: string | null;
   readonly payload: Readonly<Record<string, unknown>>;
-  /** A message later than this is dropped, not sent (04 "Delivery rules"). */
-  readonly expiresAt: number;
+  /** A message later than this is dropped, not sent (04 "Delivery rules"); null for none (the store gives it an hour). */
+  readonly expiresAt: number | null;
 }
 
 const STEP: Record<SignalMessageKind, SignalStep> = {

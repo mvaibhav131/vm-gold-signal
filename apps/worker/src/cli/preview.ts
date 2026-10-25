@@ -1,0 +1,155 @@
+import {
+  enginePausedMessage,
+  feedDegradedMessage,
+  feedRecoveredMessage,
+  parseCommand,
+  renderFinalReview,
+  renderSignalCancelled,
+  renderSignalClosed,
+  renderSignalNew,
+  renderSignalTp1,
+  testMessage,
+  type DisplayOptions,
+} from '@vmgs/core';
+
+import {
+  BUY_SIGNAL,
+  FINAL_REVIEW,
+  LOSS,
+  MINUTE,
+  REVIEW,
+  SELL_SIGNAL,
+  WIN_TP2,
+  newSignal,
+} from '../../../../packages/core/src/messages/test-data';
+import { DECIDED_AT } from '../../../../packages/core/src/trade/test-data';
+import type { TelegramClient } from '../telegram/client';
+import { TelegramTransport } from '../telegram/transport';
+
+export interface Sample {
+  readonly name: string;
+  readonly text: string;
+}
+
+/**
+ * One example of every message the owner will receive, written with the real formatters on fixed
+ * example data (the S-0042 BUY of 02_Signal_Engine section 14), so what is reviewed is what will
+ * be sent. Nothing here comes from the market.
+ */
+export function sampleMessages(options: DisplayOptions): Sample[] {
+  const signal = BUY_SIGNAL;
+  const down = { kind: 'STALE', since: DECIDED_AT, silentMs: 18_000, openSeqs: [45] } as const;
+  return [
+    { name: 'SIGNAL_NEW', text: renderSignalNew(newSignal(signal), options).text },
+    { name: 'SIGNAL_NEW, a SELL', text: renderSignalNew(newSignal(SELL_SIGNAL), options).text },
+    {
+      name: 'SIGNAL_TP1',
+      text: renderSignalTp1({ signal, at: DECIDED_AT + 6 * MINUTE, price: signal.tp1 }, options)
+        .text,
+    },
+    {
+      name: 'SIGNAL_CLOSED, a win',
+      text: renderSignalClosed({ signal, outcome: WIN_TP2, review: null }, options).text,
+    },
+    {
+      name: 'SIGNAL_CLOSED, a loss with its review',
+      text: renderSignalClosed({ signal, outcome: LOSS, review: REVIEW }, options).text,
+    },
+    {
+      name: 'SIGNAL_CANCELLED',
+      text: renderSignalCancelled({ signal, staleSeconds: 18 }, options).text,
+    },
+    {
+      name: 'SIGNAL_REVIEW_FINAL',
+      text: renderFinalReview(
+        {
+          signal,
+          review: FINAL_REVIEW,
+          previousPrimary: REVIEW.primaryCause,
+          trackedThisMonth: 3,
+        },
+        options,
+      ).text,
+    },
+    { name: 'SYSTEM_DEGRADED', text: feedDegradedMessage(down, options).telegram.text },
+    {
+      name: 'SYSTEM_RECOVERED',
+      text: feedRecoveredMessage(
+        { at: DECIDED_AT + 2 * MINUTE, downMs: 2 * MINUTE, resumeAt: null },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'ENGINE_PAUSED',
+      text: enginePausedMessage({ at: DECIDED_AT, until: DECIDED_AT + 30 * MINUTE }, options)
+        .telegram.text,
+    },
+    { name: 'TEST', text: testMessage(DECIDED_AT, options).telegram.text },
+  ];
+}
+
+export const PREVIEW_INTRO =
+  'SAMPLES FOR FORMAT REVIEW. Every message after this one is made up from fixed example data. None of it is a real signal or advice.';
+
+export interface PreviewDeps {
+  readonly client: Pick<TelegramClient, 'getMe' | 'getUpdates' | 'sendMessage'>;
+  readonly options: DisplayOptions;
+  readonly print: (line: string) => void;
+  /** How long to wait for the owner to press START, in milliseconds. */
+  readonly waitMs?: number;
+  /** Seconds one long poll waits. */
+  readonly pollS?: number;
+  /** The least time between two messages. */
+  readonly gapMs?: number;
+  readonly now?: () => number;
+  /** For tests: what waits between two messages. */
+  readonly sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * `pnpm cli telegram:preview`: waits for a private `/start` to the bot, then sends the samples to
+ * that chat. It needs only the bot token, no database and no running worker, so the owner can look
+ * at the formats on the phone before anything else is set up. It does not link the chat: the
+ * link flow (`telegram:link`) is separate, and a sample is never a reason to serve a chat. Returns
+ * how many messages it sent.
+ */
+export async function telegramPreview(deps: PreviewDeps): Promise<number> {
+  const now = deps.now ?? Date.now;
+  const me = await deps.client.getMe();
+  const bot = me.username === null ? 'your bot' : `https://t.me/${me.username}`;
+  deps.print(`Open ${bot} in Telegram and press START (or send /start). I wait for it.`);
+
+  const deadline = now() + (deps.waitMs ?? 120_000);
+  let offset: number | null = null;
+  let chatId: number | null = null;
+  while (chatId === null) {
+    if (now() >= deadline) throw new Error('no /start came in time: run the command again');
+    const updates = await deps.client.getUpdates({ offset, timeoutS: deps.pollS ?? 10 });
+    for (const update of updates) {
+      offset = update.updateId + 1;
+      const { message } = update;
+      if (message?.chatType !== 'private') continue;
+      if (parseCommand(message.text)?.command === 'start') chatId = message.chatId;
+    }
+  }
+  // what was read is confirmed, so that a worker that starts later does not see it again
+  await deps.client.getUpdates({ offset, timeoutS: 0 });
+  deps.print('Got it. Sending the samples (about one every second).');
+
+  const transport = new TelegramTransport({
+    client: deps.client,
+    minGapMs: deps.gapMs ?? 1000,
+    now,
+    ...(deps.sleep === undefined ? {} : { sleep: deps.sleep }),
+  });
+  const samples = sampleMessages(deps.options);
+  await transport.sendWhenReady(chatId, PREVIEW_INTRO);
+  let sent = 1;
+  for (const [index, sample] of samples.entries()) {
+    const label = `[SAMPLE ${String(index + 1)}/${String(samples.length)}: ${sample.name}, not a real signal]`;
+    await transport.sendWhenReady(chatId, `${label}\n\n${sample.text}`);
+    sent += 1;
+  }
+  deps.print(`Sent ${String(sent)} messages. Check them in Telegram.`);
+  return sent;
+}

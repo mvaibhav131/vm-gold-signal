@@ -24,8 +24,8 @@ export interface StoreHarness {
       eventKey: string;
       channel: string;
       kind: string;
-      signalId: string;
-      expiresAt: number;
+      signalId: string | null;
+      expiresAt: number | null;
       payload: Record<string, unknown>;
     }[]
   >;

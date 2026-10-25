@@ -10,7 +10,9 @@ import {
 } from '../domain';
 import { EXIT_REASONS } from '../trade/types';
 import { causeText, evidenceText, humanizeKey, labelLine, rewardR, signalTag } from './common';
+import { renderHtml } from './markup';
 import { BUY_SIGNAL, SELL_SIGNAL } from './test-data';
+import { plain } from './test-html';
 import { WORDS, type Words } from './words';
 
 const en = WORDS.en;
@@ -170,12 +172,14 @@ describe('common helpers', () => {
     expect(humanizeKey('spread')).toBe('spread');
   });
 
-  it('writes the label line of a paper, a simulated and a validated signal', () => {
-    expect(labelLine(BUY_SIGNAL, en, false)).toBe('FORWARD-TEST (paper)');
-    expect(labelLine({ ...BUY_SIGNAL, mode: 'SIMULATED' }, en, true)).toBe(
+  it('writes the label line of a paper, a simulated and a validated signal, the label in bold', () => {
+    const label = (signal: typeof BUY_SIGNAL, w: Words, withNote: boolean) =>
+      renderHtml(labelLine(signal, w, withNote));
+    expect(label(BUY_SIGNAL, en, false)).toBe('<b>FORWARD-TEST (paper)</b>');
+    expect(plain(label({ ...BUY_SIGNAL, mode: 'SIMULATED' }, en, true))).toBe(
       'SIMULATED | replay data, not the live market',
     );
-    expect(labelLine({ ...BUY_SIGNAL, strategyStatus: 'VALIDATED' }, hinglish, true)).toBe(
+    expect(plain(label({ ...BUY_SIGNAL, strategyStatus: 'VALIDATED' }, hinglish, true))).toBe(
       'VALIDATED strategy | Order aapko khud haath se lagana hai.',
     );
   });

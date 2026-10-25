@@ -1,7 +1,9 @@
 export { evidenceText, humanizeKey, signalTag } from './common';
+export { bold, checkTelegramHtml, clean, fold, italic, mono, quote, renderHtml } from './markup';
 export * from './push';
 export * from './results';
 export * from './signalNew';
+export * from './style';
 export * from './text';
 export * from './time';
 export * from './types';

@@ -2,12 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { cancelledOutcome } from '../trade/tracker';
 import { DECIDED_AT } from '../trade/test-data';
-import {
-  renderFinalReview,
-  renderSignalCancelled,
-  renderSignalClosed,
-  renderSignalTp1,
-} from './results';
+import * as formatted from './results';
+import { checkTelegramHtml } from './markup';
+import { ICON, RESULT_ICON } from './style';
+import { plain } from './test-html';
 import {
   BUY_SIGNAL,
   DATA_INVALID,
@@ -22,7 +20,25 @@ import {
   WIN_TARGET,
   WIN_TP2,
 } from './test-data';
-import type { DisplayOptions, ReviewData, SignalRef } from './types';
+import type { DisplayOptions, ReviewData, SignalRef, TelegramMessage } from './types';
+
+// Most tests here check the words and the numbers, so they read what a reader sees: the message
+// without its tags and without the picture at the start of a line. The look itself (tags and
+// pictures) is checked, exactly, in "the look" at the end of this file.
+const PICTURES = new RegExp(
+  `^(?:${[...Object.values(ICON), ...Object.values(RESULT_ICON)].join('|')}) `,
+  'gmu',
+);
+const reader =
+  <A extends unknown[]>(render: (...args: A) => TelegramMessage) =>
+  (...args: A): TelegramMessage => {
+    const message = render(...args);
+    return { ...message, text: plain(message.text).replace(PICTURES, '') };
+  };
+const renderSignalTp1 = reader(formatted.renderSignalTp1);
+const renderSignalClosed = reader(formatted.renderSignalClosed);
+const renderSignalCancelled = reader(formatted.renderSignalCancelled);
+const renderFinalReview = reader(formatted.renderFinalReview);
 
 const IST: DisplayOptions = { locale: 'en', displayTz: 'Asia/Kolkata' };
 const HINGLISH: DisplayOptions = { locale: 'hinglish', displayTz: 'Asia/Kolkata' };
@@ -571,6 +587,112 @@ describe('all result messages start with the label of the signal (rules C8 and C
     }
     for (const text of messages({ ...live, strategyStatus: 'VALIDATED' }, IST)) {
       expect(text.startsWith('VALIDATED strategy\n')).toBe(true);
+    }
+  });
+});
+
+describe('the look: tags and pictures, exactly', () => {
+  const tag = '#S-0042';
+  const html = formatted;
+
+  it('TP1: the title and the action in bold, the label in bold', () => {
+    const data = { signal: BUY_SIGNAL, at: DECIDED_AT + 6 * MINUTE, price: 4023.84 };
+    expect(html.renderSignalTp1(data, IST).text).toBe(
+      lines(
+        '<b>FORWARD-TEST (paper)</b>',
+        `${ICON.tp1} <b>TP1 HIT ${tag}  +1.00R on 50%</b>`,
+        'Price 4023.840 at 11:41 IST (6 min after entry).',
+        `${ICON.action} <b>ACTION: close half, move stop to entry 4017.370.</b>`,
+        'Runner target TP2 4030.310. Time stop 13:35 IST.',
+      ),
+    );
+  });
+
+  it('a win, a partial win and a time exit: the result in bold behind its picture', () => {
+    const at = (outcome: Parameters<typeof html.renderSignalClosed>[0]['outcome']) =>
+      html
+        .renderSignalClosed({ signal: BUY_SIGNAL, outcome, review: null }, IST)
+        .text.split('\n')[1];
+    expect(at(WIN_TP2)).toBe(
+      `${ICON.win} <b>WIN ${tag}  +1.47R net</b>  (TP2 4030.310 at 12:12 IST, 37 min)`,
+    );
+    expect(at(PARTIAL)).toBe(
+      `${ICON.partial} <b>PARTIAL WIN ${tag}  +0.46R net</b>  (TP1 hit, then stopped at entry 4017.370 at 12:05 IST, 30 min)`,
+    );
+    expect(at(TIME_EXIT)).toBe(
+      `${ICON.time} <b>TIME EXIT ${tag}  -0.18R net</b>  (2 h, price 4015.400)`,
+    );
+  });
+
+  it('a loss: the result, then the title of the review, then the reasons in a quote', () => {
+    expect(
+      html.renderSignalClosed({ signal: BUY_SIGNAL, outcome: LOSS, review: REVIEW }, IST).text,
+    ).toBe(
+      lines(
+        '<b>FORWARD-TEST (paper)</b>',
+        `${ICON.loss} <b>LOSS ${tag}  -1.04R net</b>  (stop 4010.900 hit 11:50 IST, 15 min after entry)`,
+        `${ICON.review} <b>WHY IT FAILED (automatic review, preliminary)</b>`,
+        '<blockquote>Primary: NO_FOLLOW_THROUGH (Setup failure) - max favourable R 0.2',
+        'Meaning: Price never moved 0.3R in favour before the close.',
+        'Also: HTF_STRUCTURE_BREAK (Setup failure) - level 4012.1, tf 15m',
+        'Weak at entry: Trigger and momentum (WEAK)',
+        'Final review in 60 min (checks whether price reached TP1 later).',
+        'Attribution is heuristic. Judge the strategy by the statistics in Analytics.</blockquote>',
+      ),
+    );
+  });
+
+  it('data invalid, cancelled and the final review', () => {
+    expect(
+      html
+        .renderSignalClosed({ signal: BUY_SIGNAL, outcome: DATA_INVALID, review: null }, IST)
+        .text.split('\n')[1],
+    ).toMatch(new RegExp(`^${ICON.invalid} <b>.*${tag}.*</b>$`));
+    expect(html.renderSignalCancelled({ signal: BUY_SIGNAL, staleSeconds: 40 }, IST).text).toBe(
+      lines(
+        '<b>FORWARD-TEST (paper)</b>',
+        `${ICON.cancelled} <b>CANCELLED ${tag} (not counted in win rate)</b>`,
+        'Reason: market data went stale for 40 s during the 3 min entry window.',
+        'If you already entered, manage the trade manually.',
+      ),
+    );
+    const final = html.renderFinalReview(
+      {
+        signal: BUY_SIGNAL,
+        review: FINAL_REVIEW,
+        previousPrimary: 'NO_FOLLOW_THROUGH',
+        trackedThisMonth: 9,
+      },
+      IST,
+    ).text;
+    expect(final.split('\n').slice(0, 3)).toEqual([
+      '<b>FORWARD-TEST (paper)</b>',
+      `${ICON.review} <b>FINAL REVIEW ${tag}</b>`,
+      'Cause updated: STOP_HUNT_REVERSAL (Setup failure), was NO_FOLLOW_THROUGH.',
+    ]);
+  });
+
+  it('every message is valid Telegram HTML in both languages, and is not the plain fallback', () => {
+    const review = { signal: BUY_SIGNAL, review: FINAL_REVIEW, previousPrimary: null };
+    for (const options of [IST, HINGLISH]) {
+      const texts = [
+        html.renderSignalTp1({ signal: BUY_SIGNAL, at: DECIDED_AT, price: 4023.84 }, options),
+        html.renderSignalClosed({ signal: BUY_SIGNAL, outcome: WIN_TP2, review: null }, options),
+        html.renderSignalClosed({ signal: BUY_SIGNAL, outcome: PARTIAL, review: REVIEW }, options),
+        html.renderSignalClosed({ signal: BUY_SIGNAL, outcome: LOSS, review: REVIEW }, options),
+        html.renderSignalClosed({ signal: BUY_SIGNAL, outcome: TIME_EXIT, review: null }, options),
+        html.renderSignalClosed(
+          { signal: BUY_SIGNAL, outcome: DATA_INVALID, review: null },
+          options,
+        ),
+        html.renderSignalCancelled({ signal: BUY_SIGNAL, staleSeconds: null }, options),
+        html.renderFinalReview({ ...review, trackedThisMonth: 3 }, options),
+      ].map((message) => message.text);
+      for (const text of texts) {
+        expect(checkTelegramHtml(text), text).toBeNull();
+        expect(text).toContain('<b>');
+        expect(text).not.toMatch(/[\uE000-\uE00F]/);
+      }
     }
   });
 });

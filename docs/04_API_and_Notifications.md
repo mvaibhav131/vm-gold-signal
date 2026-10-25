@@ -110,9 +110,13 @@ The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `v
 ### Setup and security
 
 1. The owner creates a bot with @BotFather and puts `TELEGRAM_BOT_TOKEN` in the VM `.env`.
-2. `pnpm cli telegram:link` prints a one-time code valid for 10 minutes.
-3. The owner sends `/link <code>` to the bot. The worker stores the chat id in `app_settings`. From then on only that chat is served; all other chats are ignored silently.
-4. The worker uses long polling (`getUpdates`), so no inbound port is needed. Messages are sent with `sendMessage` using HTML parse mode, with all dynamic text escaped.
+2. `pnpm cli telegram:link` asks Telegram who the bot is (a wrong token is found now), then prints a one-time code of 8 digits (`1234-5678`). The database keeps only a hash of it (`app_settings.telegramLink`). The code works once, for 10 minutes, and is void after 5 wrong tries.
+3. The owner sends `/link <code>` to the bot. The worker stores the chat id (`app_settings.telegramChat`) and forgets the code. From then on only that chat is served; all other chats are ignored silently. A new code from `telegram:link` moves the link to another chat.
+4. The worker uses long polling (`getUpdates`), so no inbound port is needed. Messages are sent with `sendMessage` using HTML parse mode (bold, italic, `code`, quotes; see section 4.1, "The look"), with all dynamic text escaped, and without link previews.
+5. `pnpm cli telegram:preview` is for the first look at the formats: it needs only the bot token (no database, no worker). The owner presses START in the bot; the command then sends one example of every message (`SIGNAL_NEW` as a BUY and as a SELL, `SIGNAL_TP1`, `SIGNAL_CLOSED` as a win and as a loss with its review, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`, `SYSTEM_DEGRADED`, `SYSTEM_RECOVERED`, `ENGINE_PAUSED`, `TEST`) made by the real formatters from fixed example data, each marked `[SAMPLE n/11: ..., not a real signal]`. `pnpm cli telegram:preview hinglish` sends them in Hinglish. It does not link the chat.
+6. `pnpm cli telegram:test` queues a clearly labelled `TEST` message in the outbox, so the whole delivery path (outbox, sender, Telegram) can be checked. The worker must be running.
+
+Who is answered: a private chat that is the linked one, and nobody else. Groups, other chats, plain text and anything that is not a command get no answer. The only command a stranger can send is `/link`, and the bot answers it only while a code is pending, so it does not show itself to a stranger. A command addressed to another bot (`/status@OtherBot`) is not ours.
 
 ### Commands (owner chat only)
 
@@ -120,11 +124,13 @@ The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `v
 |---|---|
 | `/status` | Feed state, engine state (running, paused, warming up), market session, regime, next high-impact event, strategy statuses |
 | `/open` | All open signals with live R and the total open risk, or "no open signal" with the current wait reasons |
-| `/last` | The last closed signal with its result and review |
-| `/today` | Today's signals, results and net R |
-| `/month` | The monthly summary (same content as section 4.4) |
-| `/pause`, `/resume` | Pause or resume new signals |
-| `/help` | Command list |
+| `/last` | The last closed signal as it was told: the closed message and its final review, the stored Telegram texts of the latest signal that has them |
+| `/today` | Today's signals, results and net R (the calendar day of the display time zone) |
+| `/month` | The monthly summary (same content as section 4.4), for the calendar month of the display time zone |
+| `/pause [minutes]`, `/resume` | Pause or resume new signals. `/pause` lasts until `/resume`, `/pause 30` ends by itself after 30 minutes (1 to 10080); a timed pause that has run out counts as running. The pause is written to `app_settings.engine`. The reply to `/pause` is the `ENGINE_PAUSED` message itself; the other channel gets it through the outbox under the same event key. |
+| `/help`, `/start` | Command list; a short hello |
+
+A reply is never longer than Telegram allows: long lists are cut with an "and N more" line. `/open` needs a quote no older than 2 minutes for the live R, and says so instead of guessing when there is none. Until the decision engine exists (B26b), `/status` shows the regime as "not known yet" and `/open` shows no wait reasons.
 
 ### Delivery rules
 
@@ -137,7 +143,50 @@ The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `v
 - Locale: `en` (default) or `hinglish`. The templates are fixed dictionaries (labels only; numbers and levels are identical). Tests assert that both locales contain every required field.
 - Delivery audit: created, attempts, sent time, provider message id, last error. The System page shows the last send and the last error.
 
+### Delivery details (as built in B24)
+
+- **One sender, one rate limit.** `OutboxSender` runs on its own loop (it polls every 500 ms and can be woken). It claims one row at a time with `FOR UPDATE SKIP LOCKED`, most important first and oldest first within a priority, so two senders never take the same row. All Telegram traffic, the sender's and the bot's replies, goes through one `TelegramTransport`: at least 1 s between two messages, and a `429` closes it for `retry_after` for everybody.
+- **What a failure means.** `400` is `DEAD` (the message itself is refused, never retried). `429` waits at least `retry_after`. `401`, `403`, `5xx`, a lost connection and a timeout are retried until the message expires (the owner can fix a token or unblock the bot). The wait after attempt n is 2 s, 5 s, 15 s, 45 s, 2 min, then 5 min, or `retry_after` if that is longer. A message whose next try would come after its expiry becomes `EXPIRED`. An expired message is never sent, so a late entry alert cannot reach the owner. A row without `expires_at` lives 1 hour from creation.
+- **Crash safety.** A row is `SENDING` from the claim until its result is written. A row left `SENDING` for 120 s (the process died) is retried, so a message is delivered at least once: after a crash at the worst moment the owner may see it twice, never zero times. The result of every send is one statement.
+- **No chat yet.** Telegram rows wait, as `FAILED`, until a chat is linked or they expire. Without `TELEGRAM_BOT_TOKEN` the channel is not served at all.
+- **Web Push.** Sent with the `web-push` library behind the `WebPushSink` interface; VAPID keys per call. The TTL is the smaller of the payload TTL and the time the row has left; a row with less than a second left is `EXPIRED`. The `Topic` header is a hash of the tag, so a newer message for the same signal replaces an older one on the device. A row is `SENT` when at least one browser took it. A `404` or `410` removes that subscription. An incomplete payload is `DEAD`; no subscribed browser means the row waits.
+- **System messages.** `ENGINE_PAUSED` (above), `SYSTEM_DEGRADED` and `SYSTEM_RECOVERED`, `STORAGE_WARNING` and `TEST` are built in `packages/core/src/alerts/system.ts`, expire after 1 hour and carry no signal id. The health watcher reads `feed_incidents` of the kinds `DISCONNECT` and `STALE` (the recorder writes an incident only after its grace time) every 5 s: an open incident is told once, with the numbers of the open signals that cannot be followed; the recovery is told only for an incident that was announced, and only if it ended in the last 10 minutes. Event keys carry the kind and the start of the incident, so a restart cannot tell it twice. `STORAGE_WARNING` is queued by the maintenance job (B31), whose message exists already.
+
 ### 4.1 Message catalogue
+
+#### The look (Telegram HTML)
+
+Telegram has no colours, so colour comes from pictures, and the layout from a few tags. The rules, which hold for every message and both languages:
+
+- **Colour.** BUY is 🟢 and SELL 🔴; a group of the quality score is 🟢 strong or OK, 🟡 weak, 🔴 failed, ⚪ no data; results are ✅ win, 🟡 partial win, ❌ loss, ⏱ time exit, 🚫 cancelled, ⚪ data invalid; the feed is 🟢 live, 🟡 stale, 🔴 disconnected, ⚪ closed; system messages are 🔴 feed down, 🟢 feed back, ⏸ paused, ▶️ resumed, 🧪 test. All pictures are in one table (`messages/style.ts`).
+- **Bold** for the label (the first line, always), the title of a message and the result of a trade (`WIN #S-0042  +1.47R net`), the label of every level and every section title. **Italic** for the strategy line and the statement that a rate is not a guarantee.
+- **Tap to copy.** Every price of the entry card (entry, stop, TP1, TP2) is a `code` span, outside bold, so that one tap copies the number into the trading platform.
+- **Quotes.** The long "why" of an entry alert is one folding quote (`blockquote expandable`) at the end of the message: it shows its first lines and opens on a tap. What decides the trade (levels, validity, quality, warnings, macro, open risk, evidence) is outside it and always visible. The reasons of a review are a plain quote, so that the heuristic warning is never hidden.
+- **Safety.** The pictures and tags come from the formatters only. Text from outside is escaped and has the markup markers removed. A message that Telegram would not parse is sent as plain text, and the test server of the worker refuses invalid HTML with a 400 as the real service does.
+
+```text
+FORWARD-TEST (paper) | Manual execution only.         (bold label)
+🟢 BUY XAUUSD  #S-0042                                (bold)
+Trend Pullback v0.1.0                                 (italic)
+📊 Setup quality 95/100 (Very strong)                 (bold)
+
+📍 Entry  4017.370  (do not chase above 4018.015)     (label bold, price copyable)
+🛑 Stop  4010.900  (-6.470)
+🎯 TP1  4023.840  (1.00R)  close 50%, move stop to entry
+🏁 TP2  4030.310  (2.00R)  runner
+⏱ Valid for 3 min (until 11:38 IST). Time stop 2 h (13:35 IST).
+
+⚠️ Warnings: ...   🗓 Macro: ...   📰 News ...   📂 Open signals now: ...
+
+📈 EVIDENCE (same setup type)
+Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50
+...
+This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.   (italic)
+
+▼ WHY THIS SIGNAL   (folds: one line per group with its colour, weak, research only)
+```
+
+The examples below show the words and numbers of each message in plain text (the pictures and tags are left out for readability); the exact layout is fixed by the golden tests.
 
 Examples show the `en` locale. Times are in the display time zone. The messages about a signal (`SIGNAL_NEW`, `SIGNAL_TP1`, `SIGNAL_CLOSED`, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`) are written by `packages/core/src/messages`; their exact layout, the levels of detail used to stay under the length limit, and the lifetimes are in `02_Signal_Engine.md` section 14.1.
 
@@ -276,8 +325,8 @@ A win means net R above zero after costs. Time exits count as wins or losses by 
 ```text
 signal:<id>:confirmed   signal:<id>:tp1   signal:<id>:closed   signal:<id>:review
 news:<eventId>:upcoming   news:<eventId>:released   news:<clusterId>:headline   move:<id>:spike
-health:<incidentId>:degraded   health:<incidentId>:recovered
-engine:<pauseId>:paused   storage:<yyyymmdd>:warning
+health:<kind>@<startMs>:degraded   health:<kind>@<startMs>:recovered      (kind: STALE or DISCONNECT; the start of the incident in epoch ms)
+engine:<pauseId>:paused   storage:<yyyymmdd>:warning                      (pauseId: the epoch ms at which the pause began)
 report:daily:<yyyymmdd>   report:monthly:<yyyymm>
 test:<uuid>
 ```
@@ -289,6 +338,6 @@ Kinds stored in `notification_outbox.kind`: `SIGNAL_NEW`, `SIGNAL_TP1`, `SIGNAL_
 - Contract tests: every endpoint response parses with its Zod schema; unknown fields fail the test.
 - Security tests: no registration route, `401` without a cookie on every private route, cookie flags, `no-store`, `Origin` and CSRF header enforcement, login throttling, session revocation.
 - SSE tests: heartbeat, ordering, replay with `Last-Event-ID`, `resync` after restart.
-- Telegram tests: outbox idempotency, expiry, retry and `retry_after`, chunking and trimming order, HTML escaping, both locales contain every required field, non-owner chat is ignored.
+- Telegram tests: outbox idempotency, expiry, retry and `retry_after`, chunking and trimming order, HTML escaping, both locales contain every required field, non-owner chat is ignored. They run against a fake Telegram server (`apps/worker/src/testing/fakeTelegram.ts`, a real local HTTP server) and, for the database parts, against PostgreSQL.
 - Formatter golden tests: fixed signals produce byte-identical messages.
 - News tests: classification golden tests per topic, clustering of duplicate stories, impact thresholds, market-move detection, the "no matching headline" wording, feed outage handling, and that no message ever states a causal claim without the words "possible cause".

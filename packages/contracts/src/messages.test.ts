@@ -1,6 +1,7 @@
 import {
   RISK_DEFAULTS,
   buildExplanation,
+  checkTelegramHtml,
   planTrade,
   qualityStrengths,
   renderFinalReview,
@@ -365,8 +366,12 @@ describe('the stored explanation can be read by the messages', () => {
         { locale, displayTz: 'Asia/Kolkata' },
       );
       expect(message.level).toBe(0);
-      expect(message.text.startsWith('FORWARD-TEST (paper)')).toBe(true);
-      expect(message.text).toContain(`${side} XAUUSD | Trend Pullback v0.1.0 | #S-0042`);
+      expect(message.text.startsWith('<b>FORWARD-TEST (paper)</b>')).toBe(true);
+      expect(message.text).toContain(`<b>${side} XAUUSD</b>  #S-0042`);
+      expect(message.text).toContain('<i>Trend Pullback v0.1.0</i>');
+      // what Telegram receives is valid HTML, not the plain-text fallback
+      expect(checkTelegramHtml(message.text)).toBeNull();
+      expect(message.text).toContain('<blockquote expandable>');
     }
   });
 
@@ -391,7 +396,7 @@ describe('the stored explanation can be read by the messages', () => {
       isWin: false,
     };
     expect(renderSignalClosed({ signal, outcome, review: null }, options).text).toContain(
-      'LOSS #S-0042  -1.00R net',
+      '<b>LOSS #S-0042  -1.00R net</b>',
     );
     expect(
       renderSignalTp1({ signal, at: DECIDED_AT + 60_000, price: signal.tp1 }, options).kind,

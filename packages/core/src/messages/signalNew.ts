@@ -13,6 +13,8 @@ import { matchLevelText } from '../explain/names';
 import type { ExplanationDoc, ExplanationEvidence, ExplanationHeadline } from '../explain/types';
 import { TRADED_SYMBOL } from '../symbol';
 import { assertLevels, labelLine, rewardR, signalTag, strategyText } from './common';
+import { bold, clean, fold, italic, mono } from './markup';
+import { ICON, STATE_ICON, sideIcon } from './style';
 import { clockText } from './time';
 import { fitMessage, type Rendering } from './text';
 import type { DisplayOptions, NewSignalData, TelegramMessage } from './types';
@@ -62,24 +64,33 @@ const DETAIL: readonly Detail[] = [
   },
 ];
 
-const MARKS = { STRONG: '[+]', OK: '[+]', WEAK: '[~]', FAIL: '[-]', NA: '[n/a]' } as const;
-const LABEL_WIDTH = 7;
-
 function levelLines(data: NewSignalData, w: Words, at: (ms: number) => string): string[] {
   const { signal } = data;
-  const pad = (label: string): string => label.padEnd(LABEL_WIDTH);
+  // the price is its own span (not inside bold) so that one tap copies it into the platform
+  const row = (icon: string, label: string, price: number, rest: string): string =>
+    `${icon} ${bold(label)}  ${mono(priceText(price))}  ${rest}`;
   const lines = [
-    `${pad(w.entry)}${priceText(signal.entry)}   (${w.doNotChase(signal.side, priceText(signal.maxValidEntry))})`,
-    `${pad(w.stop)}${priceText(signal.stopLoss)}   (${signedPriceText(signal.stopLoss - signal.entry)})`,
-    `${pad(w.tp1)}${priceText(signal.tp1)}   (${plainRText(rewardR(signal, signal.tp1))})  ${w.tp1Note[signal.exitProfile]}`,
+    row(
+      ICON.entry,
+      w.entry,
+      signal.entry,
+      `(${w.doNotChase(signal.side, priceText(signal.maxValidEntry))})`,
+    ),
+    row(ICON.stop, w.stop, signal.stopLoss, `(${signedPriceText(signal.stopLoss - signal.entry)})`),
+    row(
+      ICON.tp1,
+      w.tp1,
+      signal.tp1,
+      `(${plainRText(rewardR(signal, signal.tp1))})  ${w.tp1Note[signal.exitProfile]}`,
+    ),
   ];
   if (signal.tp2 !== null) {
     lines.push(
-      `${pad(w.tp2)}${priceText(signal.tp2)}   (${plainRText(rewardR(signal, signal.tp2))})  ${w.runner}`,
+      row(ICON.tp2, w.tp2, signal.tp2, `(${plainRText(rewardR(signal, signal.tp2))})  ${w.runner}`),
     );
   }
   lines.push(
-    `${w.validFor(spanText(signal.entryValidUntil - signal.generatedAt), at(signal.entryValidUntil))} ${w.timeStop(spanText(signal.timeStopAt - signal.generatedAt), at(signal.timeStopAt))}`,
+    `${ICON.time} ${w.validFor(spanText(signal.entryValidUntil - signal.generatedAt), at(signal.entryValidUntil))} ${w.timeStop(spanText(signal.timeStopAt - signal.generatedAt), at(signal.timeStopAt))}`,
   );
   return lines;
 }
@@ -90,44 +101,41 @@ function groupLines(e: ExplanationDoc, w: Words, d: Detail): string[] {
       .slice(0, d.facts)
       .map((fact) => `${fact.label} ${String(fact.value)}`)
       .join('; ');
-    const head = `${MARKS[group.state]} ${w.groupName[group.key]} ${group.state}`;
+    const head = `${STATE_ICON[group.state]} ${bold(`${w.groupName[group.key]} ${group.state}`)}`;
     if (group.state === 'NA' && group.facts.length === 0) return `${head}: ${w.noData}`;
     return facts === '' ? head : `${head}: ${facts}`;
   });
 }
 
 function macroLine(e: ExplanationDoc, w: Words, at: (ms: number) => string, now: number): string {
-  const state = `${w.macro}: ${w.macroState[e.macro.state]}.`;
+  const state = `${ICON.macro} ${bold(w.macro)}: ${w.macroState[e.macro.state]}.`;
   const { next } = e.macro;
   if (next !== null) {
     const time = Date.parse(next.at);
-    return `${state} ${w.nextEvent(next.name, at(time), spanText(Math.max(0, time - now)))}`;
+    return `${state} ${w.nextEvent(clean(next.name), at(time), spanText(Math.max(0, time - now)))}`;
   }
   return e.macro.state === 'CLEAR' ? `${state} ${w.noNextEvent}` : state;
 }
 
 function headlineLine(headline: ExplanationHeadline, at: (ms: number) => string): string {
   const impact = headline.impact ?? 'unclassified';
-  const sources = headline.sources.join(', ');
+  const sources = clean(headline.sources.join(', '));
   const published =
     headline.publishedAt === null ? '' : `, ${at(Date.parse(headline.publishedAt))}`;
-  return `- [${impact}] ${headline.title} (${sources}${published})`;
+  return `- [${impact}] ${clean(headline.title)} (${sources}${published})`;
 }
 
 function newsLines(e: ExplanationDoc, w: Words, d: Detail, at: (ms: number) => string): string[] {
-  if (e.news.feed === 'UNAVAILABLE') return [`${w.newsTitle}: ${w.newsUnavailable}`];
+  const title = `${ICON.news} ${bold(w.newsTitle)}`;
+  if (e.news.feed === 'UNAVAILABLE') return [`${title}: ${w.newsUnavailable}`];
   const { headlines } = e.news;
-  if (headlines.length === 0) return [`${w.newsTitle}: ${w.newsNone}`];
-  if (!d.headlines) return [`${w.newsTitle}: ${w.newsCount(headlines.length)}`];
-  return [
-    `${w.newsTitle}:`,
-    ...headlines.map((headline) => headlineLine(headline, at)),
-    w.newsContext,
-  ];
+  if (headlines.length === 0) return [`${title}: ${w.newsNone}`];
+  if (!d.headlines) return [`${title}: ${w.newsCount(headlines.length)}`];
+  return [`${title}:`, ...headlines.map((headline) => headlineLine(headline, at)), w.newsContext];
 }
 
 function evidenceLines(e: ExplanationEvidence, w: Words): string[] {
-  const lines = [w.evidenceTitle];
+  const lines = [`${ICON.evidence} ${bold(w.evidenceTitle)}`];
   if (e.sampleLabel === 'INSUFFICIENT' || e.winRate === null || e.ci === null) {
     lines.push(w.insufficient(e.n, e.wins, EVIDENCE_MIN_SAMPLE));
   } else {
@@ -153,35 +161,43 @@ function render(data: NewSignalData, options: DisplayOptions, level: number): Re
   const w = WORDS[options.locale];
   const at = (ms: number): string => clockText(ms, options.displayTz, signal.generatedAt);
 
+  // What decides the trade is on top and in plain view; the long "why" is folded at the end.
+  const warnings =
+    e.warnings.length === 0
+      ? [`${ICON.warning} ${bold(w.warnings)}: ${w.none}`]
+      : [
+          `${ICON.warning} ${bold(w.warnings)}:`,
+          ...e.warnings.map((warning) => `- ${warning.text}`),
+        ];
+  const why = [
+    bold(w.whyHeader),
+    ...groupLines(e, w, detail),
+    `${ICON.weak} ${bold(w.weak)}: ${e.weak.length === 0 ? w.none : e.weak.slice(0, detail.weak).join('; ')}`,
+  ];
+  if (detail.researchOnly && e.researchOnly.length > 0) {
+    why.push(
+      `${ICON.research} ${bold(w.researchOnly)}: ${e.researchOnly.map((fact) => `${fact.label} ${String(fact.value)}`).join('; ')}`,
+    );
+  }
+
   const lines: string[] = [
     labelLine(signal, w, true),
-    `${signal.side} ${TRADED_SYMBOL} | ${strategyText(signal)} | ${signalTag(signal.seq)}`,
+    `${sideIcon(signal.side)} ${bold(`${signal.side} ${TRADED_SYMBOL}`)}  ${signalTag(signal.seq)}`,
+    italic(strategyText(signal)),
+    `${ICON.quality} ${bold(w.quality(String(Math.round(e.quality.score)), w.grade[e.quality.grade]))}`,
     '',
     ...levelLines(data, w, at),
     '',
-    w.quality(String(Math.round(e.quality.score)), w.grade[e.quality.grade]),
-    w.whyHeader,
-    ...groupLines(e, w, detail),
-    `[~] ${w.weak}: ${e.weak.length === 0 ? w.none : e.weak.slice(0, detail.weak).join('; ')}`,
-  ];
-  if (detail.researchOnly && e.researchOnly.length > 0) {
-    lines.push(
-      `[?] ${w.researchOnly}: ${e.researchOnly.map((fact) => `${fact.label} ${String(fact.value)}`).join('; ')}`,
-    );
-  }
-  lines.push(macroLine(e, w, at, signal.generatedAt));
-  if (e.warnings.length === 0) {
-    lines.push(`[!] ${w.warnings}: ${w.none}`);
-  } else {
-    lines.push(`[!] ${w.warnings}:`, ...e.warnings.map((warning) => `- ${warning.text}`));
-  }
-  lines.push(...newsLines(e, w, detail, at));
-  lines.push(
-    `${w.openSignals}: ${e.open.count === 0 ? w.none : String(e.open.count)} (${w.openRisk(plainRText(e.open.riskR))})`,
+    ...warnings,
+    macroLine(e, w, at, signal.generatedAt),
+    ...newsLines(e, w, detail, at),
+    `${ICON.open} ${bold(w.openSignals)}: ${e.open.count === 0 ? w.none : String(e.open.count)} (${w.openRisk(plainRText(e.open.riskR))})`,
     '',
     ...evidenceLines(e.evidence, w),
-    `${w.disclaimer} ${w.oneR(priceText(signal.riskDistance))}`,
-  );
+    italic(`${w.disclaimer} ${w.oneR(priceText(signal.riskDistance))}`),
+    '',
+    fold(why.join('\n')),
+  ];
   return { lines, dropped: detail.dropped };
 }
 
