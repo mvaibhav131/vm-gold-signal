@@ -38,11 +38,13 @@ describe('checksumOf', () => {
 });
 
 describe('loadMigrations', () => {
-  it('reads the real migrations: 0001 schema, 0002 roles, numbered without gaps', async () => {
+  it('reads the real migrations: schema, roles, rollups, rollup roles, numbered without gaps', async () => {
     const migrations = await loadMigrations();
     expect(migrations.map((m) => [m.version, m.name])).toEqual([
       [1, 'schema'],
       [2, 'roles'],
+      [3, 'rollups'],
+      [4, 'rollup_roles'],
     ]);
     for (const migration of migrations) {
       expect(migration.sql.trim().length).toBeGreaterThan(100);
@@ -50,10 +52,17 @@ describe('loadMigrations', () => {
     }
   });
 
-  it('applies the schema of docs/03_Data_Model.sql as migration 0001, unchanged', async () => {
+  // docs/03 is the schema: migration 0001 followed by the later migrations that change it, in order. The
+  // migrations that only change privileges (0002, 0004) are not part of it. A new migration that changes the
+  // schema must be added to docs/03 and to this list.
+  it('applies the schema of docs/03_Data_Model.sql as migrations 0001 and 0003, unchanged', async () => {
     const doc = await readFile(new URL('../../../docs/03_Data_Model.sql', import.meta.url), 'utf8');
-    const migration = await readFile(join(MIGRATIONS_DIR, '0001_schema.sql'), 'utf8');
-    expect(checksumOf(migration)).toBe(checksumOf(doc));
+    const parts = await Promise.all(
+      ['0001_schema.sql', '0003_rollups.sql'].map((name) =>
+        readFile(join(MIGRATIONS_DIR, name), 'utf8'),
+      ),
+    );
+    expect(checksumOf(parts.join(''))).toBe(checksumOf(doc));
   });
 
   it('returns nothing for an empty directory and ignores other files', async () => {

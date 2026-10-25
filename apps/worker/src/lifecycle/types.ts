@@ -1,6 +1,7 @@
 import type {
   AfterCandle,
   AlertSettings,
+  CauseCode,
   CourseCandle,
   ExitProfile,
   ExplanationDoc,
@@ -153,6 +154,11 @@ export interface LifecycleStore {
   commitFinalReview(write: FinalReviewWrite): Promise<boolean>;
   /** The preliminary reviews of the signals that closed at or before `closedBefore`. */
   loadPendingReviews(closedBefore: number): Promise<PendingReview[]>;
+  /**
+   * How many reviewed results of a month (the first day of the UTC month of their decision, `2026-10-01`) name
+   * this cause as the primary one, for all strategies: the "tracked this month" of the final review.
+   */
+  causeCount(month: string, cause: CauseCode): Promise<number>;
 }
 
 /** The market data the lifecycle reads: stored ticks and candles, and the events that were scheduled. */

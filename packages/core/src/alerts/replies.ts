@@ -290,7 +290,7 @@ const statsRecordOf = (row: PeriodRow): StatsRecord | null =>
         closedAt: row.closedAt,
       };
 
-const recordsOf = (rows: readonly PeriodRow[]): StatsRecord[] =>
+export const recordsOf = (rows: readonly PeriodRow[]): StatsRecord[] =>
   rows.flatMap((row) => {
     const record = statsRecordOf(row);
     return record === null ? [] : [record];
@@ -303,7 +303,7 @@ function stateText(row: PeriodRow, w: AlertWords): string {
   return `${row.result.replace('_', ' ')} ${signedRText(row.realizedRNet ?? 0)}`;
 }
 
-const rateOf = (share: number): string => `${fixedText(share * 100, 1)}%`;
+export const rateOf = (share: number): string => `${fixedText(share * 100, 1)}%`;
 
 /** Net R of the counted results, with the sign shown as the messages show it. */
 const netText = (summary: ReturnType<typeof summarizeResults>): string => signedRText(summary.netR);
@@ -346,16 +346,26 @@ export function monthReply(
 ): Reply {
   const w = wordsOf(options);
   const parts = zonedParts(data.monthStart, options.displayTz);
-  const lines = [
+  return replyOf([
     `${ICON.month} ${bold(w.monthTitle(MONTH_NAMES[parts.month - 1] ?? '', String(parts.year)))}`,
-  ];
-  const summary = summarizeResults(recordsOf(data.rows));
-  const open = data.rows.filter((row) => row.result === null).length;
+    ...monthLines(data.rows, options),
+  ]);
+}
 
-  lines.push(w.generated(data.rows.length));
+/**
+ * What a month says after its title: what was generated and what is still open, the valid results, the win rate with its
+ * interval, the money lines, the strategies and the failure causes. `/month` and the monthly report show the same lines.
+ */
+export function monthLines(rows: readonly PeriodRow[], options: DisplayOptions): string[] {
+  const w = wordsOf(options);
+  const lines: string[] = [];
+  const summary = summarizeResults(recordsOf(rows));
+  const open = rows.filter((row) => row.result === null).length;
+
+  lines.push(w.generated(rows.length));
   lines.push(w.apartCounts(summary.cancelled, summary.dataInvalid, open));
   lines.push(w.validResults(summary.resolvedValid));
-  if (summary.resolvedValid === 0) return replyOf(lines);
+  if (summary.resolvedValid === 0) return lines;
 
   lines.push(w.resultCounts(summary.wins, summary.partials, summary.losses, summary.timeExits));
   if (summary.winRate !== null && summary.ci95 !== null) {
@@ -380,12 +390,12 @@ export function monthReply(
   );
 
   const byStrategy = new Map<StrategyKey, PeriodRow[]>();
-  for (const row of data.rows) {
+  for (const row of rows) {
     if (row.result === null || !row.countsInStats) continue;
     byStrategy.set(row.strategyKey, [...(byStrategy.get(row.strategyKey) ?? []), row]);
   }
   const strategies = [...byStrategy.entries()]
-    .map(([key, rows]) => ({ key, rows, summary: summarizeResults(recordsOf(rows)) }))
+    .map(([key, own]) => ({ key, rows: own, summary: summarizeResults(recordsOf(own)) }))
     .sort(
       (a, b) =>
         b.rows.length - a.rows.length || STRATEGY_NAMES[a.key].localeCompare(STRATEGY_NAMES[b.key]),
@@ -402,7 +412,7 @@ export function monthReply(
   }
 
   const causes = new Map<CauseCode, number>();
-  for (const row of data.rows) {
+  for (const row of rows) {
     if (row.primaryCause !== null)
       causes.set(row.primaryCause, (causes.get(row.primaryCause) ?? 0) + 1);
   }
@@ -414,5 +424,5 @@ export function monthReply(
       ? w.noReviewed
       : `${w.topCauses} ${top.map(([code, n]) => `${code} ${String(n)}`).join(', ')}`,
   );
-  return replyOf(lines);
+  return lines;
 }

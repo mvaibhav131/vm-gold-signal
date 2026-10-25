@@ -386,6 +386,7 @@ export interface StatsBucket {
   sum_win_r: Generated<Numeric>;
   sum_loss_r: Generated<Numeric>;
   updated_at: Generated<Timestamp>;
+  winners: Generated<number>;
 }
 
 export interface StatsMonthly {
@@ -402,6 +403,7 @@ export interface StatsMonthly {
   net_r: Generated<Numeric>;
   sum_win_r: Generated<Numeric>;
   sum_loss_r: Generated<Numeric>;
+  winners: Generated<number>;
 }
 
 export interface StorageUsageV {

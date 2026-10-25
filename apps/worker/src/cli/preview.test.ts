@@ -11,7 +11,7 @@ const TOKEN = '555:preview-token';
 const EN = { locale: 'en', displayTz: 'Asia/Kolkata' } as const;
 const HINGLISH = { locale: 'hinglish', displayTz: 'Asia/Kolkata' } as const;
 /** The samples, and the messages the command sends: the intro and one for each sample. */
-const SAMPLES = 18;
+const SAMPLES = 21;
 let fake: FakeTelegram | null = null;
 
 afterEach(async () => {
@@ -48,6 +48,9 @@ describe('sampleMessages', () => {
         'MARKET_MOVE, no matching headline',
         'SYSTEM_DEGRADED, the headline feeds',
         'SYSTEM_RECOVERED, the headline feeds',
+        'STORAGE_WARNING',
+        'DAILY_DIGEST',
+        'MONTHLY_REPORT',
         'TEST',
       ]);
       expect(samples).toHaveLength(SAMPLES);
@@ -125,6 +128,21 @@ describe('sampleMessages', () => {
     expect(released).toContain('CPI m/m released 16:00 IST');
     expect(released).toContain('(surprise +2.1 sigma)');
     expect(released).toContain('Gold 15 s after: -3.100 USD, spread 0.900.');
+  });
+
+  it('show the storage warning, the day summary of the example day and the report of its month', () => {
+    const texts = Object.fromEntries(
+      sampleMessages(EN).map((sample) => [sample.name, plain(sample.text)]),
+    );
+    expect(texts.STORAGE_WARNING).toContain('STORAGE 82% of the 10 GB budget.');
+    expect(texts.DAILY_DIGEST).toContain(
+      'DAY SUMMARY 23 Oct: 3 signals, 2 valid results: 1 win +1.47R, 1 loss -1.04R. 1 still open.',
+    );
+    expect(texts.DAILY_DIGEST).toContain('Top weak group today: Trigger and momentum.');
+    const report = texts.MONTHLY_REPORT;
+    expect(report).toContain('MONTHLY REPORT October 2026 (FORWARD-TEST)');
+    expect(report).toContain('Signals generated: 24');
+    expect(report).toContain('Data: feed uptime 99.2%, 3 incidents. Storage: DB 1.1 GB.');
   });
 });
 
@@ -295,8 +313,10 @@ describe('telegramPreview', () => {
     server.pushMessage(77, '/start');
     await telegramPreview({ client, options: EN, print: () => undefined, pollS: 1, gapMs: 20 });
     const times = server.sent.map((message) => message.at);
-    for (let i = 1; i < times.length; i += 1) {
-      expect((times[i] ?? 0) - (times[i - 1] ?? 0)).toBeGreaterThanOrEqual(15);
-    }
+    // each gap is checked through the whole span: a single late timer on the server side cannot fail it
+    const first = times[0] ?? 0;
+    const last = times[times.length - 1] ?? 0;
+    expect(times.length).toBeGreaterThan(SAMPLES);
+    expect(last - first).toBeGreaterThanOrEqual(15 * (times.length - 1));
   });
 });

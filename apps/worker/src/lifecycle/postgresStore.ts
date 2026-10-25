@@ -7,8 +7,12 @@ import {
 import { explanationSchema, settingsSchema, type SignalDraft } from '@vmgs/contracts';
 import {
   TRADED_SYMBOL,
+  causeChangeDelta,
+  closedDelta,
+  createdDelta,
   type AfterCandle,
   type AlertSettings,
+  type CauseCode,
   type CourseCandle,
   type HighImpactSeen,
   type OutboxChannel,
@@ -20,6 +24,8 @@ import {
 } from '@vmgs/core';
 import type { Pool, PoolClient } from 'pg';
 
+import { rollupSignalOf } from '../rollups/facts';
+import { applyRollupDelta, loadRollupSignal } from '../rollups/postgres';
 import { spreadOfSnapshot } from './record';
 import type {
   CreateSignalResult,
@@ -336,6 +342,10 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
         "INSERT INTO signal_state (signal_id, status, stop_loss_current) VALUES ($1, 'ACTIVE', $2)",
         [created.id, draft.stopLoss],
       );
+      // only live signals are counted: a simulated or a backtest one is not a forward-test result
+      if (draft.mode === 'LIVE') {
+        await applyRollupDelta(client, createdDelta(rollupSignalOf(draft, strategy)), now);
+      }
       await this.insertEvent(client, created.id, {
         type: 'CREATED',
         at: Date.parse(draft.generatedAt),
@@ -414,6 +424,15 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
         for (const event of write.events) await this.insertEvent(client, signalId, event);
         await client.query('DELETE FROM signal_state WHERE signal_id = $1', [signalId]);
         if (review !== null) await this.insertReview(client, signalId, review);
+        const filed = await loadRollupSignal(client, signalId);
+        if (filed?.mode === 'LIVE') {
+          const trade = {
+            ...filed.signal,
+            outcome,
+            primaryCause: review?.review.primaryCause ?? null,
+          };
+          await applyRollupDelta(client, closedDelta(trade), write.at);
+        }
         await this.notify(client, signalId, 'closed');
       } else {
         for (const event of write.events) await this.insertEvent(client, signalId, event);
@@ -447,6 +466,16 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
   async commitFinalReview(write: FinalReviewWrite): Promise<boolean> {
     const { signalId, review } = write;
     return this.transaction(async (client) => {
+      // the preliminary review is locked first: its cause is what the final one replaces in the rollups
+      const before = await client.query<{ primary_cause: Review['primaryCause']; net: Num | null }>(
+        `SELECT a.primary_cause, o.realized_r_net AS net
+           FROM signal_autopsies a JOIN signal_outcomes o ON o.signal_id = a.signal_id
+          WHERE a.signal_id = $1 AND a.status = 'PRELIMINARY'
+            FOR UPDATE OF a`,
+        [signalId],
+      );
+      const preliminary = before.rows[0];
+      if (preliminary === undefined) return false;
       const updated = await client.query(
         `UPDATE signal_autopsies
             SET status = 'FINAL', primary_cause = $2, causes = $3::jsonb,
@@ -462,6 +491,15 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
         ],
       );
       if (updated.rowCount === 0) return false;
+      const filed = await loadRollupSignal(client, signalId);
+      if (filed?.mode === 'LIVE') {
+        const change = causeChangeDelta(
+          { ...filed.signal, netR: numOrNull(preliminary.net) ?? 0 },
+          preliminary.primary_cause,
+          review.primaryCause,
+        );
+        await applyRollupDelta(client, change, write.finalizedAt);
+      }
       await this.insertEvent(client, signalId, {
         type: 'AUTOPSY_FINAL',
         at: write.finalizedAt,
@@ -471,6 +509,14 @@ export class PostgresLifecycleStore implements LifecycleStore, MarketReader {
       await this.notify(client, signalId, 'review');
       return true;
     });
+  }
+
+  async causeCount(month: string, cause: CauseCode): Promise<number> {
+    const { rows } = await this.pool.query<{ n: Num }>(
+      'SELECT COALESCE(sum(n), 0) AS n FROM failure_cause_stats WHERE month = $1 AND cause_code = $2',
+      [month, cause],
+    );
+    return num(rows[0]?.n ?? 0);
   }
 
   async loadPendingReviews(closedBefore: number): Promise<PendingReview[]> {

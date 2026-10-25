@@ -7,6 +7,7 @@ lifecycleStoreContract('in memory', () => {
   const stories = new Map<string, HighImpactSeen>();
   const harness: StoreHarness = {
     store,
+    rollups: store,
     events: (id) => Promise.resolve(store.eventsOf(id, true)),
     outbox: () =>
       Promise.resolve(

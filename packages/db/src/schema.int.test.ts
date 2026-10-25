@@ -144,6 +144,84 @@ describe('append-only tables reject UPDATE, DELETE and TRUNCATE', () => {
   });
 });
 
+describe('the feature snapshot of a signal may be pruned, and nothing else of it may change', () => {
+  const marker = (extra = ''): string =>
+    `'{"pruned": true, "prunedAt": "2027-10-24T00:00:00Z", "spread": 0.12${extra}}'::jsonb`;
+  const read = async (id: string): Promise<Record<string, unknown>> => {
+    const [row] = await query<{ feature_snapshot: Record<string, unknown>; entry: string }>(
+      url,
+      'SELECT feature_snapshot, entry FROM signals WHERE id = $1',
+      [id],
+    );
+    return row?.feature_snapshot ?? {};
+  };
+
+  it('replaces the snapshot by a marker, once', async () => {
+    const id = await newSignal();
+    expect(
+      await failureOf(url, `UPDATE signals SET feature_snapshot = ${marker()} WHERE id = '${id}'`),
+    ).toBeNull();
+    expect(await read(id)).toEqual({
+      pruned: true,
+      prunedAt: '2027-10-24T00:00:00Z',
+      spread: 0.12,
+    });
+    // a marker is final: it cannot be pruned again, nor be replaced by a full snapshot
+    const again = await failureOf(
+      url,
+      `UPDATE signals SET feature_snapshot = ${marker()} WHERE id = '${id}'`,
+    );
+    expect(again?.code).toBe('P0001');
+    const back = await failureOf(
+      url,
+      `UPDATE signals SET feature_snapshot = '{"spread": 0.12}'::jsonb WHERE id = '${id}'`,
+    );
+    expect(back?.code).toBe('P0001');
+  });
+
+  it('refuses a snapshot that is replaced by something that is not a marker', async () => {
+    const id = await newSignal();
+    for (const value of [
+      `'{}'::jsonb`,
+      `'{"pruned": false}'::jsonb`,
+      `'{"pruned": "yes"}'::jsonb`,
+      `'{"spread": 0.3}'::jsonb`,
+    ]) {
+      const failure = await failureOf(
+        url,
+        `UPDATE signals SET feature_snapshot = ${value} WHERE id = '${id}'`,
+      );
+      expect(failure?.code, value).toBe('P0001');
+    }
+    expect(await read(id)).not.toHaveProperty('pruned');
+  });
+
+  it('refuses a pruning that changes any other column in the same statement', async () => {
+    const id = await newSignal();
+    for (const change of [
+      'entry = 1',
+      "regime = 'RANGE'",
+      `grouped_scores = '[{"key": "trend", "state": "WEAK"}]'::jsonb`,
+      "explanation = '{}'::jsonb",
+      "warnings = '[1]'::jsonb",
+    ]) {
+      const failure = await failureOf(
+        url,
+        `UPDATE signals SET feature_snapshot = ${marker()}, ${change} WHERE id = '${id}'`,
+      );
+      expect(failure?.code, change).toBe('P0001');
+    }
+    expect(await read(id)).not.toHaveProperty('pruned');
+  });
+
+  it('still refuses to delete a signal, also one that was pruned', async () => {
+    const id = await newSignal();
+    await query(url, `UPDATE signals SET feature_snapshot = ${marker()} WHERE id = $1`, [id]);
+    expect((await failureOf(url, `DELETE FROM signals WHERE id = '${id}'`))?.code).toBe('P0001');
+    expect(await scalar(url, 'SELECT count(*)::int FROM signals WHERE id = $1', [id])).toBe(1);
+  });
+});
+
 describe('strategy version config is immutable', () => {
   it('rejects a change of the config, the hash, the key or the version', async () => {
     for (const update of [
@@ -505,6 +583,42 @@ describe('constraints reject impossible rows', () => {
         failureOf(
           url,
           "INSERT INTO stats_bucket (scope, level, bucket_key) VALUES ('LIVE', 0, 'k')",
+        ),
+    },
+    {
+      name: 'a statistics bucket with a negative sum of gains',
+      code: '23514',
+      run: () =>
+        failureOf(
+          url,
+          "INSERT INTO stats_bucket (scope, level, bucket_key, sum_win_r) VALUES ('FORWARD', 0, 'neg-win', -0.5)",
+        ),
+    },
+    {
+      name: 'a statistics bucket with a positive sum of losses',
+      code: '23514',
+      run: () =>
+        failureOf(
+          url,
+          "INSERT INTO stats_bucket (scope, level, bucket_key, sum_loss_r) VALUES ('FORWARD', 0, 'pos-loss', 0.5)",
+        ),
+    },
+    {
+      name: 'a month with a positive sum of losses',
+      code: '23514',
+      run: () =>
+        failureOf(
+          url,
+          "INSERT INTO stats_monthly (month, strategy_key, sum_loss_r) VALUES ('2026-10-01', 'pos-loss', 1)",
+        ),
+    },
+    {
+      name: 'a month with a negative sum of gains',
+      code: '23514',
+      run: () =>
+        failureOf(
+          url,
+          "INSERT INTO stats_monthly (month, strategy_key, sum_win_r) VALUES ('2026-10-01', 'neg-win', -1)",
         ),
     },
     {

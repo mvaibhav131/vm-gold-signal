@@ -5,19 +5,30 @@ import type { SignalDraft } from '@vmgs/contracts';
 import {
   type AfterCandle,
   type AlertSettings,
+  type CauseCode,
   type CourseCandle,
   type HighImpactSeen,
+  type LedgerTrade,
   type OutboxChannel,
   type OutboxRow,
+  type RollupSignal,
   type Side,
+  type SignalMode,
   type TickInput,
   type TradeOutcome,
   type TradeState,
   COURSE_CANDLE_MS,
+  RollupTables,
   TRADED_SYMBOL,
+  causeChangeDelta,
+  closedDelta,
+  createdDelta,
+  repairRollups,
 } from '@vmgs/core';
 
 import { spreadOfSnapshot } from '../lifecycle/record';
+import { rollupSignalOf } from '../rollups/facts';
+import type { RollupStore, RollupTx } from '../rollups/reconcile';
 import type {
   CreateSignalResult,
   CreatedSignal,
@@ -52,7 +63,7 @@ export interface StoredOutbox extends OutboxRow {
  * working state. Unit tests use it; the Postgres store is held to the same contract by the shared
  * store tests.
  */
-export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
+export class MemoryLifecycleStore implements LifecycleStore, MarketReader, RollupStore {
   readonly strategies = new Map<string, { ref: StrategyVersionRef; config: StrategyConfig }>();
   readonly signals = new Map<string, SignalRecord>();
   readonly states = new Map<string, TradeState>();
@@ -61,6 +72,10 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
   readonly outbox = new Map<string, StoredOutbox>();
   readonly autopsies = new Map<string, StoredReview>();
   readonly notifications: { readonly signalId: string; readonly change: string }[] = [];
+  /** The FORWARD rollup tables, written as the Postgres store writes them. */
+  rollups = new RollupTables();
+  /** The keys each signal is filed under in the rollups, and its mode. */
+  private readonly filed = new Map<string, { mode: SignalMode; signal: RollupSignal }>();
   settings: AlertSettings = defaultAlertSettings();
   ticks: TickInput[] = [];
   candles: CourseCandle[] = [];
@@ -161,6 +176,9 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
     };
     this.signals.set(record.id, record);
     this.setupKeys.set(record.id, draft.setupKey);
+    const signal = rollupSignalOf(draft, strategy);
+    this.filed.set(record.id, { mode: draft.mode, signal });
+    if (draft.mode === 'LIVE') this.rollups.apply(createdDelta(signal));
     this.states.set(record.id, {
       status: 'ACTIVE',
       stopLossCurrent: draft.stopLoss,
@@ -213,6 +231,16 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
           price: null,
         });
       }
+      const filed = this.filed.get(signalId);
+      if (filed?.mode === 'LIVE') {
+        this.rollups.apply(
+          closedDelta({
+            ...filed.signal,
+            outcome: write.closing.outcome,
+            primaryCause: write.closing.review?.review.primaryCause ?? null,
+          }),
+        );
+      }
       this.notifications.push({ signalId, change: 'closed' });
     } else if (write.state !== null) {
       this.states.set(signalId, write.state);
@@ -225,6 +253,17 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
   commitFinalReview(write: FinalReviewWrite): Promise<boolean> {
     const stored = this.autopsies.get(write.signalId);
     if (stored?.review.status !== 'PRELIMINARY') return Promise.resolve(false);
+    const filed = this.filed.get(write.signalId);
+    const outcome = this.outcomes.get(write.signalId)?.outcome;
+    if (filed?.mode === 'LIVE') {
+      this.rollups.apply(
+        causeChangeDelta(
+          { ...filed.signal, netR: outcome?.realizedRNet ?? 0 },
+          stored.review.primaryCause,
+          write.review.primaryCause,
+        ),
+      );
+    }
     this.autopsies.set(write.signalId, {
       review: write.review,
       computedAt: stored.computedAt,
@@ -238,6 +277,15 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
     this.addOutbox(write.outbox);
     this.notifications.push({ signalId: write.signalId, change: 'review' });
     return Promise.resolve(true);
+  }
+
+  causeCount(month: string, cause: CauseCode): Promise<number> {
+    return Promise.resolve(
+      this.rollups
+        .snapshot()
+        .causes.filter((row) => row.month === month && row.causeCode === cause)
+        .reduce((sum, row) => sum + row.n, 0),
+    );
   }
 
   loadPendingReviews(closedBefore: number): Promise<PendingReview[]> {
@@ -290,6 +338,37 @@ export class MemoryLifecycleStore implements LifecycleStore, MarketReader {
         .filter((item) => item.at >= from && item.at <= until)
         .sort((a, b) => a.at - b.at),
     );
+  }
+
+  /** The signals as the reconciliation reads them: every LIVE one, open or closed, in the order they were made. */
+  ledger(): LedgerTrade[] {
+    return [...this.signals.values()]
+      .sort((a, b) => a.seq - b.seq)
+      .flatMap((record) => {
+        const filed = this.filed.get(record.id);
+        if (filed?.mode !== 'LIVE') return [];
+        const outcome = this.outcomes.get(record.id)?.outcome ?? null;
+        return [
+          {
+            ...filed.signal,
+            outcome,
+            primaryCause: this.autopsies.get(record.id)?.review.primaryCause ?? null,
+          },
+        ];
+      });
+  }
+
+  withLock<T>(work: (tx: RollupTx) => Promise<T>): Promise<T> {
+    return work({
+      stored: () => Promise.resolve(this.rollups.snapshot()),
+      ledger: () => Promise.resolve(this.ledger()),
+      replace: (differences) => {
+        this.rollups = new RollupTables().apply(
+          repairRollups(this.rollups.snapshot(), differences),
+        );
+        return Promise.resolve();
+      },
+    });
   }
 
   /** The signal log of one signal; `ALERT_QUEUED` (bookkeeping about the messages) only with `withAlerts`. */

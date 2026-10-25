@@ -162,6 +162,18 @@ describe('STORAGE_WARNING and TEST', () => {
     expect(message.push.title).toBe('STORAGE 82%');
   });
 
+  it('says "1 day" for a retention of one day, and "days" for the others', () => {
+    const at = (retentionDays: number) =>
+      lines(
+        storageWarningMessage(
+          { usedPercent: 90, budgetGb: 10, retentionDays, largestTable: 'ticks', largestGb: 6 },
+          EN,
+        ).telegram,
+      )[1];
+    expect(at(1)).toBe('Tick retention shortened to 1 day.');
+    expect(at(7)).toBe('Tick retention shortened to 7 days.');
+  });
+
   it('the test message says it is not a signal', () => {
     const message = testMessage(AT, EN);
     expect(message.kind).toBe('TEST');

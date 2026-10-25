@@ -1,10 +1,13 @@
 import {
+  dailyDigestMessage,
   enginePausedMessage,
   feedDegradedMessage,
   feedRecoveredMessage,
   headlineFeedsBackMessage,
   headlineFeedsDownMessage,
   marketMoveMessage,
+  monthWindow,
+  monthlyReportMessage,
   newsHeadlineMessage,
   newsReleasedMessage,
   newsUpcomingMessage,
@@ -15,11 +18,14 @@ import {
   renderSignalClosed,
   renderSignalNew,
   renderSignalTp1,
+  storageWarningMessage,
   testMessage,
+  tradingDayOf,
   type CalendarRecord,
   type DisplayOptions,
   type HeadlineCluster,
   type MoveDetection,
+  type ReportRow,
   type UnclassifiedHeadline,
 } from '@vmgs/core';
 
@@ -95,6 +101,56 @@ const SPIKE: MoveDetection = {
   atr: 3,
   at: DECIDED_AT,
 };
+
+/** A signal of a report: a result (or none, for one still open) with its R, session, score and the groups that were weak at entry. */
+function reportRow(
+  change: Partial<ReportRow> & Pick<ReportRow, 'result'>,
+  net: number | null = null,
+): ReportRow {
+  const counted =
+    change.result !== null && change.result !== 'CANCELLED' && change.result !== 'DATA_INVALID';
+  return {
+    seq: 1,
+    side: 'BUY',
+    strategyKey: 'trend_pullback',
+    session: 'LONDON',
+    qualityScore: 78,
+    generatedAt: DECIDED_AT,
+    countsInStats: counted,
+    realizedRNet: counted ? net : null,
+    durationS: 1500,
+    tp1Hit: net !== null && net > 0,
+    tp2Hit: false,
+    closedAt: DECIDED_AT + 25 * MINUTE,
+    primaryCause: null,
+    weakGroups: [],
+    ...change,
+  };
+}
+
+/** The signals of the example trading day (02_Signal_Engine section 14): the S-0042 win, a loss that was weak in its trigger, one still open. */
+const DAY_ROWS: ReportRow[] = [
+  reportRow({ result: 'WIN' }, 1.47),
+  reportRow({ result: 'LOSS', primaryCause: 'NO_FOLLOW_THROUGH', weakGroups: ['trigger'] }, -1.04),
+  reportRow({ result: null }),
+];
+
+/** A month: 12 results in London (7 winners), 9 in Asia (3 winners), one cancelled, one with invalid data, one open. */
+function monthRows(): ReportRow[] {
+  const results = (count: number, winners: number, change: Partial<ReportRow>): ReportRow[] =>
+    Array.from({ length: count }, (_, i) =>
+      i < winners
+        ? reportRow({ result: 'WIN', ...change }, 1.5)
+        : reportRow({ result: 'LOSS', primaryCause: 'NORMAL_LOSS', ...change }, -1),
+    );
+  return [
+    ...results(12, 7, { session: 'LONDON', qualityScore: 80 }),
+    ...results(9, 3, { session: 'ASIA', qualityScore: 70, strategyKey: 'sweep_reversal' }),
+    reportRow({ result: 'CANCELLED' }),
+    reportRow({ result: 'DATA_INVALID' }),
+    reportRow({ result: null }),
+  ];
+}
 
 /**
  * One example of every message the owner will receive, written with the real formatters on fixed
@@ -209,6 +265,31 @@ export function sampleMessages(options: DisplayOptions): Sample[] {
       name: 'SYSTEM_RECOVERED, the headline feeds',
       text: headlineFeedsBackMessage({ at: DECIDED_AT + 13 * MINUTE, downMs: 13 * MINUTE }, options)
         .telegram.text,
+    },
+    {
+      name: 'STORAGE_WARNING',
+      text: storageWarningMessage(
+        { usedPercent: 82, budgetGb: 10, retentionDays: 3, largestTable: 'ticks', largestGb: 4.7 },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'DAILY_DIGEST',
+      text: dailyDigestMessage({ label: tradingDayOf(DECIDED_AT).label, rows: DAY_ROWS }, options)
+        .telegram.text,
+    },
+    {
+      name: 'MONTHLY_REPORT',
+      text: monthlyReportMessage(
+        {
+          monthStart: monthWindow(DECIDED_AT, options.displayTz).from,
+          rows: monthRows(),
+          feed: { incidents: 3, uptime: 0.992 },
+          dbSizeBytes: 1_140_000_000,
+          lastBackupAgeMs: 5 * 60 * MINUTE,
+        },
+        options,
+      ).telegram.text,
     },
     { name: 'TEST', text: testMessage(DECIDED_AT, options).telegram.text },
   ];

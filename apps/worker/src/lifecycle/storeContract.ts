@@ -1,10 +1,13 @@
 import { defaultStrategyConfig } from '@vmgs/config';
 import {
   TRADED_SYMBOL,
+  monthOf,
   signalOutboxRows,
+  subtractRollups,
   type CourseCandle,
   type OutboxRow,
   type Review,
+  type RollupDelta,
   type TickInput,
   type TradeOutcome,
   type TradeState,
@@ -12,12 +15,15 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { BUY_SIGNAL, newSignal } from '../../../../packages/core/src/messages/test-data';
+import { reconcileRollups, type RollupStore } from '../rollups/reconcile';
 import { FILL_AT, MINUTE, SECOND, STRATEGY, buyDraft, sellDraft } from './test-data';
 import type { LifecycleStore, MarketReader, SignalRecord, StrategyVersionRef } from './types';
 
 /** What the contract tests need besides the store itself: a way to look at what it holds and to put market data in. */
 export interface StoreHarness {
   readonly store: LifecycleStore & MarketReader;
+  /** The same store as a `RollupStore`: the tests read the rollup tables through it. */
+  readonly rollups: RollupStore;
   events(signalId: string): Promise<{ type: string; at: number; price: number | null }[]>;
   outbox(): Promise<
     {
@@ -98,6 +104,24 @@ const lossOutcome = (closedAt: number): TradeOutcome => ({
   isWin: false,
 });
 
+const cancelledOutcome = (closedAt: number): TradeOutcome => ({
+  result: 'CANCELLED',
+  countsInStats: false,
+  closedAt,
+  exitPrice: null,
+  exitReason: 'STALE_BEFORE_ENTRY',
+  realizedRGross: null,
+  costR: 0,
+  realizedRNet: null,
+  durationS: 0,
+  mfeR: null,
+  maeR: null,
+  tp1Hit: false,
+  tp2Hit: false,
+  ambiguous: false,
+  isWin: false,
+});
+
 const REVIEW: Review = {
   status: 'PRELIMINARY',
   primaryCause: 'NO_FOLLOW_THROUGH',
@@ -126,6 +150,37 @@ export function lifecycleStoreContract(
       await done();
     }
   }
+
+  /** The rollup tables as they are stored. */
+  const tablesOf = (harness: StoreHarness): Promise<RollupDelta> =>
+    harness.rollups.withLock((tx) => tx.stored());
+
+  /** The stored rollups equal a full recomputation from the signals. */
+  async function expectRollupsTrue(harness: StoreHarness) {
+    const report = await reconcileRollups(harness.rollups, { repair: false });
+    expect(report.differences).toEqual([]);
+    return report;
+  }
+
+  /** Closes a signal with an outcome, and a review when it has one. */
+  const closeAs = (
+    harness: StoreHarness,
+    record: SignalRecord,
+    outcome: TradeOutcome,
+    review: Review | null,
+  ): Promise<boolean> =>
+    harness.store.commit({
+      signalId: record.id,
+      events: [],
+      state: null,
+      closing: {
+        outcome,
+        meta: {},
+        review: review === null ? null : { review, computedAt: NOW, finalizedAt: null },
+      },
+      outbox: [],
+      at: NOW,
+    });
 
   /** A signal with a message queued, as the signal transaction writes it. */
   async function createBuy(
@@ -503,6 +558,172 @@ export function lifecycleStoreContract(
         expect(
           (await harness.outbox()).filter((item) => item.eventKey === `signal:${record.id}:review`),
         ).toHaveLength(1);
+      });
+    });
+
+    it('files a new live signal as generated in the month of its decision, and a simulated one nowhere', async () => {
+      await withStore(async (harness, strategy) => {
+        const start = await tablesOf(harness);
+        await createBuy(harness, strategy);
+        const month = monthOf(FILL_AT);
+        const before = subtractRollups(await tablesOf(harness), start);
+        expect(before.monthly.map((row) => [row.month, row.strategyKey, row.generated])).toEqual([
+          [month, '*', 1],
+          [month, 'trend_pullback', 1],
+        ]);
+        expect(before.buckets).toEqual([]);
+        const simulated = await harness.store.createSignal(
+          buyDraft({ mode: 'SIMULATED', setupKey: unique('simulated') }),
+          strategy,
+          () => [],
+          NOW,
+        );
+        expect(simulated.status).toBe('CREATED');
+        expect(subtractRollups(await tablesOf(harness), start)).toEqual(before);
+        await expectRollupsTrue(harness);
+      });
+    });
+
+    it('files a result in its five buckets, its month, the state of each group and its cause, and a cancelled signal only in its month', async () => {
+      await withStore(async (harness, strategy) => {
+        const start = await tablesOf(harness);
+        const lost = await createBuy(harness, strategy);
+        const cancelled = await createBuy(harness, strategy);
+        expect(await closeAs(harness, lost, lossOutcome(FILL_AT + 10 * SECOND), REVIEW)).toBe(true);
+        expect(
+          await closeAs(harness, cancelled, cancelledOutcome(FILL_AT + 15 * SECOND), null),
+        ).toBe(true);
+        const tables = subtractRollups(await tablesOf(harness), start);
+
+        const keys = [
+          'trend_pullback@0.1.0|BUY|LONDON|TREND_UP|NORMAL',
+          'trend_pullback@0.1.0|BUY|LONDON|TREND_UP',
+          'trend_pullback@0.1.0|BUY|LONDON',
+          'trend_pullback@0.1.0|BUY',
+          'trend_pullback|BUY',
+        ];
+        expect(tables.buckets.map((row) => [row.scope, row.level, row.bucketKey])).toEqual(
+          keys.map((key, level) => ['FORWARD', level, key]),
+        );
+        for (const row of tables.buckets) {
+          expect(row).toMatchObject({
+            n: 1,
+            wins: 0,
+            winners: 0,
+            losses: 1,
+            tp1Hits: 0,
+            sumR: -1,
+            sumWinR: 0,
+            sumLossR: -1,
+          });
+        }
+        const month = monthOf(FILL_AT);
+        for (const row of tables.monthly) {
+          expect(row).toMatchObject({
+            month,
+            generated: 2,
+            resolvedValid: 1,
+            losses: 1,
+            winners: 0,
+            cancelled: 1,
+            dataInvalid: 0,
+            netR: -1,
+            sumLossR: -1,
+          });
+        }
+        expect(tables.monthly.map((row) => row.strategyKey)).toEqual(['*', 'trend_pullback']);
+        expect(
+          tables.groups.map((row) => [row.groupKey, row.state, row.n, row.wins, row.sumR]),
+        ).toEqual(
+          buyDraft()
+            .groupedScores.map(({ key, state }) => [key, state, 1, 0, -1] as const)
+            .sort((a, b) => `${a[0]}|${a[1]}`.localeCompare(`${b[0]}|${b[1]}`)),
+        );
+        expect(tables.causes).toEqual([
+          { month, strategyKey: 'trend_pullback', causeCode: 'NO_FOLLOW_THROUGH', n: 1, sumR: -1 },
+        ]);
+        await expectRollupsTrue(harness);
+      });
+    });
+
+    it('does not count a closing that is refused, and does not count a simulated signal that closes', async () => {
+      await withStore(async (harness, strategy) => {
+        const record = await createBuy(harness, strategy);
+        const outcome = lossOutcome(FILL_AT + 10 * SECOND);
+        expect(await closeAs(harness, record, outcome, REVIEW)).toBe(true);
+        const closed = await tablesOf(harness);
+        expect(await closeAs(harness, record, outcome, REVIEW)).toBe(false);
+        expect(await tablesOf(harness)).toEqual(closed);
+
+        const result = await harness.store.createSignal(
+          buyDraft({ mode: 'SIMULATED', setupKey: unique('simulated') }),
+          strategy,
+          () => [],
+          NOW,
+        );
+        if (result.status !== 'CREATED') throw new Error('not created');
+        const simulated = await harness.store.getSignal(result.created.id);
+        if (simulated === null) throw new Error('the signal is not there');
+        expect(await closeAs(harness, simulated, outcome, REVIEW)).toBe(true);
+        expect(await tablesOf(harness)).toEqual(closed);
+        await expectRollupsTrue(harness);
+      });
+    });
+
+    it('moves a result to the cause of the final review, leaves it when the cause is the same, and counts a review once', async () => {
+      await withStore(async (harness, strategy) => {
+        const start = await tablesOf(harness);
+        const startHunt = await harness.store.causeCount(monthOf(FILL_AT), 'STOP_HUNT_REVERSAL');
+        const startFlat = await harness.store.causeCount(monthOf(FILL_AT), 'NO_FOLLOW_THROUGH');
+        const record = await createBuy(harness, strategy);
+        const closedAt = FILL_AT + 10 * SECOND;
+        await closeAs(harness, record, lossOutcome(closedAt), REVIEW);
+        expect(await harness.store.causeCount(monthOf(FILL_AT), 'NO_FOLLOW_THROUGH')).toBe(
+          startFlat + 1,
+        );
+        const final = (primaryCause: Review['primaryCause']): Review => ({
+          status: 'FINAL',
+          primaryCause,
+          causes: [{ code: primaryCause, evidence: {} }],
+          weakGroupsAtEntry: [],
+          counterfactual: null,
+        });
+        const month = monthOf(FILL_AT);
+        const moved = await harness.store.commitFinalReview({
+          signalId: record.id,
+          review: final('STOP_HUNT_REVERSAL'),
+          finalizedAt: NOW + MINUTE,
+          outbox: [],
+        });
+        expect(moved).toBe(true);
+        expect(await harness.store.causeCount(month, 'STOP_HUNT_REVERSAL')).toBe(startHunt + 1);
+        expect(await harness.store.causeCount(month, 'NO_FOLLOW_THROUGH')).toBe(startFlat);
+        expect(subtractRollups(await tablesOf(harness), start).causes).toEqual([
+          { month, strategyKey: 'trend_pullback', causeCode: 'STOP_HUNT_REVERSAL', n: 1, sumR: -1 },
+        ]);
+        const again = await harness.store.commitFinalReview({
+          signalId: record.id,
+          review: final('TIME_DECAY'),
+          finalizedAt: NOW + 2 * MINUTE,
+          outbox: [],
+        });
+        expect(again).toBe(false);
+        expect(
+          subtractRollups(await tablesOf(harness), start).causes.map((row) => row.causeCode),
+        ).toEqual(['STOP_HUNT_REVERSAL']);
+        await expectRollupsTrue(harness);
+
+        const same = await createBuy(harness, strategy);
+        await closeAs(harness, same, lossOutcome(closedAt), REVIEW);
+        const before = await tablesOf(harness);
+        await harness.store.commitFinalReview({
+          signalId: same.id,
+          review: final('NO_FOLLOW_THROUGH'),
+          finalizedAt: NOW + MINUTE,
+          outbox: [],
+        });
+        expect(await tablesOf(harness)).toEqual(before);
+        await expectRollupsTrue(harness);
       });
     });
 

@@ -3,6 +3,8 @@ import type { Review, TradeOutcome, TradeState } from '@vmgs/core';
 
 import { query, type TestDatabase } from '../../../../packages/db/test/database';
 import { migratedDatabase } from '../../../../packages/db/test/setup';
+import { PostgresRollupStore } from '../rollups/postgres';
+import type { RollupStore } from '../rollups/reconcile';
 import { PostgresLifecycleStore } from './postgresStore';
 import type { StoreHarness } from './storeContract';
 
@@ -28,7 +30,7 @@ export async function createPgWorld(): Promise<PgWorld> {
     database,
     pool,
     store,
-    harness: makeHarness(database, store),
+    harness: makeHarness(database, store, new PostgresRollupStore(pool)),
     async close() {
       await pool.end();
       await database.drop();
@@ -52,10 +54,15 @@ async function ensurePartitions(
   }
 }
 
-function makeHarness(database: TestDatabase, store: PostgresLifecycleStore): StoreHarness {
+function makeHarness(
+  database: TestDatabase,
+  store: PostgresLifecycleStore,
+  rollups: RollupStore,
+): StoreHarness {
   let sequence = 0;
   return {
     store,
+    rollups,
     async events(id) {
       const rows = await query<{ event_type: string; event_at: Date; price: Num }>(
         database.url,

@@ -16,6 +16,9 @@ import { BiquoteCalendarClient } from './calendar/provider';
 import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
 import { OutcomeTracker } from './lifecycle/tracker';
+import { RollupReconcileJob, RetentionJob, SizeGuard } from './maintenance/jobs';
+import { PostgresMaintenanceStore, StatfsDisk } from './maintenance/postgresStore';
+import { MaintenanceRunner } from './maintenance/runner';
 import { NewsAlerts } from './news/alerts';
 import { UnclassifiedBuffer } from './news/buffer';
 import { DEFAULT_FEEDS, HeadlineFeedClient } from './news/feeds';
@@ -27,6 +30,9 @@ import { PostgresNewsStore } from './news/postgresStore';
 import { NewsFeedWatcher } from './news/watcher';
 import { PostgresRecorderStore } from './postgresStore';
 import { RecorderWorker } from './recorder';
+import { PostgresReportStore } from './reports/postgresStore';
+import { ReportScheduler } from './reports/scheduler';
+import { PostgresRollupStore } from './rollups/postgres';
 import { TelegramBot } from './telegram/bot';
 import { TelegramClient } from './telegram/client';
 import { PostgresBotStore } from './telegram/postgresBotStore';
@@ -49,7 +55,7 @@ async function main(): Promise<void> {
     throw new Error('the record-only worker runtime currently requires FEED_PROVIDER=biquote');
   }
 
-  const pool = createPool(env.DATABASE_URL_WORKER, { max: 4 });
+  const pool = createPool(env.DATABASE_URL_WORKER, { max: 6 });
   let resolveStop: (reason: StopReason) => void = () => undefined;
   const stopRequested = new Promise<StopReason>((resolve) => {
     resolveStop = resolve;
@@ -257,6 +263,39 @@ async function main(): Promise<void> {
       },
       log,
     });
+    // Maintenance (B26): the nightly reconciliation of the rollups and retention, and the hourly size guard.
+    const maintenanceStore = new PostgresMaintenanceStore(pool);
+    const maintenance = new MaintenanceRunner({
+      nightly: [
+        new RollupReconcileJob(new PostgresRollupStore(pool), log),
+        new RetentionJob(maintenanceStore, maintenanceStore),
+      ],
+      hourly: [
+        new SizeGuard({
+          storage: maintenanceStore,
+          retention: maintenanceStore,
+          disk: new StatfsDisk(),
+          outbox: outboxStore,
+          settings: () => lifecycle.loadSettings(),
+          onQueued: () => {
+            sender.wake();
+          },
+          log,
+        }),
+      ],
+      runs: maintenanceStore,
+      log,
+    });
+    // The reports nobody asks for (B26): the day's digest after the trading day, the month's report on the 1st.
+    const reports = new ReportScheduler({
+      store: new PostgresReportStore(pool),
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
     sender.start();
     health.start();
     bot?.start();
@@ -267,6 +306,8 @@ async function main(): Promise<void> {
     newsWatcher.start();
     impactMeasurer.start();
     moves.start();
+    maintenance.start();
+    reports.start();
 
     log('info', 'record-only worker started', {
       provider: provider.name,
@@ -279,6 +320,8 @@ async function main(): Promise<void> {
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    await reports.stop();
+    await maintenance.stop();
     await moves.stop();
     await impactMeasurer.stop();
     await newsWatcher.stop();

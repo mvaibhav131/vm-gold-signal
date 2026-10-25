@@ -3,6 +3,7 @@ export * from './engine';
 export * from './open';
 export * from './period';
 export * from './replies';
+export * from './reports';
 export * from './schedule';
 export * from './system';
 export * from './words';

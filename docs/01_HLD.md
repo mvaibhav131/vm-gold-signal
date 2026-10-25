@@ -110,7 +110,7 @@ Everything between the provider and the worker. The worker (B12) only wires it t
 3. When a 5m candle closes, the decision step runs once (no repaint, no intrabar signals): features, regime, strategies, gates, risk, quality score.
 4. If a setup passes, a single DB transaction writes: `signals` row (immutable), `signal_state`, `signal_events(CREATED)`, `signal_explanations` content inside the signal, and `notification_outbox` rows. After commit the worker issues `NOTIFY` and the sender picks up the outbox.
 5. API process receives `NOTIFY`, reads the canonical row, pushes an SSE event to browsers.
-6. For every tick the outcome tracker checks open signals (stop, targets, time stop) and writes events. On close it writes `signal_outcomes`, updates statistics rollups in the same transaction, queues result alerts, and schedules the post-mortem. B23 follows the signals on the ticks the recorder has already stored (so a restart can rebuild every open signal from the tick table) and the rollups join the closing transaction in B26; details in `02_Signal_Engine.md` section 11.1.
+6. For every tick the outcome tracker checks open signals (stop, targets, time stop) and writes events. On close it writes `signal_outcomes`, updates statistics rollups in the same transaction, queues result alerts, and schedules the post-mortem. B23 follows the signals on the ticks the recorder has already stored (so a restart can rebuild every open signal from the tick table), and since B26 the rollups join the closing transaction (a signal's creation adds to `generated`, its closing to everything else, its final review moves a cause); details in `02_Signal_Engine.md` sections 11.1 and 13.1.
 7. The post-trade review (section 12 of 02_Signal_Engine) runs after the close and finalizes after an observation window.
 
 Nothing in this path calls an external service except the database. Telegram, calendar and any later LLM run off the critical path.
@@ -144,13 +144,13 @@ Goal: the database stays small and fast, history that matters for statistics is 
 | 1m candles | 180 days | Batched delete. |
 | 5m, 15m, 1h, 4h, 1d candles | Kept (a few MB per year) | none |
 | Signals, events, outcomes, autopsies | Kept forever (tiny) | none |
-| Signal feature snapshots | Kept 365 days in full, then trimmed to essential fields | Nightly job. |
-| Statistics rollups (bucket, monthly, evidence, failures) | Kept forever | Updated incrementally at signal close, reconciled nightly. |
+| Signal feature snapshots | Kept 365 days in full, then replaced by a small marker (`{pruned, prunedAt, spread}`) | Nightly job. The only change a `signals` row can ever get, see the safety rules below. |
+| Statistics rollups (bucket, monthly, evidence, failures) | Kept forever | Updated incrementally in the transaction that creates, closes or reviews a signal, reconciled nightly (recomputed from the signals and repaired if a row differs). |
 | Notification outbox | Sent: 30 days. Failed or dead: 90 days | Nightly job. |
 | Gate rejections (`rejections`, used for "WAIT: reason") | 30 days | Nightly job. |
 | Worker/feed incidents, maintenance runs | 90 days | Nightly job. |
-| Sessions, login attempts | Expired sessions daily, attempts 30 days | Nightly job. |
-| Security audit events | 365 days | Nightly job. |
+| Sessions, login attempts | Expired sessions daily, attempts 30 days | The API process (B29/B30): the worker has no rights on the `auth_*` tables. |
+| Security audit events | 365 days | The API process (B29/B30). |
 | Macro calendar events | Kept (small, needed for research) | none |
 | Headlines (`news_items`) | 30 days | Nightly job. Headlines shown with a signal or a market event are copied into them and kept with them. |
 | Market events (`market_events`) | 12 months | Nightly job. |
@@ -158,7 +158,7 @@ Goal: the database stays small and fast, history that matters for statistics is 
 
 Estimated volume: about 2.4 ticks per second while the market is open is roughly 13 MB per day, so 14 days of ticks is under 200 MB. Everything else is a few tens of MB per year.
 
-Safety rules: retention jobs never touch `signals`, `signal_events`, `signal_outcomes` (these tables also reject UPDATE, DELETE and TRUNCATE by trigger). A size guard compares database size and disk usage with soft limits (database 10 GB, disk 70%). On breach it shortens tick retention, writes a `maintenance_runs` row and sends a Telegram warning. The System page shows sizes per table and last maintenance run.
+Safety rules: retention jobs never delete from `signals`, `signal_events` or `signal_outcomes` (these tables reject DELETE and TRUNCATE by trigger, and UPDATE too, with one exception: the trigger of `signals` lets the worker replace the `feature_snapshot` of a signal older than 365 days by a marker with `pruned = true`, once, and changes nothing else; the right is a column privilege on that one column). A size guard compares database size and disk usage with soft limits (database 10 GB, disk 70%) every hour. At 80% of either it shortens tick retention one step (14, 7, 3, 1 days), writes a `maintenance_runs` row and sends one Telegram warning a day; it restores one step when the use is under 60%. The System page shows sizes per table and last maintenance run.
 
 Backups: nightly `pg_dump` excluding tick partitions, encrypted with age, uploaded to OCI Object Storage. Keep 7 daily, 4 weekly, 3 monthly. A monthly restore test script verifies the backup restores into a scratch database.
 

@@ -479,6 +479,11 @@ describe('the final review', () => {
     expect(row?.kind).toBe('SIGNAL_REVIEW_FINAL');
     expect(String(row?.payload.text)).toMatch(/stop/i);
     expect(String(row?.payload.text)).toContain('was NO_FOLLOW_THROUGH');
+    // the month counts this result under its new cause, and under no other: one result, one count
+    expect(String(row?.payload.text)).toContain('Tracked in Analytics (n=1 this month).');
+    expect(rig.store.rollups.snapshot().causes).toEqual([
+      expect.objectContaining({ causeCode: 'STOP_HUNT_REVERSAL', n: 1 }),
+    ]);
     expect(rig.tracker.stats.finalReviews).toBe(1);
 
     // it is done once
@@ -498,6 +503,36 @@ describe('the final review', () => {
     expect(review?.status).toBe('FINAL');
     expect(review?.primaryCause).toBe('NO_FOLLOW_THROUGH');
     expect(review?.counterfactual).toMatchObject({ reachedTp1: false, candlesToTp1: null });
+    // the cause did not change, so the result is counted once: this month has one of this cause
+    expect(rig.store.outbox.get(`signal:${id}:review|telegram`)?.payload.text).toContain(
+      'Tracked in Analytics (n=1 this month).',
+    );
+    await rig.stop();
+  });
+
+  it('a simulated signal is in no count, and its message has no line about the month', async () => {
+    const rig = await started();
+    await rig.create(buyDraft({ mode: 'SIMULATED' }));
+    const id = onlyId(rig.store);
+    await rig.tick(5, 4015);
+    await rig.tick(10, 4010.9);
+    const first = FILL_AT + 5 * MINUTE;
+    for (let candle = 1; candle <= 12; candle += 1) {
+      const ts = first + (candle - 1) * 5 * MINUTE + 2 * MINUTE;
+      await rig.deliver([{ ...tickAt(0, 4012), ts, rxAt: ts + 1000 }]);
+    }
+    rig.clock.now = finalReviewDueAt(FILL_AT + 10 * SECOND) + 10_000;
+    await rig.tracker.runDueReviews();
+    expect(rig.store.autopsies.get(id)?.review.status).toBe('FINAL');
+    expect(rig.store.rollups.snapshot()).toEqual({
+      buckets: [],
+      monthly: [],
+      groups: [],
+      causes: [],
+    });
+    const text = String(rig.store.outbox.get(`signal:${id}:review|telegram`)?.payload.text);
+    expect(text).toContain('FINAL REVIEW');
+    expect(text).not.toContain('Tracked in Analytics');
     await rig.stop();
   });
 

@@ -4,6 +4,7 @@ import {
   OpenTrade,
   displayOptionsOf,
   followUpChannels,
+  monthOf,
   needsReview,
   reviewTrade,
   signalOutboxRows,
@@ -472,6 +473,12 @@ export class OutcomeTracker {
       const course = await this.course.courseOf(trade, outcome);
       const review = reviewTrade({ trade, outcome, course, afterCandles });
       const settings = await this.settings();
+      // the results of this month with the new cause, this one included (a live signal only: it is the one that is counted)
+      const trackedThisMonth =
+        record.mode !== 'LIVE'
+          ? null
+          : (await this.store.causeCount(monthOf(record.generatedAt), review.primaryCause)) +
+            (review.primaryCause === item.preliminary.primaryCause ? 0 : 1);
       const rows = signalOutboxRows(
         {
           kind: 'SIGNAL_REVIEW_FINAL',
@@ -479,7 +486,7 @@ export class OutcomeTracker {
             signal: signalRefOf(record),
             review,
             previousPrimary: item.preliminary.primaryCause,
-            trackedThisMonth: null,
+            trackedThisMonth,
           },
         },
         displayOptionsOf(settings),

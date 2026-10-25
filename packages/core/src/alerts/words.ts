@@ -106,6 +106,23 @@ export interface AlertWords {
   readonly nTooSmall: string;
   readonly topCauses: string;
   readonly noReviewed: string;
+  // The daily digest and the monthly report.
+  readonly resultNames: Readonly<Record<'WIN' | 'PARTIAL_WIN' | 'LOSS' | 'TIME_EXIT', string>>;
+  readonly digestTitle: (date: string) => string;
+  readonly digestCounts: (signals: number, valid: number, parts: string, open: number) => string;
+  readonly digestPart: (n: number, result: string, r: string) => string;
+  readonly digestNotCounted: (cancelled: number, invalid: number) => string;
+  readonly digestWeakGroup: (group: string) => string;
+  readonly reportTitle: (month: string, year: string) => string;
+  readonly sessionPart: (name: string, rate: string, n: number, low: boolean) => string;
+  readonly reportSessions: (best: string, worst: string | null) => string;
+  readonly scorePart: (band: string, rate: string, n: number) => string;
+  readonly reportScore: (parts: string) => string;
+  readonly dataFeed: (uptime: string | null, incidents: number) => string;
+  readonly dataStorage: (size: string) => string;
+  readonly dataBackupOk: string;
+  readonly dataBackupOld: (span: string) => string;
+  readonly reportData: (items: string) => string;
   // /pause and /resume
   readonly pauseUsage: string;
   readonly enginePausedTitle: (at: string) => string;
@@ -288,6 +305,27 @@ const en: AlertWords = {
   nTooSmall: 'n too small',
   topCauses: 'Top failure causes:',
   noReviewed: 'Top failure causes: no reviewed result yet',
+  resultNames: { WIN: 'win', PARTIAL_WIN: 'partial win', LOSS: 'loss', TIME_EXIT: 'time exit' },
+  digestTitle: (date) => `DAY SUMMARY ${date}`,
+  digestCounts: (signals, valid, parts, open) =>
+    `${String(signals)} ${signals === 1 ? 'signal' : 'signals'}, ${String(valid)} valid ${valid === 1 ? 'result' : 'results'}${parts === '' ? '' : `: ${parts}`}.${open === 0 ? '' : ` ${String(open)} still open.`}`,
+  digestPart: (n, result, r) => `${String(n)} ${result} ${r}`,
+  digestNotCounted: (cancelled, invalid) =>
+    `Not counted: ${String(cancelled)} cancelled, ${String(invalid)} data invalid.`,
+  digestWeakGroup: (group) => `Top weak group today: ${group}.`,
+  reportTitle: (month, year) => `MONTHLY REPORT ${month} ${year} (FORWARD-TEST)`,
+  sessionPart: (name, rate, n, low) =>
+    `${name} ${rate} (n=${String(n)}${low ? ', low sample' : ''})`,
+  reportSessions: (best, worst) =>
+    `Best session: ${best}.${worst === null ? '' : ` Worst: ${worst}.`}`,
+  scorePart: (band, rate, n) => `quality ${band} won ${rate} (n=${String(n)})`,
+  reportScore: (parts) => `Score check: ${parts}.`,
+  dataFeed: (uptime, incidents) =>
+    `${uptime === null ? '' : `feed uptime ${uptime}, `}${String(incidents)} ${incidents === 1 ? 'incident' : 'incidents'}`,
+  dataStorage: (size) => `Storage: DB ${size}`,
+  dataBackupOk: 'Last backup OK',
+  dataBackupOld: (span) => `Last backup ${span} ago`,
+  reportData: (items) => `Data: ${items}.`,
   pauseUsage:
     'Use /pause to stop new signals until /resume, or /pause 30 for 30 minutes (up to 10080).',
   enginePausedTitle: (at) => `ENGINE PAUSED by you at ${at}.`,
@@ -307,7 +345,8 @@ const en: AlertWords = {
   signalsResume: (at) => `New signals resume at about ${at}, after the warm-up.`,
   signalsResumeSoon: 'New signals resume once the engine has warmed up again.',
   storageTitle: (percent, budget) => `STORAGE ${percent} of the ${budget} budget.`,
-  storageRetention: (days) => `Tick retention shortened to ${String(days)} days.`,
+  storageRetention: (days) =>
+    `Tick retention shortened to ${String(days)} ${days === 1 ? 'day' : 'days'}.`,
   storageLargest: (table, size) => `Largest table: ${table} (${size}).`,
   testTitle: (at) => `TEST MESSAGE ${at}`,
   testBody: 'If you can read this, delivery works. Nothing here is a signal.',
@@ -456,6 +495,27 @@ const hinglish: AlertWords = {
   nTooSmall: 'n bahut chhota',
   topCauses: 'Sabse zyada failure causes:',
   noReviewed: 'Sabse zyada failure causes: abhi koi reviewed result nahi',
+  resultNames: { WIN: 'win', PARTIAL_WIN: 'partial win', LOSS: 'loss', TIME_EXIT: 'time exit' },
+  digestTitle: (date) => `DIN KA SAAR ${date}`,
+  digestCounts: (signals, valid, parts, open) =>
+    `${String(signals)} signals, ${String(valid)} valid results${parts === '' ? '' : `: ${parts}`}.${open === 0 ? '' : ` ${String(open)} abhi khula hai.`}`,
+  digestPart: (n, result, r) => `${String(n)} ${result} ${r}`,
+  digestNotCounted: (cancelled, invalid) =>
+    `Ginti mein nahi: ${String(cancelled)} cancelled, ${String(invalid)} data invalid.`,
+  digestWeakGroup: (group) => `Aaj sabse kamzor group: ${group}.`,
+  reportTitle: (month, year) => `MAHINE KI REPORT ${month} ${year} (FORWARD-TEST)`,
+  sessionPart: (name, rate, n, low) =>
+    `${name} ${rate} (n=${String(n)}${low ? ', sample kam' : ''})`,
+  reportSessions: (best, worst) =>
+    `Sabse achha session: ${best}.${worst === null ? '' : ` Sabse kamzor: ${worst}.`}`,
+  scorePart: (band, rate, n) => `quality ${band} ne ${rate} jeeta (n=${String(n)})`,
+  reportScore: (parts) => `Score check: ${parts}.`,
+  dataFeed: (uptime, incidents) =>
+    `${uptime === null ? '' : `feed uptime ${uptime}, `}${String(incidents)} incidents`,
+  dataStorage: (size) => `Storage: DB ${size}`,
+  dataBackupOk: 'Last backup OK',
+  dataBackupOld: (span) => `Last backup ${span} pehle`,
+  reportData: (items) => `Data: ${items}.`,
   pauseUsage:
     '/pause se naye signals /resume tak band, ya /pause 30 se 30 minute ke liye (10080 tak).',
   enginePausedTitle: (at) => `ENGINE PAUSE kiya aapne, ${at} par.`,

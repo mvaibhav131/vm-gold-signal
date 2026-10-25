@@ -58,10 +58,10 @@ const WORKER: Record<string, string> = {
   storage_usage_v: 'S',
   strategy_versions: 'SIU',
   signal_autopsies: 'SIU',
-  stats_bucket: 'SIU',
-  stats_monthly: 'SIU',
-  evidence_group_stats: 'SIU',
-  failure_cause_stats: 'SIU',
+  stats_bucket: 'SIUD',
+  stats_monthly: 'SIUD',
+  evidence_group_stats: 'SIUD',
+  failure_cause_stats: 'SIUD',
   macro_events: 'SIU',
   news_sources: 'SIU',
   news_impact_samples: 'SIU',
@@ -289,6 +289,47 @@ describe('vmgs_worker at work', () => {
       '42501',
     );
     expect((await failureOf(worker, 'TRUNCATE signals CASCADE'))?.code).toBe('42501');
+  });
+
+  it('may update the feature snapshot of a signal, and no other column (a column privilege)', async () => {
+    const columns = await query<{ column_name: string }>(
+      owner,
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'signals' ORDER BY ordinal_position`,
+    );
+    for (const { column_name: column } of columns) {
+      const allowed = await scalar<boolean>(
+        owner,
+        "SELECT has_column_privilege('vmgs_worker', 'public.signals', $1, 'UPDATE')",
+        [column],
+      );
+      expect([column, allowed]).toEqual([column, column === 'feature_snapshot']);
+    }
+    const prune = `UPDATE signals SET feature_snapshot = '{"pruned": true}'::jsonb WHERE id = '${signalId}'`;
+    expect(await failureOf(worker, prune)).toBeNull();
+    expect(
+      (await failureOf(worker, `UPDATE signals SET entry = entry WHERE id = '${signalId}'`))?.code,
+    ).toBe('42501');
+    expect((await failureOf(worker, `DELETE FROM signals WHERE id = '${signalId}'`))?.code).toBe(
+      '42501',
+    );
+  });
+
+  it('may remove the rows of the rollup tables (the nightly reconciliation rewrites them)', async () => {
+    await query(
+      owner,
+      "INSERT INTO stats_bucket (scope, level, bucket_key) VALUES ('FORWARD', 0, 'k')",
+    );
+    expect(await failureOf(worker, "DELETE FROM stats_bucket WHERE bucket_key = 'k'")).toBeNull();
+    expect(
+      await failureOf(
+        worker,
+        "INSERT INTO failure_cause_stats (month, strategy_key, cause_code) VALUES ('2026-10-01', 's', 'NORMAL_LOSS')",
+      ),
+    ).toBeNull();
+    expect(
+      await failureOf(worker, "DELETE FROM failure_cause_stats WHERE strategy_key = 's'"),
+    ).toBeNull();
   });
 
   it('moves a strategy through its status but cannot change its config (trigger)', async () => {
