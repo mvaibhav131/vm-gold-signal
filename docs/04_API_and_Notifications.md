@@ -135,7 +135,7 @@ Event ids are `<bootId>:<n>`. The API keeps the last 200 non-quote events in mem
 
 ### 4.1 Message catalogue
 
-Examples show the `en` locale. Times are in the display time zone.
+Examples show the `en` locale. Times are in the display time zone. The messages about a signal (`SIGNAL_NEW`, `SIGNAL_TP1`, `SIGNAL_CLOSED`, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`) are written by `packages/core/src/messages`; their exact layout, the levels of detail used to stay under the length limit, and the lifetimes are in `02_Signal_Engine.md` section 14.1.
 
 **SIGNAL_NEW**: defined in `02_Signal_Engine.md` section 14. It always contains: direction, strategy and version, id, paper-test label, entry and do-not-chase level, stop with distance, TP1 and TP2 with R and the partial-exit instruction, validity, quality score and grade, the full "why" list (one line per evidence group with the actual indicator values), weak and research-only items, macro state, advisory warnings, open signals with total open risk, historical evidence with sample size and interval, and the statement that this is a historical frequency and not a guarantee.
 

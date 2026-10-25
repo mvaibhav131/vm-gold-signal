@@ -1,0 +1,168 @@
+import { describe, expect, it } from 'vitest';
+
+import { STRATEGY_KEYS } from '../domain';
+import type { PatternName } from '../patterns/types';
+import { PATTERN_TEXT, STRATEGY_NAMES, matchLevelText } from './names';
+import { setupFacts } from './setupFacts';
+import { PATTERN, PULLBACK, SQUEEZE, SWEEP, TRENDLINE } from './test-data';
+
+describe('trend pullback lines', () => {
+  it('names the pullback leg, the swing level and the displacement', () => {
+    expect(setupFacts({ strategyKey: 'trend_pullback', facts: PULLBACK })).toEqual({
+      structure: [
+        { label: 'Pullback', value: '4021.300 → 4012.800, EMA and Fibonacci zone' },
+        { label: '5m swing level', value: '4014.200, closed beyond it' },
+      ],
+      trigger: [{ label: 'Displacement candle', value: 'yes' }],
+    });
+  });
+
+  it('words the zone and the swing level that is not broken, or not there', () => {
+    const lines = (change: Partial<typeof PULLBACK>) =>
+      setupFacts({ strategyKey: 'trend_pullback', facts: { ...PULLBACK, ...change } });
+    expect(lines({ zone: 'EMA' }).structure[0]?.value).toBe('4021.300 → 4012.800, EMA zone');
+    expect(lines({ zone: 'FIB' }).structure[0]?.value).toBe('4021.300 → 4012.800, Fibonacci zone');
+    expect(lines({ brokeLevel: false }).structure[1]?.value).toBe('4014.200, not broken yet');
+    expect(lines({ breakLevel: null, brokeLevel: false }).structure).toHaveLength(1);
+    expect(lines({ displacement: false }).trigger).toEqual([
+      { label: 'Displacement candle', value: 'no' },
+    ]);
+  });
+});
+
+describe('liquidity sweep lines', () => {
+  it('names the swept level, both CHoCH and the trigger candle', () => {
+    expect(setupFacts({ strategyKey: 'sweep_reversal', facts: SWEEP })).toEqual({
+      structure: [
+        { label: 'Swept level', value: '4012.400 (extreme 4011.500), reclaimed 3 candles ago' },
+        { label: '5m CHoCH', value: 'broke 4016.500' },
+        { label: '15m CHoCH', value: 'yes' },
+      ],
+      trigger: [
+        { label: 'Trigger candle size', value: '1.4 x ATR' },
+        { label: 'RSI divergence', value: 'yes' },
+      ],
+    });
+  });
+
+  it('words a single candle, no 15m CHoCH and no divergence', () => {
+    const lines = setupFacts({
+      strategyKey: 'sweep_reversal',
+      facts: { ...SWEEP, candlesSinceReclaim: 1, choch15m: false, rsiDivergence: false },
+    });
+    expect(lines.structure[0]?.value).toBe('4012.400 (extreme 4011.500), reclaimed 1 candle ago');
+    expect(lines.structure[2]).toEqual({ label: '15m CHoCH', value: 'no' });
+    expect(lines.trigger).toEqual([{ label: 'Trigger candle size', value: '1.4 x ATR' }]);
+  });
+});
+
+describe('squeeze breakout lines', () => {
+  it('names the breakout, the squeeze and the retest', () => {
+    expect(setupFacts({ strategyKey: 'squeeze_retest', facts: SQUEEZE })).toEqual({
+      structure: [
+        {
+          label: 'Breakout level',
+          value: '4018.000, closed 0.4 x ATR beyond it, displacement 1.6 x ATR',
+        },
+        { label: 'Squeeze (15m)', value: 'lasted 22 candles, released 1 candle ago' },
+      ],
+      trigger: [{ label: 'Retest', value: 'held 4018.000: went 0.05 x ATR through it, wick 40%' }],
+    });
+  });
+
+  it('words a retest that stayed away from the level', () => {
+    const lines = setupFacts({
+      strategyKey: 'squeeze_retest',
+      facts: { ...SQUEEZE, retestDistanceAtr: 0.2, candlesSinceRelease15m: 9 },
+    });
+    expect(lines.trigger[0]?.value).toBe('held 4018.000: stayed 0.20 x ATR away, wick 40%');
+    expect(lines.structure[1]?.value).toBe('lasted 22 candles, released 9 candles ago');
+  });
+
+  it('treats a retest exactly at the level as staying away by zero', () => {
+    const lines = setupFacts({
+      strategyKey: 'squeeze_retest',
+      facts: { ...SQUEEZE, retestDistanceAtr: 0 },
+    });
+    expect(lines.trigger[0]?.value).toBe('held 4018.000: stayed 0.00 x ATR away, wick 40%');
+  });
+});
+
+describe('trendline retest lines', () => {
+  it('rounds the RSI at the retest to a whole number', () => {
+    const rsi = (value: number) =>
+      setupFacts({ strategyKey: 'trendline_retest', facts: { ...TRENDLINE, rsi: value } })
+        .trigger[1];
+    expect(rsi(52.6)).toEqual({ label: 'RSI at the retest', value: 53 });
+    expect(rsi(52.4)).toEqual({ label: 'RSI at the retest', value: 52 });
+  });
+  it('names the line, the break, the retest and the RSI', () => {
+    expect(setupFacts({ strategyKey: 'trendline_retest', facts: TRENDLINE })).toEqual({
+      structure: [
+        {
+          label: 'Trendline 15m',
+          value: '3 touches, 4015.600 at the retest, broken 5 candles ago',
+        },
+        { label: 'Break', value: '0.3 x ATR beyond the line, body 70% of the candle' },
+      ],
+      trigger: [
+        { label: 'Retest', value: 'held 4015.600: stayed 0.20 x ATR away, wick 45%' },
+        { label: 'RSI at the retest', value: 52 },
+      ],
+    });
+  });
+});
+
+describe('chart pattern lines', () => {
+  it('names the pattern as the chart shows it, its target and the break', () => {
+    expect(setupFacts({ strategyKey: 'pattern_breakout', facts: PATTERN })).toEqual({
+      structure: [
+        {
+          label: 'Pattern 15m',
+          value: 'double bottom, boundary 4018.000, target 4030.900 (2.10R)',
+        },
+        {
+          label: 'Break',
+          value: '0.2 x ATR beyond the boundary, displacement 1.5 x ATR, 3 candles ago',
+        },
+      ],
+      trigger: [{ label: 'Retest', value: 'held 4018.000: stayed 0.20 x ATR away, wick 40%' }],
+    });
+  });
+
+  it('has words for every pattern, in lower case', () => {
+    const names: PatternName[] = [
+      'DOUBLE_TOP',
+      'DOUBLE_BOTTOM',
+      'HEAD_AND_SHOULDERS',
+      'INVERSE_HEAD_AND_SHOULDERS',
+      'ASCENDING_TRIANGLE',
+      'DESCENDING_TRIANGLE',
+      'SYMMETRICAL_TRIANGLE',
+      'BULL_FLAG',
+      'BEAR_FLAG',
+      'BULL_PENNANT',
+      'BEAR_PENNANT',
+      'RISING_WEDGE',
+      'FALLING_WEDGE',
+      'RECTANGLE',
+    ];
+    expect(Object.keys(PATTERN_TEXT).sort()).toEqual([...names].sort());
+    for (const name of names) {
+      expect(PATTERN_TEXT[name]).toBe(name.toLowerCase().replace(/_/g, ' '));
+    }
+  });
+});
+
+describe('names', () => {
+  it('has a name for every strategy', () => {
+    expect(Object.keys(STRATEGY_NAMES).sort()).toEqual([...STRATEGY_KEYS].sort());
+  });
+
+  it('words the bucket of the evidence for each level, and the last one beyond it', () => {
+    expect(matchLevelText(0)).toBe('strategy, side, session, regime and volatility');
+    expect(matchLevelText(2)).toBe('strategy, side and session');
+    expect(matchLevelText(4)).toBe('strategy and side, all versions');
+    expect(matchLevelText(9)).toBe('strategy and side, all versions');
+  });
+});

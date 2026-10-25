@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { QUALITY_GROUPS, type GroupState } from '../domain';
 import type { QualityInputs } from './groups';
 import {
+  qualityComponents,
   qualityStrengths,
   scoreQuality,
   type QualityStrengths,
@@ -271,5 +272,101 @@ describe('qualityStrengths: each group is fed with its own facts', () => {
     expect(result.score).toBe(100);
     expect(result.grade).toBe('Very strong');
     expect(scoreQuality(qualityStrengths('SELL', facts), WEIGHTS).score).toBeLessThan(65);
+  });
+});
+
+describe('qualityComponents: the parts that each group is the mean of', () => {
+  const none: QualityInputs = {
+    trend: {
+      ema20: null,
+      ema50: null,
+      ema200: null,
+      ema50SlopeAtr: null,
+      adx: null,
+      plusDI: null,
+      minusDI: null,
+      supertrend: null,
+    },
+    structure: {
+      state15m: null,
+      state5m: null,
+      breakEvent: null,
+      sweep: null,
+      confluence: null,
+      patternMoveR: null,
+    },
+    trigger: {
+      rangeAtr: null,
+      closeLocation: null,
+      rsiNow: null,
+      rsiExtreme: null,
+      macdBars: null,
+    },
+    volatility: { atrPercentile: null, squeeze: null },
+    execution: { spreadPercentile: null, stopAtr: null },
+    sessionMacro: { session: null, news: null },
+    reward: { tp1Atr: null, levelRoom: null },
+  };
+
+  it('has no component for a group without data', () => {
+    const components = qualityComponents('BUY', none);
+    expect(Object.keys(components)).toEqual([...QUALITY_GROUPS]);
+    for (const group of QUALITY_GROUPS) expect(components[group], group).toEqual([]);
+  });
+
+  it('lists the components that have data, in order, each with its own strength', () => {
+    const components = qualityComponents('BUY', {
+      ...none,
+      trend: { ...none.trend, adx: 25, supertrend: 'UP' },
+      structure: { ...none.structure, breakEvent: 'NONE', confluence: 1 },
+      trigger: { ...none.trigger, macdBars: 1.5 },
+      volatility: { atrPercentile: 20, squeeze: 'ON' },
+      execution: { spreadPercentile: 67.5, stopAtr: 1.4 },
+      sessionMacro: { session: 'ASIA', news: { state: 'IN_WINDOW', minutesToNext: null } },
+      reward: { tp1Atr: 2, levelRoom: 'NONE' },
+    });
+    expect(components.trend).toEqual([
+      { key: 'adx', strength: 0.5 },
+      { key: 'supertrend', strength: 1 },
+    ]);
+    expect(components.structure).toEqual([
+      { key: 'breakEvent', strength: 0.5 },
+      { key: 'confluence', strength: 0.5 },
+    ]);
+    expect(components.trigger).toEqual([{ key: 'macd', strength: 0.5 }]);
+    expect(components.volatility).toEqual([
+      { key: 'atrPercentile', strength: 0.5 },
+      { key: 'squeeze', strength: 0.3 },
+    ]);
+    expect(components.execution).toEqual([
+      { key: 'spread', strength: 0.5 },
+      { key: 'stopSize', strength: 1 },
+    ]);
+    expect(components.sessionMacro).toEqual([
+      { key: 'session', strength: 0.5 },
+      { key: 'news', strength: 0 },
+    ]);
+    expect(components.reward).toEqual([
+      { key: 'tp1Distance', strength: 0.5 },
+      { key: 'levelRoom', strength: 1 },
+    ]);
+  });
+
+  it('the strength of a group is the mean of its components', () => {
+    const facts: QualityInputs = {
+      ...none,
+      trend: { ...none.trend, adx: 25, supertrend: 'UP' },
+      volatility: { atrPercentile: 20, squeeze: 'ON' },
+    };
+    const strengths = qualityStrengths('BUY', facts);
+    expect(strengths.trend).toBeCloseTo(0.75, 12);
+    expect(strengths.volatility).toBeCloseTo(0.4, 12);
+    expect(strengths.structure).toBeNull();
+  });
+
+  it('turns the components of a SELL around with the side', () => {
+    const facts: QualityInputs = { ...none, trend: { ...none.trend, supertrend: 'UP' } };
+    expect(qualityComponents('BUY', facts).trend).toEqual([{ key: 'supertrend', strength: 1 }]);
+    expect(qualityComponents('SELL', facts).trend).toEqual([{ key: 'supertrend', strength: 0 }]);
   });
 });

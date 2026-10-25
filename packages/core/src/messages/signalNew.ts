@@ -1,0 +1,210 @@
+import { EVIDENCE_MIN_SAMPLE } from '../evidence';
+import {
+  fixedText,
+  intervalText,
+  percentText,
+  plainRText,
+  priceText,
+  signedPriceText,
+  signedRText,
+  spanText,
+} from '../explain/format';
+import { matchLevelText } from '../explain/names';
+import type { ExplanationDoc, ExplanationEvidence, ExplanationHeadline } from '../explain/types';
+import { TRADED_SYMBOL } from '../symbol';
+import { assertLevels, labelLine, rewardR, signalTag, strategyText } from './common';
+import { clockText } from './time';
+import { fitMessage, type Rendering } from './text';
+import type { DisplayOptions, NewSignalData, TelegramMessage } from './types';
+import { WORDS, type Words } from './words';
+
+/** How much of the optional parts of the entry alert a level keeps (see `fitMessage`). */
+interface Detail {
+  readonly researchOnly: boolean;
+  readonly headlines: boolean;
+  readonly facts: number;
+  readonly weak: number;
+  readonly dropped: readonly string[];
+}
+
+// Level 0 is everything. A longer text drops research-only lines first, then the headlines and the
+// facts after the third of a group, and so on: the levels, the targets, the quality, the state of
+// every group, the warnings, the open risk and the evidence are in every level.
+const DETAIL: readonly Detail[] = [
+  { researchOnly: true, headlines: true, facts: Infinity, weak: Infinity, dropped: [] },
+  {
+    researchOnly: false,
+    headlines: true,
+    facts: Infinity,
+    weak: Infinity,
+    dropped: ['research only'],
+  },
+  {
+    researchOnly: false,
+    headlines: false,
+    facts: 3,
+    weak: 5,
+    dropped: ['research only', 'headlines', 'facts beyond 3 per group'],
+  },
+  {
+    researchOnly: false,
+    headlines: false,
+    facts: 1,
+    weak: 3,
+    dropped: ['research only', 'headlines', 'facts beyond 1 per group', 'weak beyond 3'],
+  },
+  {
+    researchOnly: false,
+    headlines: false,
+    facts: 0,
+    weak: 1,
+    dropped: ['research only', 'headlines', 'all facts', 'weak beyond 1'],
+  },
+];
+
+const MARKS = { STRONG: '[+]', OK: '[+]', WEAK: '[~]', FAIL: '[-]', NA: '[n/a]' } as const;
+const LABEL_WIDTH = 7;
+
+function levelLines(data: NewSignalData, w: Words, at: (ms: number) => string): string[] {
+  const { signal } = data;
+  const pad = (label: string): string => label.padEnd(LABEL_WIDTH);
+  const lines = [
+    `${pad(w.entry)}${priceText(signal.entry)}   (${w.doNotChase(signal.side, priceText(signal.maxValidEntry))})`,
+    `${pad(w.stop)}${priceText(signal.stopLoss)}   (${signedPriceText(signal.stopLoss - signal.entry)})`,
+    `${pad(w.tp1)}${priceText(signal.tp1)}   (${plainRText(rewardR(signal, signal.tp1))})  ${w.tp1Note[signal.exitProfile]}`,
+  ];
+  if (signal.tp2 !== null) {
+    lines.push(
+      `${pad(w.tp2)}${priceText(signal.tp2)}   (${plainRText(rewardR(signal, signal.tp2))})  ${w.runner}`,
+    );
+  }
+  lines.push(
+    `${w.validFor(spanText(signal.entryValidUntil - signal.generatedAt), at(signal.entryValidUntil))} ${w.timeStop(spanText(signal.timeStopAt - signal.generatedAt), at(signal.timeStopAt))}`,
+  );
+  return lines;
+}
+
+function groupLines(e: ExplanationDoc, w: Words, d: Detail): string[] {
+  return e.groups.map((group) => {
+    const facts = group.facts
+      .slice(0, d.facts)
+      .map((fact) => `${fact.label} ${String(fact.value)}`)
+      .join('; ');
+    const head = `${MARKS[group.state]} ${w.groupName[group.key]} ${group.state}`;
+    if (group.state === 'NA' && group.facts.length === 0) return `${head}: ${w.noData}`;
+    return facts === '' ? head : `${head}: ${facts}`;
+  });
+}
+
+function macroLine(e: ExplanationDoc, w: Words, at: (ms: number) => string, now: number): string {
+  const state = `${w.macro}: ${w.macroState[e.macro.state]}.`;
+  const { next } = e.macro;
+  if (next !== null) {
+    const time = Date.parse(next.at);
+    return `${state} ${w.nextEvent(next.name, at(time), spanText(Math.max(0, time - now)))}`;
+  }
+  return e.macro.state === 'CLEAR' ? `${state} ${w.noNextEvent}` : state;
+}
+
+function headlineLine(headline: ExplanationHeadline, at: (ms: number) => string): string {
+  const impact = headline.impact ?? 'unclassified';
+  const sources = headline.sources.join(', ');
+  const published =
+    headline.publishedAt === null ? '' : `, ${at(Date.parse(headline.publishedAt))}`;
+  return `- [${impact}] ${headline.title} (${sources}${published})`;
+}
+
+function newsLines(e: ExplanationDoc, w: Words, d: Detail, at: (ms: number) => string): string[] {
+  if (e.news.feed === 'UNAVAILABLE') return [`${w.newsTitle}: ${w.newsUnavailable}`];
+  const { headlines } = e.news;
+  if (headlines.length === 0) return [`${w.newsTitle}: ${w.newsNone}`];
+  if (!d.headlines) return [`${w.newsTitle}: ${w.newsCount(headlines.length)}`];
+  return [
+    `${w.newsTitle}:`,
+    ...headlines.map((headline) => headlineLine(headline, at)),
+    w.newsContext,
+  ];
+}
+
+function evidenceLines(e: ExplanationEvidence, w: Words): string[] {
+  const lines = [w.evidenceTitle];
+  if (e.sampleLabel === 'INSUFFICIENT' || e.winRate === null || e.ci === null) {
+    lines.push(w.insufficient(e.n, e.wins, EVIDENCE_MIN_SAMPLE));
+  } else {
+    const figures = [w.winRate(percentText(e.winRate), e.n, intervalText(e.ci))];
+    if (e.expectancyR !== null) figures.push(`${w.expectancy} ${signedRText(e.expectancyR)}`);
+    if (e.profitFactor !== null) figures.push(`${w.profitFactor} ${fixedText(e.profitFactor, 2)}`);
+    lines.push(figures.join('  '));
+    const rates = [
+      e.tp1Rate === null ? null : w.tp1Reached(percentText(e.tp1Rate)),
+      e.tp2Rate === null ? null : w.tp2Reached(percentText(e.tp2Rate)),
+    ].filter((text): text is string => text !== null);
+    if (rates.length > 0) lines.push(`${rates.join(', ')}.`);
+  }
+  const source = w.source(w.scope[e.scope], matchLevelText(e.level));
+  lines.push(e.sampleLabel === 'LOW_SAMPLE' ? `${source} ${w.lowSample}` : source);
+  return lines;
+}
+
+function render(data: NewSignalData, options: DisplayOptions, level: number): Rendering {
+  const detail = DETAIL[level];
+  if (detail === undefined) throw new RangeError(`no detail level ${String(level)}`);
+  const { signal, explanation: e } = data;
+  const w = WORDS[options.locale];
+  const at = (ms: number): string => clockText(ms, options.displayTz, signal.generatedAt);
+
+  const lines: string[] = [
+    labelLine(signal, w, true),
+    `${signal.side} ${TRADED_SYMBOL} | ${strategyText(signal)} | ${signalTag(signal.seq)}`,
+    '',
+    ...levelLines(data, w, at),
+    '',
+    w.quality(String(Math.round(e.quality.score)), w.grade[e.quality.grade]),
+    w.whyHeader,
+    ...groupLines(e, w, detail),
+    `[~] ${w.weak}: ${e.weak.length === 0 ? w.none : e.weak.slice(0, detail.weak).join('; ')}`,
+  ];
+  if (detail.researchOnly && e.researchOnly.length > 0) {
+    lines.push(
+      `[?] ${w.researchOnly}: ${e.researchOnly.map((fact) => `${fact.label} ${String(fact.value)}`).join('; ')}`,
+    );
+  }
+  lines.push(macroLine(e, w, at, signal.generatedAt));
+  if (e.warnings.length === 0) {
+    lines.push(`[!] ${w.warnings}: ${w.none}`);
+  } else {
+    lines.push(`[!] ${w.warnings}:`, ...e.warnings.map((warning) => `- ${warning.text}`));
+  }
+  lines.push(...newsLines(e, w, detail, at));
+  lines.push(
+    `${w.openSignals}: ${e.open.count === 0 ? w.none : String(e.open.count)} (${w.openRisk(plainRText(e.open.riskR))})`,
+    '',
+    ...evidenceLines(e.evidence, w),
+    `${w.disclaimer} ${w.oneR(priceText(signal.riskDistance))}`,
+  );
+  return { lines, dropped: detail.dropped };
+}
+
+/** How many levels of detail the entry alert has: 0 is everything, the last one the least. */
+export const SIGNAL_NEW_LEVELS = DETAIL.length;
+
+/** The entry alert at one level of detail, as lines (what `renderSignalNew` chooses from). */
+export function signalNewLines(
+  data: NewSignalData,
+  options: DisplayOptions,
+  level: number,
+): Rendering {
+  assertLevels(data.signal, data.explanation.levels);
+  return render(data, options, level);
+}
+
+/**
+ * The entry alert (02_Signal_Engine section 14, SIGNAL_NEW): the levels, the validity, the quality,
+ * the "why" with the real numbers, the weak points, the warnings, the open risk and the historical
+ * evidence, with the label of a paper or replay signal in the first line. The same stored
+ * explanation gives the same text in both languages: only the labels differ.
+ */
+export function renderSignalNew(data: NewSignalData, options: DisplayOptions): TelegramMessage {
+  assertLevels(data.signal, data.explanation.levels);
+  return fitMessage('SIGNAL_NEW', (level) => render(data, options, level), DETAIL.length - 1);
+}

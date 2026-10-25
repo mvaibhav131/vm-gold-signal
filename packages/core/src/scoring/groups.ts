@@ -76,6 +76,47 @@ export interface QualityInputs {
   readonly reward: QualityRewardFacts;
 }
 
+/** The parts a group is the mean of (docs/02 section 8.1). The explanation names the weak ones. */
+export const COMPONENT_KEYS = [
+  'emaOrder',
+  'emaSlope',
+  'adx',
+  'supertrend',
+  'alignment',
+  'breakEvent',
+  'sweep',
+  'confluence',
+  'pattern',
+  'candleSize',
+  'closeLocation',
+  'rsiReset',
+  'macd',
+  'atrPercentile',
+  'squeeze',
+  'spread',
+  'stopSize',
+  'session',
+  'news',
+  'tp1Distance',
+  'levelRoom',
+] as const;
+export type ComponentKey = (typeof COMPONENT_KEYS)[number];
+
+export interface ScoreComponent {
+  readonly key: ComponentKey;
+  readonly strength: number;
+}
+
+type Candidate = readonly [ComponentKey, number | null];
+
+/** The components that have data, in order. */
+function present(candidates: readonly Candidate[]): ScoreComponent[] {
+  return candidates.flatMap(([key, strength]) => (strength === null ? [] : [{ key, strength }]));
+}
+
+const strengthOf = (components: readonly ScoreComponent[]): number | null =>
+  meanOf(components.map((component) => component.strength));
+
 const sign = (side: Side): 1 | -1 => (side === 'BUY' ? 1 : -1);
 const ahead = (side: Side): ChartState => (side === 'BUY' ? 'UP' : 'DOWN');
 
@@ -93,6 +134,10 @@ function alignment(state: ChartState | null, side: Side): number | null {
  * (1 with the trade, 0 against it).
  */
 export function trendStrength(side: Side, facts: QualityTrendFacts): number | null {
+  return strengthOf(trendComponents(side, facts));
+}
+
+export function trendComponents(side: Side, facts: QualityTrendFacts): ScoreComponent[] {
   const s = sign(side);
   const { ema20, ema50, ema200 } = facts;
   const order =
@@ -104,7 +149,12 @@ export function trendStrength(side: Side, facts: QualityTrendFacts): number | nu
     facts.plusDI !== null && facts.minusDI !== null && s * (facts.plusDI - facts.minusDI) < 0;
   const adx = facts.adx === null ? null : against ? 0 : ramp(facts.adx, 15, 35);
   const supertrend = facts.supertrend === null ? null : facts.supertrend === ahead(side) ? 1 : 0;
-  return meanOf([order, slope, adx, supertrend]);
+  return present([
+    ['emaOrder', order],
+    ['emaSlope', slope],
+    ['adx', adx],
+    ['supertrend', supertrend],
+  ]);
 }
 
 /**
@@ -114,6 +164,10 @@ export function trendStrength(side: Side, facts: QualityTrendFacts): number | nu
  * the measured move of a pattern (0 at 1.5 R, 1 at 3 R).
  */
 export function structureStrength(side: Side, facts: QualityStructureFacts): number | null {
+  return strengthOf(structureComponents(side, facts));
+}
+
+export function structureComponents(side: Side, facts: QualityStructureFacts): ScoreComponent[] {
   const states = meanOf([alignment(facts.state15m, side), alignment(facts.state5m, side)]);
   const event =
     facts.breakEvent === null ? null : { WITH: 1, NONE: 0.5, AGAINST: 0 }[facts.breakEvent];
@@ -123,7 +177,13 @@ export function structureStrength(side: Side, facts: QualityStructureFacts): num
       : (ramp(facts.sweep.depthAtr, 0.1, 0.6) + ramp(facts.sweep.wickRatio, 0.5, 0.8)) / 2;
   const confluence = facts.confluence === null ? null : ramp(facts.confluence, 0, 2);
   const pattern = facts.patternMoveR === null ? null : ramp(facts.patternMoveR, 1.5, 3);
-  return meanOf([states, event, sweep, confluence, pattern]);
+  return present([
+    ['alignment', states],
+    ['breakEvent', event],
+    ['sweep', sweep],
+    ['confluence', confluence],
+    ['pattern', pattern],
+  ]);
 }
 
 /**
@@ -133,6 +193,10 @@ export function structureStrength(side: Side, facts: QualityStructureFacts): num
  * 3 candles in a row in the direction of the trade).
  */
 export function triggerStrength(side: Side, facts: QualityTriggerFacts): number | null {
+  return strengthOf(triggerComponents(side, facts));
+}
+
+export function triggerComponents(side: Side, facts: QualityTriggerFacts): ScoreComponent[] {
   const s = sign(side);
   const size = facts.rangeAtr === null ? null : ramp(facts.rangeAtr, 0.6, 1.6);
   const close =
@@ -144,7 +208,12 @@ export function triggerStrength(side: Side, facts: QualityTriggerFacts): number 
       ? null
       : ramp(s * (facts.rsiNow - facts.rsiExtreme), 5, 20);
   const macd = facts.macdBars === null ? null : ramp(s * facts.macdBars, 0, 3);
-  return meanOf([size, close, reset, macd]);
+  return present([
+    ['candleSize', size],
+    ['closeLocation', close],
+    ['rsiReset', reset],
+    ['macd', macd],
+  ]);
 }
 
 /**
@@ -152,11 +221,18 @@ export function triggerStrength(side: Side, facts: QualityTriggerFacts): number 
  * (1 just released, 0.7 none, 0.3 still on).
  */
 export function volatilityStrength(facts: QualityVolatilityFacts): number | null {
+  return strengthOf(volatilityComponents(facts));
+}
+
+export function volatilityComponents(facts: QualityVolatilityFacts): ScoreComponent[] {
   const percentile =
     facts.atrPercentile === null ? null : band(facts.atrPercentile, [10, 30, 70, 90]);
   const squeeze =
     facts.squeeze === null ? null : { RELEASED: 1, NONE: 0.7, ON: 0.3 }[facts.squeeze];
-  return meanOf([percentile, squeeze]);
+  return present([
+    ['atrPercentile', percentile],
+    ['squeeze', squeeze],
+  ]);
 }
 
 /**
@@ -164,9 +240,16 @@ export function volatilityStrength(facts: QualityVolatilityFacts): number | null
  * (best from 1.1 to 1.7 ATR, nothing at the 0.8 and 2.0 ATR limits of STOP_OK).
  */
 export function executionStrength(facts: QualityExecutionFacts): number | null {
+  return strengthOf(executionComponents(facts));
+}
+
+export function executionComponents(facts: QualityExecutionFacts): ScoreComponent[] {
   const spread = facts.spreadPercentile === null ? null : ramp(facts.spreadPercentile, 95, 40);
   const stop = facts.stopAtr === null ? null : band(facts.stopAtr, [0.8, 1.1, 1.7, 2.0]);
-  return meanOf([spread, stop]);
+  return present([
+    ['spread', spread],
+    ['stopSize', stop],
+  ]);
 }
 
 /** How well a session suits the trade: the hours of London and New York trade best. */
@@ -184,6 +267,10 @@ export const SESSION_SUITABILITY: Readonly<Record<Session, number>> = {
  * or from 4 hours away down to 0 at 45 minutes.
  */
 export function sessionMacroStrength(facts: QualitySessionMacroFacts): number | null {
+  return strengthOf(sessionMacroComponents(facts));
+}
+
+export function sessionMacroComponents(facts: QualitySessionMacroFacts): ScoreComponent[] {
   const session = facts.session === null ? null : SESSION_SUITABILITY[facts.session];
   let news: number | null = null;
   if (facts.news !== null && facts.news.state !== 'UNKNOWN') {
@@ -194,7 +281,10 @@ export function sessionMacroStrength(facts: QualitySessionMacroFacts): number | 
           ? 1
           : ramp(facts.news.minutesToNext, 45, 240);
   }
-  return meanOf([session, news]);
+  return present([
+    ['session', session],
+    ['news', news],
+  ]);
 }
 
 /**
@@ -203,6 +293,10 @@ export function sessionMacroStrength(facts: QualitySessionMacroFacts): number | 
  * times the distance to TP1, 1 when none is ahead).
  */
 export function rewardStrength(facts: QualityRewardFacts): number | null {
+  return strengthOf(rewardComponents(facts));
+}
+
+export function rewardComponents(facts: QualityRewardFacts): ScoreComponent[] {
   const tp1 = facts.tp1Atr === null ? null : ramp(facts.tp1Atr, 2.5, 1.5);
   const room =
     facts.levelRoom === null
@@ -210,5 +304,8 @@ export function rewardStrength(facts: QualityRewardFacts): number | null {
       : facts.levelRoom === 'NONE'
         ? 1
         : ramp(facts.levelRoom, 0.5, 1.2);
-  return meanOf([tp1, room]);
+  return present([
+    ['tp1Distance', tp1],
+    ['levelRoom', room],
+  ]);
 }

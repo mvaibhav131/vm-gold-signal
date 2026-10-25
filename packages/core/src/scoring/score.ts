@@ -7,19 +7,43 @@ import {
 } from '../domain';
 import { groupState, qualityGrade } from '../quality';
 import {
+  executionComponents,
   executionStrength,
+  rewardComponents,
   rewardStrength,
+  sessionMacroComponents,
   sessionMacroStrength,
+  structureComponents,
   structureStrength,
+  trendComponents,
   trendStrength,
+  triggerComponents,
   triggerStrength,
+  volatilityComponents,
   volatilityStrength,
   type QualityInputs,
+  type ScoreComponent,
 } from './groups';
 import { roundTo } from '../trade/round';
 
 export type QualityStrengths = Readonly<Record<QualityGroup, number | null>>;
 export type QualityWeights = Readonly<Record<QualityGroup, number>>;
+
+/** The parts of every group that have data, each with its own strength (the group is their mean). */
+export function qualityComponents(
+  side: Side,
+  inputs: QualityInputs,
+): Readonly<Record<QualityGroup, readonly ScoreComponent[]>> {
+  return {
+    trend: trendComponents(side, inputs.trend),
+    structure: structureComponents(side, inputs.structure),
+    trigger: triggerComponents(side, inputs.trigger),
+    volatility: volatilityComponents(inputs.volatility),
+    execution: executionComponents(inputs.execution),
+    sessionMacro: sessionMacroComponents(inputs.sessionMacro),
+    reward: rewardComponents(inputs.reward),
+  };
+}
 
 /** The strength of each group (docs/02 section 8.1), null where the data was not available. */
 export function qualityStrengths(side: Side, inputs: QualityInputs): QualityStrengths {

@@ -1,7 +1,4 @@
-export const TRADED_SYMBOL = 'XAUUSD';
-
-/** Decimal places of every stored price (matches numeric(12,3) in the schema). */
-export const PRICE_DECIMALS = 3;
+export { PRICE_DECIMALS, TRADED_SYMBOL } from './symbol';
 
 export * from './candles';
 export * from './candlesticks';
@@ -9,9 +6,11 @@ export * from './context';
 export * from './divergence';
 export * from './domain';
 export * from './evidence';
+export * from './explain';
 export * from './gates';
 export * from './indicators';
 export * from './levels';
+export * from './messages';
 export * from './patterns';
 export * from './quality';
 export * from './regime';
