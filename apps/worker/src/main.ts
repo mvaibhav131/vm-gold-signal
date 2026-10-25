@@ -1,5 +1,5 @@
 import { defaultStrategyConfig, workerEnvSchema, parseEnv } from '@vmgs/config';
-import { STRATEGY_KEYS } from '@vmgs/core';
+import { STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows } from '@vmgs/core';
 import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
 import { createPool } from '@vmgs/db';
@@ -9,6 +9,10 @@ import { PostgresHealthStore } from './alerts/postgresHealthStore';
 import { PostgresOutboxStore } from './alerts/postgresOutboxStore';
 import { OutboxSender } from './alerts/sender';
 import { LibWebPushSink } from './alerts/webpush';
+import { CalendarAlerts } from './calendar/alerts';
+import { CalendarPoller } from './calendar/poller';
+import { PostgresCalendarStore } from './calendar/postgresStore';
+import { BiquoteCalendarClient } from './calendar/provider';
 import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
 import { OutcomeTracker } from './lifecycle/tracker';
@@ -152,9 +156,39 @@ async function main(): Promise<void> {
             },
             log,
           });
+    // The calendar: the poller keeps `macro_events` and the time of its last good reading (without a
+    // recent one the news state is UNKNOWN); the alerts tell about the events that matter. The
+    // news window is the widest of the strategies' defaults until the engine reads its own (B26b).
+    const calendarStore = new PostgresCalendarStore(pool, TRADED_SYMBOL);
+    const newsWindow = mergeNewsWindows(
+      STRATEGY_KEYS.map((key) => defaultStrategyConfig(key).gates.newsWindow),
+    );
+    const calendarProvider = new BiquoteCalendarClient();
+    const calendarPoller = new CalendarPoller({
+      provider: calendarProvider,
+      store: calendarStore,
+      policy: async () => ({
+        currencies: newsWindow.currency,
+        minImpact: (await lifecycle.loadSettings()).newsAlerts.minImpact,
+      }),
+      log,
+    });
+    const calendarAlerts = new CalendarAlerts({
+      store: calendarStore,
+      provider: calendarProvider,
+      outbox: outboxStore,
+      settings: () => lifecycle.loadSettings(),
+      window: newsWindow,
+      onQueued: () => {
+        sender.wake();
+      },
+      log,
+    });
     sender.start();
     health.start();
     bot?.start();
+    calendarPoller.start();
+    calendarAlerts.start();
 
     log('info', 'record-only worker started', {
       provider: provider.name,
@@ -162,9 +196,12 @@ async function main(): Promise<void> {
       openSignals: tracker.stats.open,
       telegram: bot !== null,
       webpush: VAPID_PUBLIC_KEY !== undefined,
+      calendar: calendarProvider.name,
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    await calendarAlerts.stop();
+    await calendarPoller.stop();
     await bot?.stop();
     await health.stop();
     await worker.stop();
@@ -176,6 +213,7 @@ async function main(): Promise<void> {
       tracker: tracker.stats,
       sender: sender.stats,
       bot: bot?.stats ?? null,
+      calendar: calendarPoller.stats,
     });
   } finally {
     process.off('SIGINT', onSignal);

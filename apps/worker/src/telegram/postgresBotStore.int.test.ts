@@ -195,6 +195,24 @@ describe('the facts of /status and /open', () => {
     expect((await store.status(FILL_AT)).openStatuses).toHaveLength(open - 1);
   });
 
+  it('knows the calendar is available only while its last good reading is recent', async () => {
+    const heartbeat = (at: number) =>
+      query(
+        world.database.url,
+        `INSERT INTO worker_heartbeats (worker_name, heartbeat_at, metadata)
+         VALUES ('calendar', $1, '{}'::jsonb)
+         ON CONFLICT (worker_name) DO UPDATE SET heartbeat_at = EXCLUDED.heartbeat_at`,
+        [new Date(at)],
+      );
+    await query(world.database.url, "DELETE FROM worker_heartbeats WHERE worker_name = 'calendar'");
+    expect((await store.status(FILL_AT)).calendarAvailable).toBe(false);
+    await heartbeat(FILL_AT - 15 * MINUTE);
+    expect((await store.status(FILL_AT)).calendarAvailable).toBe(true);
+    await heartbeat(FILL_AT - 15 * MINUTE - 1);
+    expect((await store.status(FILL_AT)).calendarAvailable).toBe(false);
+    await query(world.database.url, "DELETE FROM worker_heartbeats WHERE worker_name = 'calendar'");
+  });
+
   it('lists only the newest version of each strategy', async () => {
     await world.store.ensureStrategyVersion({ ...STRATEGY, version: '0.2.0' });
     const { strategies } = await store.status(FILL_AT);

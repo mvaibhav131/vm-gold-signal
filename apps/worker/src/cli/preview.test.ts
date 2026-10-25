@@ -11,7 +11,7 @@ const TOKEN = '555:preview-token';
 const EN = { locale: 'en', displayTz: 'Asia/Kolkata' } as const;
 const HINGLISH = { locale: 'hinglish', displayTz: 'Asia/Kolkata' } as const;
 /** The samples, and the messages the command sends: the intro and one for each sample. */
-const SAMPLES = 11;
+const SAMPLES = 13;
 let fake: FakeTelegram | null = null;
 
 afterEach(async () => {
@@ -41,6 +41,8 @@ describe('sampleMessages', () => {
         'SYSTEM_DEGRADED',
         'SYSTEM_RECOVERED',
         'ENGINE_PAUSED',
+        'NEWS_UPCOMING',
+        'NEWS_RELEASED',
         'TEST',
       ]);
       expect(samples).toHaveLength(SAMPLES);
@@ -81,6 +83,17 @@ describe('sampleMessages', () => {
   it('follow the language', () => {
     const last = SAMPLES - 1;
     expect(sampleMessages(EN)[last]?.text).not.toBe(sampleMessages(HINGLISH)[last]?.text);
+  });
+
+  it('show the calendar messages on the CPI of the example: 30 minutes ahead, and the release', () => {
+    const [upcoming, released] = sampleMessages(EN)
+      .filter((sample) => sample.name.startsWith('NEWS_'))
+      .map((sample) => plain(sample.text));
+    expect(upcoming).toContain('HIGH-IMPACT USD EVENT in 30 min: CPI m/m (16:00 IST)');
+    expect(upcoming).toContain('from 15:15 IST');
+    expect(released).toContain('CPI m/m released 16:00 IST');
+    expect(released).toContain('(surprise +2.1 sigma)');
+    expect(released).toContain('Gold 15 s after: -3.100 USD, spread 0.900.');
   });
 });
 

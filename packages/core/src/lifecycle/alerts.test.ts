@@ -44,6 +44,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
   },
+  newsAlerts: { minImpact: 'HIGH' },
 };
 
 const settings = (change: {

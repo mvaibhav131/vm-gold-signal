@@ -16,6 +16,7 @@ export const ICON = {
   research: '🔬',
   review: '🔍',
   action: '👉',
+  released: '📣',
   strong: '🟢',
   weak: '🟡',
   fail: '🔴',

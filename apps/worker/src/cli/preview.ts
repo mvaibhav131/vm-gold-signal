@@ -2,6 +2,8 @@ import {
   enginePausedMessage,
   feedDegradedMessage,
   feedRecoveredMessage,
+  newsReleasedMessage,
+  newsUpcomingMessage,
   parseCommand,
   renderFinalReview,
   renderSignalCancelled,
@@ -9,6 +11,7 @@ import {
   renderSignalNew,
   renderSignalTp1,
   testMessage,
+  type CalendarRecord,
   type DisplayOptions,
 } from '@vmgs/core';
 
@@ -30,6 +33,29 @@ export interface Sample {
   readonly name: string;
   readonly text: string;
 }
+
+/** The CPI that the example signal looks ahead to (16:00 IST, 4 h 25 min after the signal). */
+const CPI_AT = DECIDED_AT + (4 * 60 + 25) * MINUTE;
+const CPI: CalendarRecord = {
+  id: 'sample',
+  sourceEventId: 'sample',
+  seriesId: 'sample',
+  scheduledAt: CPI_AT,
+  importance: 'high',
+  currency: 'USD',
+  countryCode: 'US',
+  name: 'CPI m/m',
+  unit: 'percent',
+  multiplier: 'none',
+  digits: 1,
+  actual: null,
+  forecast: 0.3,
+  previous: 0.4,
+  revisedPrevious: null,
+  timeMode: 'exact',
+  firstSeenAt: DECIDED_AT,
+  actualFirstSeenAt: null,
+};
 
 /**
  * One example of every message the owner will receive, written with the real formatters on fixed
@@ -83,6 +109,25 @@ export function sampleMessages(options: DisplayOptions): Sample[] {
       name: 'ENGINE_PAUSED',
       text: enginePausedMessage({ at: DECIDED_AT, until: DECIDED_AT + 30 * MINUTE }, options)
         .telegram.text,
+    },
+    {
+      name: 'NEWS_UPCOMING',
+      text: newsUpcomingMessage(
+        { event: CPI, now: CPI_AT - 30 * MINUTE, window: { before: 45, after: 20 } },
+        options,
+      ).telegram.text,
+    },
+    {
+      name: 'NEWS_RELEASED',
+      text: newsReleasedMessage(
+        {
+          event: { ...CPI, actual: 0.5, actualFirstSeenAt: CPI_AT + 3_000 },
+          sigma: 2.14,
+          goldAfter: { seconds: 15, moveUsd: -3.1, spread: 0.9 },
+          opensWindow: true,
+        },
+        options,
+      ).telegram.text,
     },
     { name: 'TEST', text: testMessage(DECIDED_AT, options).telegram.text },
   ];

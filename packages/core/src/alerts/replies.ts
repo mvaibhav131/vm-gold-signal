@@ -109,6 +109,8 @@ export interface StatusData {
   /** Null until the decision engine reports one. */
   readonly regime: Regime | null;
   readonly nextHigh: { readonly name: string; readonly at: number } | null;
+  /** The calendar was read recently (`calendarAvailable`); when it was not, "none known" would be a lie. */
+  readonly calendarAvailable: boolean;
   readonly openCount: number;
   readonly openRiskR: number;
   readonly strategies: readonly {
@@ -157,13 +159,15 @@ export function statusReply(data: StatusData, options: DisplayOptions): Reply {
   );
   lines.push(
     `${ICON.macro} ${
-      data.nextHigh === null
-        ? w.noNextHigh
-        : w.nextHigh(
-            clean(data.nextHigh.name),
-            at(data.nextHigh.at),
-            spanText(Math.max(0, data.nextHigh.at - data.at)),
-          )
+      !data.calendarAvailable
+        ? w.calendarUnavailable
+        : data.nextHigh === null
+          ? w.noNextHigh
+          : w.nextHigh(
+              clean(data.nextHigh.name),
+              at(data.nextHigh.at),
+              spanText(Math.max(0, data.nextHigh.at - data.at)),
+            )
     }`,
   );
   lines.push(`${ICON.open} ${w.openSummary(data.openCount, plainRText(data.openRiskR))}`);

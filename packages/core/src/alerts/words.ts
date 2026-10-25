@@ -1,4 +1,4 @@
-import type { FeedState, Locale, StrategyStatus } from '../domain';
+import type { FeedState, Locale, MacroImportance, StrategyStatus } from '../domain';
 
 // The fixed words of the command replies and of the system messages, in English and in Hinglish
 // (Hindi in Latin letters), like `messages/words.ts`: only labels and sentences are translated, the
@@ -123,6 +123,28 @@ export interface AlertWords {
   readonly storageLargest: (table: string, size: string) => string;
   readonly testTitle: (at: string) => string;
   readonly testBody: string;
+  // The calendar: an event is coming, an event was released.
+  readonly importanceLabel: Readonly<Record<MacroImportance, string>>;
+  readonly upcomingTitle: (
+    impact: string,
+    currency: string,
+    minutes: string,
+    name: string,
+    at: string,
+  ) => string;
+  readonly forecastPrevious: (forecast: string, previous: string) => string;
+  readonly windowNote: (from: string, until: string) => string;
+  readonly releasedTitle: (name: string, at: string) => string;
+  readonly releasedFigures: (
+    actual: string,
+    forecast: string,
+    previous: string,
+    revised: string | null,
+    surprise: string | null,
+  ) => string;
+  readonly goldAfter: (seconds: number, move: string, spread: string | null) => string;
+  readonly releasedWindowNote: string;
+  readonly calendarUnavailable: string;
   readonly sampleBanner: string;
   readonly sampleBannerLong: string;
 }
@@ -234,6 +256,20 @@ const en: AlertWords = {
   storageLargest: (table, size) => `Largest table: ${table} (${size}).`,
   testTitle: (at) => `TEST MESSAGE ${at}`,
   testBody: 'If you can read this, delivery works. Nothing here is a signal.',
+  importanceLabel: { high: 'HIGH-IMPACT', medium: 'MEDIUM-IMPACT', low: 'LOW-IMPACT' },
+  upcomingTitle: (impact, currency, minutes, name, at) =>
+    `${impact}${currency === '' ? '' : ` ${currency}`} EVENT in ${minutes}: ${name} (${at})`,
+  forecastPrevious: (forecast, previous) => `Forecast ${forecast}  Previous ${previous}.`,
+  windowNote: (from, until) =>
+    `Signals are still sent, but from ${from} until volatility normalises after ${until} they carry a NEWS WINDOW warning.`,
+  releasedTitle: (name, at) => `${name} released ${at}`,
+  releasedFigures: (actual, forecast, previous, revised, surprise) =>
+    `Actual ${actual}, forecast ${forecast}, previous ${previous}${revised === null ? '' : ` (revised ${revised})`}${surprise === null ? '' : ` (surprise ${surprise})`}.`,
+  goldAfter: (seconds, move, spread) =>
+    `Gold ${String(seconds)} s after: ${move} USD${spread === null ? '' : `, spread ${spread}`}.`,
+  releasedWindowNote:
+    'Signals in this window carry a NEWS WINDOW warning until spread and ATR normalise.',
+  calendarUnavailable: 'Next HIGH-impact event: unknown (the calendar feed is unavailable)',
   sampleBanner: 'SAMPLE, not a real signal',
   sampleBannerLong: 'SAMPLE MESSAGE for review: made-up numbers, not a signal, nothing to trade.',
 };
@@ -347,6 +383,20 @@ const hinglish: AlertWords = {
   storageLargest: (table, size) => `Sabse badi table: ${table} (${size}).`,
   testTitle: (at) => `TEST MESSAGE ${at}`,
   testBody: 'Ye padh paa rahe ho to delivery sahi chal rahi hai. Ye koi signal nahi hai.',
+  importanceLabel: { high: 'HIGH-IMPACT', medium: 'MEDIUM-IMPACT', low: 'LOW-IMPACT' },
+  upcomingTitle: (impact, currency, minutes, name, at) =>
+    `${impact}${currency === '' ? '' : ` ${currency}`} EVENT ${minutes} mein: ${name} (${at})`,
+  forecastPrevious: (forecast, previous) => `Forecast ${forecast}  Pichhla ${previous}.`,
+  windowNote: (from, until) =>
+    `Signals bheje jaate rahenge, par ${from} se ${until} ke baad volatility normal hone tak un par NEWS WINDOW chetavni rahegi.`,
+  releasedTitle: (name, at) => `${name} aa gaya, ${at}`,
+  releasedFigures: (actual, forecast, previous, revised, surprise) =>
+    `Actual ${actual}, forecast ${forecast}, pichhla ${previous}${revised === null ? '' : ` (badal kar ${revised})`}${surprise === null ? '' : ` (surprise ${surprise})`}.`,
+  goldAfter: (seconds, move, spread) =>
+    `Gold ${String(seconds)} s baad: ${move} USD${spread === null ? '' : `, spread ${spread}`}.`,
+  releasedWindowNote:
+    'Is window ke signals par NEWS WINDOW chetavni rahegi jab tak spread aur ATR normal nahi hote.',
+  calendarUnavailable: 'Agla HIGH-impact event: pata nahi (calendar feed available nahi hai)',
   sampleBanner: 'SAMPLE, asli signal nahi',
   sampleBannerLong:
     'SAMPLE MESSAGE review ke liye: banaye hue numbers, signal nahi, trade karne ke liye kuch nahi.',

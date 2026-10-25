@@ -321,6 +321,7 @@ describe('/status', () => {
     rig.store.chat = OWNER;
     rig.store.facts = {
       nextHigh: { name: 'US CPI', at: NOW + 3_600_000 },
+      calendarAvailable: true,
       openStatuses: ['ACTIVE', 'TP1_HIT'],
       strategies: [{ key: 'trend_pullback', version: '1.0.0', status: 'FORWARD_TESTING' }],
     };
@@ -355,6 +356,7 @@ describe('/status', () => {
     rig.store.chat = OWNER;
     rig.store.facts = {
       nextHigh: null,
+      calendarAvailable: true,
       openStatuses: [],
       strategies: [
         { key: 'trend_pullback', version: '1.0.0', status: 'FORWARD_TESTING' },
@@ -365,6 +367,21 @@ describe('/status', () => {
     const text = rig.fake.textsTo(OWNER)[0] ?? '';
     expect(text).toContain('Trend Pullback v1.0.0: FORWARD TESTING, alerts on');
     expect(text).toContain('Chart Pattern Breakout v1.0.0: FORWARD TESTING, alerts off (shadow)');
+  });
+
+  it('says the next event is unknown, not "none known", when the calendar feed is down', async () => {
+    const rig = await build();
+    rig.store.chat = OWNER;
+    rig.store.facts = {
+      nextHigh: null,
+      calendarAvailable: false,
+      openStatuses: [],
+      strategies: [],
+    };
+    await say(rig, OWNER, '/status');
+    const text = rig.fake.textsTo(OWNER)[0] ?? '';
+    expect(text).toContain('Next HIGH-impact event: unknown (the calendar feed is unavailable)');
+    expect(text).not.toContain('none known');
   });
 });
 

@@ -331,5 +331,6 @@ export function defaultAlertSettings(): AlertSettings {
     locale: settings.locale,
     alerts: settings.alerts,
     strategyAlerts: settings.strategyAlerts,
+    newsAlerts: { minImpact: settings.newsAlerts.minImpact },
   };
 }

@@ -31,7 +31,7 @@ Non-goals for V1: automatic order execution, multiple users, paid data or servic
 | Domain / TLS | DuckDNS subdomain + Caddy automatic certificates | 0 | Third-party free DNS. | Hostname is config. Can move to any domain later. |
 | Frontend hosting | Served by Caddy from the same VM | 0 | Same failure domain as API (acceptable, UI is useless without API). | None needed. |
 | Market data | Biquote (SignalR stream, REST) | 0 | No SLA. Can change or stop without notice. Prices are indicative (broker CFD feed). | Provider interface, own tick recorder, stale-feed gate, divergence check later. |
-| Economic calendar | Biquote calendar | 0 | Same as above. Only about 90 days window. | Archive into own DB daily. |
+| Economic calendar | Biquote calendar | 0 | Same as above. Only about 90 days window. | Archive into own DB daily. As built (B25a): every reading is stored in `macro_events`, and the surprise uses the provider history joined with that archive. |
 | Headline news | RSS feeds (BBC, Al Jazeera, CNBC, Federal Reserve) and the Biquote news endpoint | 0 | Minutes of delay, no direct social-media posts, each feed's terms apply (headline and link only). | Source list is configurable; a feed can be disabled or replaced. |
 | Alerts | Telegram Bot API, Web Push | 0 | Telegram limits about 1 message per second per chat (fine). Web Push on iPhone needs the installed PWA. | Outbox with retry and expiry. |
 | Backups | pg_dump encrypted with age, stored in OCI Object Storage (20 GB free) | 0 | Same cloud account. | Periodic manual download to the owner's PC. |

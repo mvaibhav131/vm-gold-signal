@@ -2,12 +2,14 @@ import { engineStateSchema } from '@vmgs/contracts';
 import {
   STRATEGY_KEYS,
   TRADED_SYMBOL,
+  calendarAvailable,
   type PeriodRow,
   type StoredEngine,
   type TimeWindow,
 } from '@vmgs/core';
 import type { Pool } from 'pg';
 
+import { CALENDAR_HEARTBEAT } from '../calendar/postgresStore';
 import type { BotStore, OpenSignalRow, StatusFacts } from './botStore';
 import type { PendingLink } from './link';
 
@@ -127,7 +129,7 @@ export class PostgresBotStore implements BotStore {
   }
 
   async status(now: number): Promise<StatusFacts> {
-    const [open, next, strategies] = await Promise.all([
+    const [open, next, strategies, calendar] = await Promise.all([
       this.pool.query<{ status: 'ACTIVE' | 'TP1_HIT' }>(
         "SELECT status FROM signal_state WHERE status IN ('ACTIVE', 'TP1_HIT')",
       ),
@@ -145,10 +147,15 @@ export class PostgresBotStore implements BotStore {
         `SELECT DISTINCT ON (strategy_key) strategy_key, version, status
            FROM strategy_versions ORDER BY strategy_key, created_at DESC`,
       ),
+      this.pool.query<{ heartbeat_at: Date }>(
+        'SELECT heartbeat_at FROM worker_heartbeats WHERE worker_name = $1',
+        [CALENDAR_HEARTBEAT],
+      ),
     ]);
     const first = next.rows[0];
     return {
       nextHigh: first === undefined ? null : { name: first.name, at: first.scheduled_at.getTime() },
+      calendarAvailable: calendarAvailable(calendar.rows[0]?.heartbeat_at.getTime() ?? null, now),
       openStatuses: open.rows.map((row) => row.status),
       strategies: strategies.rows
         .map((row) => ({ key: row.strategy_key, version: row.version, status: row.status }))

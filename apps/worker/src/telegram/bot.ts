@@ -327,6 +327,7 @@ export class TelegramBot {
       session: sessionAt(now),
       regime: null,
       nextHigh: facts.nextHigh,
+      calendarAvailable: facts.calendarAvailable,
       openCount: facts.openStatuses.length,
       openRiskR: openRiskR(facts.openStatuses),
       strategies: facts.strategies.map((strategy) => ({

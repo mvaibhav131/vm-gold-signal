@@ -100,6 +100,7 @@ const STATUS: StatusData = {
   session: 'LONDON',
   regime: 'TREND_UP',
   nextHigh: { name: 'US CPI m/m', at: Date.UTC(2026, 9, 23, 12, 30) },
+  calendarAvailable: true,
   openCount: 2,
   openRiskR: 1,
   strategies: [
@@ -173,6 +174,19 @@ describe('statusReply', () => {
     expect(feed('STALE', 18_000)).toBe('Feed: STALE, last tick 18 s ago');
     expect(feed('MARKET_CLOSED', 3 * 3600_000)).toBe('Feed: MARKET CLOSED, last tick 3 h ago');
     expect(feed('DISCONNECTED', null)).toBe('Feed: DISCONNECTED, no tick yet');
+  });
+
+  it('says the next event is unknown, never "none known", when the calendar feed is unavailable', () => {
+    const down = { ...STATUS, calendarAvailable: false };
+    expect(lines(statusReply(down, EN))[4]).toBe(
+      'Next HIGH-impact event: unknown (the calendar feed is unavailable)',
+    );
+    expect(lines(statusReply(down, HI))[4]).toBe(
+      'Agla HIGH-impact event: pata nahi (calendar feed available nahi hai)',
+    );
+    expect(lines(statusReply({ ...down, nextHigh: null }, EN))[4]).toBe(
+      'Next HIGH-impact event: unknown (the calendar feed is unavailable)',
+    );
   });
 
   it('shows an event that has just passed as "in 0 s", never a negative span', () => {

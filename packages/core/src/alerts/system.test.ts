@@ -20,6 +20,7 @@ import {
   storageWarningMessage,
   systemChannels,
   systemOutboxRows,
+  systemMessage,
   testEventKey,
   testMessage,
 } from './system';
@@ -252,6 +253,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
   },
+  newsAlerts: { minImpact: 'HIGH' },
 };
 
 describe('systemChannels', () => {
@@ -323,5 +325,33 @@ describe('systemOutboxRows', () => {
       'webpush',
     ]);
     expect(systemOutboxRows(message, key, [], AT)).toEqual([]);
+  });
+
+  it('lives as long as it is told to, and the push lives at least a second whatever that is', () => {
+    const [telegram, push] = systemOutboxRows(
+      message,
+      key,
+      ['telegram', 'webpush'],
+      AT,
+      20 * 60_000,
+    );
+    expect(telegram?.expiresAt).toBe(AT + 20 * 60_000);
+    expect(push?.payload).toMatchObject({ ttlSec: 1200 });
+    const [short] = systemOutboxRows(message, key, ['webpush'], AT, 500);
+    expect(short?.expiresAt).toBe(AT + 500);
+    expect(short?.payload).toMatchObject({ ttlSec: 1 });
+  });
+
+  it('carries the page of the message to the push, and the front page when it has none', () => {
+    const withPage = systemMessage('NEWS_UPCOMING', ['x'], {
+      title: 't',
+      body: 'b',
+      urgency: 'normal',
+      url: '/news',
+    });
+    const [push] = systemOutboxRows(withPage, 'news:1:upcoming', ['webpush'], AT);
+    expect(push?.payload).toMatchObject({ url: '/news' });
+    const [plainPush] = systemOutboxRows(message, key, ['webpush'], AT);
+    expect(plainPush?.payload).toMatchObject({ url: '/' });
   });
 });

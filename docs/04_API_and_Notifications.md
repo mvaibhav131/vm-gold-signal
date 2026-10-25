@@ -113,7 +113,7 @@ The worker announces a changed signal with PostgreSQL `NOTIFY` on the channel `v
 2. `pnpm cli telegram:link` asks Telegram who the bot is (a wrong token is found now), then prints a one-time code of 8 digits (`1234-5678`). The database keeps only a hash of it (`app_settings.telegramLink`). The code works once, for 10 minutes, and is void after 5 wrong tries.
 3. The owner sends `/link <code>` to the bot. The worker stores the chat id (`app_settings.telegramChat`) and forgets the code. From then on only that chat is served; all other chats are ignored silently. A new code from `telegram:link` moves the link to another chat.
 4. The worker uses long polling (`getUpdates`), so no inbound port is needed. Messages are sent with `sendMessage` using HTML parse mode (bold, italic, `code`, quotes; see section 4.1, "The look"), with all dynamic text escaped, and without link previews.
-5. `pnpm cli telegram:preview` is for the first look at the formats: it needs only the bot token (no database, no worker). The owner presses START in the bot; the command then sends one example of every message (`SIGNAL_NEW` as a BUY and as a SELL, `SIGNAL_TP1`, `SIGNAL_CLOSED` as a win and as a loss with its review, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`, `SYSTEM_DEGRADED`, `SYSTEM_RECOVERED`, `ENGINE_PAUSED`, `TEST`) made by the real formatters from fixed example data, each marked `[SAMPLE n/11: ..., not a real signal]`. `pnpm cli telegram:preview hinglish` sends them in Hinglish. It does not link the chat.
+5. `pnpm cli telegram:preview` is for the first look at the formats: it needs only the bot token (no database, no worker). The owner presses START in the bot; the command then sends one example of every message (`SIGNAL_NEW` as a BUY and as a SELL, `SIGNAL_TP1`, `SIGNAL_CLOSED` as a win and as a loss with its review, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`, `SYSTEM_DEGRADED`, `SYSTEM_RECOVERED`, `ENGINE_PAUSED`, `NEWS_UPCOMING`, `NEWS_RELEASED`, `TEST`) made by the real formatters from fixed example data, each marked `[SAMPLE n/13: ..., not a real signal]`. `pnpm cli telegram:preview hinglish` sends them in Hinglish. It does not link the chat.
 6. `pnpm cli telegram:test` queues a clearly labelled `TEST` message in the outbox, so the whole delivery path (outbox, sender, Telegram) can be checked. The worker must be running.
 
 Who is answered: a private chat that is the linked one, and nobody else. Groups, other chats, plain text and anything that is not a command get no answer. The only command a stranger can send is `/link`, and the bot answers it only while a code is pending, so it does not show itself to a stranger. A command addressed to another bot (`/status@OtherBot`) is not ours.
@@ -151,6 +151,14 @@ A reply is never longer than Telegram allows: long lists are cut with an "and N 
 - **No chat yet.** Telegram rows wait, as `FAILED`, until a chat is linked or they expire. Without `TELEGRAM_BOT_TOKEN` the channel is not served at all.
 - **Web Push.** Sent with the `web-push` library behind the `WebPushSink` interface; VAPID keys per call. The TTL is the smaller of the payload TTL and the time the row has left; a row with less than a second left is `EXPIRED`. The `Topic` header is a hash of the tag, so a newer message for the same signal replaces an older one on the device. A row is `SENT` when at least one browser took it. A `404` or `410` removes that subscription. An incomplete payload is `DEAD`; no subscribed browser means the row waits.
 - **System messages.** `ENGINE_PAUSED` (above), `SYSTEM_DEGRADED` and `SYSTEM_RECOVERED`, `STORAGE_WARNING` and `TEST` are built in `packages/core/src/alerts/system.ts`, expire after 1 hour and carry no signal id. The health watcher reads `feed_incidents` of the kinds `DISCONNECT` and `STALE` (the recorder writes an incident only after its grace time) every 5 s: an open incident is told once, with the numbers of the open signals that cannot be followed; the recovery is told only for an incident that was announced, and only if it ended in the last 10 minutes. Event keys carry the kind and the start of the incident, so a restart cannot tell it twice. `STORAGE_WARNING` is queued by the maintenance job (B31), whose message exists already.
+
+### Calendar alerts and the calendar feed (as built in B25a)
+
+- **The feed.** `CalendarPoller` reads Biquote's `GET /api/Calendar` (free, no key) for the United States (`countries=US`, currency USD, every importance) into `macro_events` (`source = 'biquote'`, `source_event_id` = the id of the release). The first reading goes back 14 days, every later one from 3 days back to 8 days ahead, every 5 minutes; from 1 minute before an event with an exact time, of a watched impact and without a value, until the value arrives (at most 10 minutes after the time), every 15 seconds. After a failed reading it waits 30 s, 1 min, 2 min, then 5 min. The id of the series, `digits`, `timeMode`, the type, the revision count and the surprise are kept in `raw`. Holidays (importance `none`) are not stored. A list in which no row can be read counts as a failed reading (the format changed), not as "no events". A released value is never taken back by a later reading, and `actual_first_seen_at` is set once.
+- **Available or not.** The time of the last good reading is the heartbeat `calendar` (`worker_heartbeats`). The calendar is available while that is at most 15 minutes old. Otherwise the news state is `UNKNOWN`, never `CLEAR`, and `/status` says `Next HIGH-impact event: unknown (the calendar feed is unavailable)` instead of "none known".
+- **NEWS_UPCOMING** is queued when an event with an exact time is 30 minutes or less ahead, and is valid until the event (a late alert is worthless). It goes out for the currencies of the news window of the strategies (USD) and at least `settings.newsAlerts.minImpact` (default HIGH). An event with a tentative time or only a date is stored and shown but never counted down to, because its time may move. The window line is there only when the event opens a news window (the impact and the currency of `gates.newsWindow`).
+- **NEWS_RELEASED** is queued when the released value was first seen, at the earliest 20 s after the scheduled time so that the second at which gold is measured is stored, and is valid for 30 minutes. It is not sent for a value first seen more than 30 minutes after its time (a backfill, or a worker that was down: that is old news). `Gold 15 s after` is the move of the mid price from the last tick at the time to the last tick 15 s later (each at most 10 s old) and the spread of the later one; the line is left out when no tick is near. The surprise is told in sigma only when at least 6 past releases of the indicator have both an actual and a forecast: the history of the provider (about 90 days) joined with what the worker archived itself, each release counted once. It is also kept in `raw.surprise`. The `goldMoveAfter` of the API (5 minutes, from 1-minute candles) belongs to B30.
+- **Keys and channels.** `news:<macro_events.id>:upcoming` and `news:<macro_events.id>:released`, so a restart or a second pass never tells an event twice (an event whose time moves after the alert is not told again). The channels follow the system rule (Telegram when on and the kind is switched on, Web Push when on). The Web Push text is English, with the page `/news`.
 
 ### 4.1 Message catalogue
 
@@ -239,14 +247,18 @@ The idea was right but the stop sat inside the liquidity sweep. Tracked in Analy
 **NEWS_UPCOMING**
 ```text
 HIGH-IMPACT USD EVENT in 30 min: CPI m/m (18:00 IST)
-Forecast 0.3  Previous 0.4.  Signals are still sent, but from 17:15 IST until volatility normalises after 18:20 IST they carry a NEWS WINDOW warning.
+Forecast 0.3%  Previous 0.4%.
+Signals are still sent, but from 17:15 IST until volatility normalises after 18:20 IST they carry a NEWS WINDOW warning.
 ```
 
 **NEWS_RELEASED**
 ```text
-CPI m/m released 18:00 IST: actual 0.5, forecast 0.3, previous 0.4 (surprise +2.1 sigma).
-Gold 15 s after: -3.1 USD, spread 0.9. Signals in this window carry a NEWS WINDOW warning until spread and ATR normalise.
+CPI m/m released 18:00 IST
+Actual 0.5%, forecast 0.3%, previous 0.4% (surprise +2.1 sigma).
+Gold 15 s after: -3.100 USD, spread 0.900.
+Signals in this window carry a NEWS WINDOW warning until spread and ATR normalise.
 ```
+Figures are shown in the unit of the event (`%`, `K`, `B`) with its own number of decimals; a missing figure is `-`; a revised previous value is added as `(revised 0.5%)`. The surprise, the gold line and the window line are left out when they cannot be measured.
 
 **NEWS_HEADLINE** (HIGH-impact cluster; minimum impact and topics are owner settings)
 ```text

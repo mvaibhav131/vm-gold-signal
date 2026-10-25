@@ -22,6 +22,8 @@ export interface OpenSignalRow extends OpenFacts {
 
 export interface StatusFacts {
   readonly nextHigh: StatusData['nextHigh'];
+  /** The calendar was read recently; otherwise `nextHigh` says nothing. */
+  readonly calendarAvailable: boolean;
   readonly openStatuses: readonly ('ACTIVE' | 'TP1_HIT')[];
   readonly strategies: readonly {
     readonly key: StrategyKey;

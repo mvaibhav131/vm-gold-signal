@@ -25,10 +25,13 @@ export interface SystemMessage {
     readonly title: string;
     readonly body: string;
     readonly urgency: 'high' | 'normal';
+    /** Where a click goes (the dashboard when not given). */
+    readonly url?: string;
   };
 }
 
-function system(
+/** Builds a message that is not about a signal from its lines (see `fitMessage`). */
+export function systemMessage(
   kind: NotificationKind,
   lines: readonly string[],
   push: SystemMessage['push'],
@@ -39,6 +42,8 @@ function system(
     push,
   };
 }
+
+const system = systemMessage;
 
 const at = (ms: number, options: DisplayOptions, reference?: number): string =>
   clockText(ms, options.displayTz, reference);
@@ -209,14 +214,18 @@ export function systemChannels(settings: AlertSettings, kind: NotificationKind):
   );
 }
 
-/** The outbox rows of a system message: expires an hour after `now`, one row for each channel. */
+/**
+ * The outbox rows of a message that is not about a signal: one row for each channel, expiring
+ * `lifetimeMs` after `now` (an hour for the system messages).
+ */
 export function systemOutboxRows(
   message: SystemMessage,
   eventKey: string,
   channels: readonly OutboxChannel[],
   now: number,
+  lifetimeMs: number = SYSTEM_TTL_MS,
 ): OutboxRow[] {
-  const expiresAt = now + SYSTEM_TTL_MS;
+  const expiresAt = now + lifetimeMs;
   return OUTBOX_CHANNELS.filter((channel) => channels.includes(channel)).map((channel) => ({
     eventKey,
     channel,
@@ -232,8 +241,8 @@ export function systemOutboxRows(
         : {
             title: message.push.title,
             body: message.push.body,
-            url: '/',
-            ttlSec: SYSTEM_TTL_MS / 1000,
+            url: message.push.url ?? '/',
+            ttlSec: Math.max(1, Math.floor(lifetimeMs / 1000)),
             urgency: message.push.urgency,
             tag: eventKey,
           },

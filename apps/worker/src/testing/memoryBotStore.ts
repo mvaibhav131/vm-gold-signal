@@ -8,7 +8,12 @@ export class MemoryBotStore implements BotStore {
   chat: number | null = null;
   pending: PendingLink | null = null;
   state: StoredEngine = { status: 'RUNNING' };
-  facts: StatusFacts = { nextHigh: null, openStatuses: [], strategies: [] };
+  facts: StatusFacts = {
+    nextHigh: null,
+    calendarAvailable: true,
+    openStatuses: [],
+    strategies: [],
+  };
   openRows: OpenSignalRow[] = [];
   latestQuote: { bid: number; ask: number } | null = null;
   closedTexts: string[] = [];
