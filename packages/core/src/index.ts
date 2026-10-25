@@ -1,5 +1,6 @@
 export { PRICE_DECIMALS, TRADED_SYMBOL } from './symbol';
 
+export * from './autopsy';
 export * from './candles';
 export * from './candlesticks';
 export * from './context';
@@ -15,6 +16,7 @@ export * from './patterns';
 export * from './quality';
 export * from './regime';
 export * from './scoring';
+export * from './stats';
 export * from './strategies';
 export * from './structure';
 export * from './time';

@@ -49,6 +49,8 @@ There is no registration route. A test asserts that it does not exist.
 
 `scope` (`FORWARD` by default, or `BACKTEST_OOS`) is a parameter of every endpoint that is computed from signal outcomes, so the scope switch of the Analytics page reaches every section that is about trades (the two scopes are never mixed, as for the evidence of a signal, 02 section 13). Two sections have no scope on purpose: the drift panel compares the forward trades with the evidence interval of the strategy (a backtest cannot drift), and the news impact is measured on headlines and gold moves, not on trades.
 
+The figures of the overview, the monthly rows, the breakdowns and the equity curve are computed by `packages/core/src/stats` (definitions in `02` section 13.1): `wins` is the number of `WIN` results, while the win rate counts every counted trade with net R above zero.
+
 | Path | Returns |
 |---|---|
 | `GET /analytics/overview?from&to&strategy&scope=FORWARD|BACKTEST_OOS` | `generated, resolvedValid, wins, partials, losses, timeExits, cancelled, dataInvalid, winRate, ci95, netR, expectancyR, profitFactor, maxDrawdownR, avgDurationS, tp1Rate, tp2Rate, currentStreak` |

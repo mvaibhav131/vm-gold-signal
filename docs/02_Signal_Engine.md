@@ -484,6 +484,36 @@ Also stored: `weak_groups_at_entry` (quality groups that were `WEAK` or `FAIL`) 
 
 Important: attribution is explanatory and heuristic. It is not proof of cause. The rigorous view is statistical: Analytics aggregates outcomes by evidence group state and by cause with sample size and confidence intervals. Individual stories are not used to tune the strategy.
 
+### 12.1 Post-trade review, details (B22)
+
+Code: `packages/core/src/autopsy` (`reviewTrade`, `needsReview`, `counterfactualOf`, `CAUSE_PRIORITY`, `AUTOPSY_DEFAULTS`). It is pure: the worker (B23) collects what happened and passes it in; the review stores no time (the worker sets `computed_at` and `finalized_at`). Its output is the stored `signal_autopsies` row and has the shape of `autopsySchema`; a contract test parses it and renders it with the B21 messages.
+
+**Which trades are reviewed.** Every `LOSS`, every `PARTIAL_WIN`, and a `TIME_EXIT` that did not make money (net R at or below zero). A `WIN`, a time exit above zero (a win in the statistics), a `CANCELLED` and a `DATA_INVALID` signal have nothing to explain; asking for their review is an error.
+
+**What the review is given.** The trade (side, fill, R, targets, ATR(5m) at the decision, the spread of the confirming quote, the slippage, the regime and the state of every quality group at entry), the outcome of the tracker, and what the market did from the fill to the close: the regime at the close, every 15m and 1h change of character seen, the HIGH-impact events and headlines, and the highest ATR(5m) over its 24h median. Prices are real prices, never mirrored. The 5m candles after the close are given only to the final review, in the prices of the closing side (bid for a BUY, ask for a SELL), like the tracker.
+
+**The rules**, with the numbers of `AUTOPSY_DEFAULTS` (hypotheses of v0.1.0, fixed in code like the other rule constants):
+- `NO_FOLLOW_THROUGH`: the best move in favour (`mfeR`) was below 0.3 R. At exactly 0.3 R it does not apply. A partial win can never have it (TP1 was reached).
+- `STOP_HUNT_REVERSAL`: a `LOSS` after which price reached the TP1 level within 12 5m candles. Only a stop-out counts (not a time exit, and not the stop at the entry after TP1, where TP1 is already behind). It needs the counterfactual, so it exists only in the final review.
+- `NEWS_SHOCK`: a HIGH event or headline inside the trade (from the fill to the close, both included) or ATR(5m) at 2.5 x its median or more, **and** a move against the position of at least 1.5 ATR(5m) (the ATR of the decision). The move against the position is the worse of the lowest point (`maeR`) and the give-back from the best point to the exit (`mfeR` less the result of the exit alone), in R, times the risk distance over the ATR. The give-back makes it possible for a partial win to have a shock. The evidence names the earliest event or headline (cut at 80 characters), or `VOLATILITY`.
+- `HTF_STRUCTURE_BREAK`: a 15m or 1h change of character against the position (a bearish one against a BUY) after the fill and up to the exit (the exit included). The evidence has the earliest one: timeframe, level, minutes into the trade, and how many there were.
+- `REGIME_SHIFT`: the regime at the close is not the regime at entry (any other regime, the opposite trend and `UNCERTAIN` included). A close with no known regime does not count.
+- `LIQUIDITY_DROP`: the exit was in `ROLLOVER` (the quiet hours between the close of New York and 21:45 UTC are labelled rollover too), or **every open market** was within 30 minutes of its close. The venue clocks are read, as the `OFF_HOURS` flag does, because a session label does not end with a market: the close of London while New York is open is no drop. The Asia session is not "the end of a session".
+- `SPREAD_COST`: the spread of the confirming quote plus the slippage plus the commission (`costR` of the outcome times the risk distance) were at least 25 percent of the risk distance. An unknown spread counts as 0, so missing data cannot raise the cause.
+- `TIME_DECAY`: a time exit with net R at or below zero.
+- `NORMAL_LOSS`: none of the above applies (its evidence is the best and the worst move in R). It also covers a partial win with no other cause.
+Comparisons that are derived thresholds (ATR multiples, shares) ignore the last bit of a float; limits are inclusive as written.
+
+**Which cause is primary (decision of B22; the docs gave no order).** The causes that apply are listed in this order and the first is primary: `STOP_HUNT_REVERSAL`, `NEWS_SHOCK`, `NO_FOLLOW_THROUGH`, `HTF_STRUCTURE_BREAK`, `REGIME_SHIFT`, `LIQUIDITY_DROP`, `SPREAD_COST`, `TIME_DECAY`, `NORMAL_LOSS`. Reasons: a stop that price then ran away from says the idea was right and the stop was not, which is the most useful finding (and is why the final review can replace the preliminary primary cause, as in the example of the notifications document); a shock from outside the setup explains more than the setup's own weakness; `NO_FOLLOW_THROUGH` stays ahead of the structure break, as in the example of section 14; the rest go from the most to the least specific. `NORMAL_LOSS` is never listed with another cause.
+
+**Preliminary and final.** Without candles after the close the review is `PRELIMINARY` and has no counterfactual. With them (an hour later) it is `FINAL`. The counterfactual is whether price reached TP1 (and TP2, when the trade has one) in the 12 candles of 5m that open at or after the close, counted from 1. The candle that holds the close is left out (what it did before the exit belongs to the trade; a reversal inside that candle is therefore not seen, to review). The candles must follow each other without a hole: a target that was not reached in a window that is not fully seen is **unknown**, and then there is no counterfactual (null), not "not reached". A target that was reached is known even if the window is not complete.
+
+**Weak groups at entry** are the groups whose state was `WEAK` or `FAIL`, in the order of the score; `NA` is not weak.
+
+**Mirror.** A SELL is the exact mirror of a BUY: a test runs 3000 random trades and markets (every result kind, holes in the candles, events inside and outside the trade, sessions all day) and checks that the mirrored trade has the same causes, evidence and counterfactual (the level of a break is the mirrored price), that every cause is reached as the primary one, and the invariants (a cause once, in the order of the priority, `NORMAL_LOSS` alone, only JSON values).
+
+**To review in the research phases (B27 onward).** The order of the causes, every number above, `REGIME_SHIFT` counting a change in the trade's favour, the candle that holds the close being left out of the counterfactual, the give-back in the move against the position, the 60 minute wait of the final review, a partial win with no cause being called `NORMAL_LOSS`, and the 12 candle window being the same for `STOP_HUNT_REVERSAL` and the counterfactual.
+
 ## 13. Evidence shown with every signal
 
 Historical evidence comes only from recorded outcomes in `stats_bucket`:
@@ -494,6 +524,24 @@ Historical evidence comes only from recorded outcomes in `stats_bucket`:
 - Displayed: win rate, n, Wilson 95% confidence interval, expectancy in R, profit factor, TP1-hit rate, TP2-hit rate.
 - n < 30: "Insufficient evidence" with the raw counts. 30 <= n < 100: shown with a "low sample" label. n >= 100: normal.
 - A calibrated probability model may be added after at least several hundred forward trades. Until then no probability is invented.
+
+### 13.1 Statistics and evidence, details (B22)
+
+Code: `packages/core/src/stats` (`wilson`, `wilsonInterval`, `BucketCounts`, `addResult`, `mergeCounts`, `countResults`, `rateStats`, `maxDrawdown`, `equityCurve`, `currentStreak`, `summarizeResults`, `bucketKey`, `bucketKeys`, `pickEvidence`). Pure functions: the rollups (B26) and the API (B30) call them, so that the dashboard, the messages and the backtester count the same way. The dashboard's preview statistics are kept equal to them by a test over the simulated history.
+
+**Definitions.** A trade counts in the statistics when its result is `WIN`, `PARTIAL_WIN`, `LOSS` or `TIME_EXIT`; `CANCELLED` and `DATA_INVALID` are counted apart and are in no rate. A *winner* is a counted trade with net R above zero, whatever its result: a partial win whose costs bring it to zero is not a winner and a time exit above zero is. The win rate is winners over counted trades, to 3 decimals. Expectancy is the mean net R (2 decimals). Profit factor is the sum of the gains over the sum of the losses in net R (2 decimals) and is empty while there is no loss. The maximum drawdown is the deepest fall of the running total of net R from its highest point (the total starts at 0, so a first loss is already a fall), in the order the trades closed. The current streak is the run of winners or of non-winners that ends the newest trade. The equity curve has one point for each counted trade.
+
+**Rule C6 in code.** `rateStats` shows the win rate, its interval, the TP1 rate and the TP2 rate only from 30 counted trades. The expectancy and the profit factor are not percentages and are shown at any size in the overview; the evidence shown with a signal hides them too below 30 (section 13: "insufficient evidence" with the raw counts).
+
+**The interval** is the Wilson score interval at 95 percent (z = 1.96), 3 decimals, never outside 0 to 1; at no win the lower end is exactly 0 and at all wins the upper end is exactly 1. It is tested against the published values of Newcombe (1998), against its defining equation, by symmetry and monotonicity.
+
+**Bucket keys.** Five levels, each dropping a key of the one before: 0 `strategy@version|side|session|regime|volatility`, 1 without the volatility, 2 without the regime, 3 `strategy@version|side` (without the session), 4 `strategy|side` (without the version, so a new strategy version starts with the evidence of the old ones until it has 30 trades of its own). `stats_bucket.level` is this number.
+
+**Which bucket is shown (`pickEvidence`; decisions of B22).** The forward buckets are tried from level 0 to 4 and the first with 30 resolved trades is used; only when no forward level has 30 are the backtest buckets tried in the same way. So a coarse forward bucket with 30 trades is preferred to an exact backtest bucket with 300: the section says forward evidence is preferred when it has 30 trades, and the two scopes are never mixed. When no bucket of either scope has 30 trades the evidence is insufficient: scope `FORWARD`, level 4, the counts of that bucket (0 when it has none), and no percentage, interval or other figure. The sample label follows the count (30 to 99 low sample, 100 normal).
+
+**For the rollups of B26.** The counts of a bucket are `BucketCounts` (`n`, `wins` = results `WIN`, `winners`, `partials`, `losses`, `timeExits`, `tp1Hits`, `tp2Hits`, `sumR`, `sumWinR` never negative, `sumLossR` never positive, so that `sumR = sumWinR + sumLossR`). `addResult` adds one closed trade and `mergeCounts` joins two buckets; adding trades one at a time and merging halves give the same counts, which is what "rollups equal a full recomputation" needs. **A gap in the tables of B2, to close in B26:** `stats_bucket` and `stats_monthly` have `wins` (the `WIN` results, as the contract's `resolvedValid = wins + partials + losses + timeExits` needs) but no count of winners, and the win rate cannot be rebuilt from the other columns (a time exit is a winner by the sign of its net R; a partial win may not be). B26 adds a `winners` column to both tables in a new migration; `evidence_group_stats.wins` already means winners.
+
+**To review in the research phases (B27 onward).** Forward evidence at a coarse level being preferred to an exact backtest bucket, the widest forward bucket as the face of "insufficient", the version being dropped only at level 4, and the volatility buckets being thirds (section 5.1).
 
 ## 14. Explanation and message formats
 
