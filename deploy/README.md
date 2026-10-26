@@ -183,7 +183,7 @@ for a single-page app, no cache for `/api` and `/health`, and the redirect to HT
 The web image is built with the live client (`VITE_DATA_SOURCE=live`, the default of the Dockerfile): the page talks to the API of the same origin, through Caddy. A build with `--build-arg VITE_DATA_SOURCE=mock` is the simulated preview, which is never what a release carries.
 
 To try the whole thing on a PC beside other containers (high ports, a certificate of Caddy's own for `localhost`):
-`deploy/drills/local-web.yml` (its header says how).
+`deploy/drills/local-web.yml` (its header says how). For looking at the live data on your own PC there is a short way, `pnpm local up` (`scripts/local-live.mjs`, plain Node: the same commands in PowerShell, cmd, Git Bash or WSL): it makes random passwords in `.local/` (never committed), builds, and starts the worker on the real feed, the API and the web app at `https://localhost:18443`; `pnpm local owner` makes the login, `pnpm local import` puts the newest HistData months in so that the chart is full and the engine warms up, `status`, `logs`, `down` (keeps the data) and `reset` (deletes it). It uses its own Docker project and loopback ports only.
 
 **A look in a browser (U5c).** `smoke.sh` asks with curl; a browser tells what curl cannot: that the policy of Caddy for scripts and styles does not break the page, that the event stream reaches the page through the proxy, and that every screen shows real data without an error. With the stack up:
 

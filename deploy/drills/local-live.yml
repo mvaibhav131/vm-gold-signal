@@ -1,0 +1,6 @@
+# The database on the loopback of this PC, so that `pnpm local import` can reach it from outside Docker (scripts/local-live.mjs).
+# Only for looking at the system on a PC: the server never uses this file (smoke.sh checks that only Caddy publishes a port).
+services:
+  db:
+    ports:
+      - '127.0.0.1:15432:5432'

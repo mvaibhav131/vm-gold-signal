@@ -8,6 +8,63 @@ Private XAU/USD decision-support system (manual execution). Design lives in [`do
 - pnpm 10 (`packageManager` in `package.json`)
 - Docker (database integration tests, from phase B2; Testcontainers starts its own throw-away `pgvector/pgvector:pg17` container on a random port and does not touch other containers)
 
+## Run it on your PC with live data
+
+This starts the whole system on your own PC, in Docker: the real worker on the real feed (Biquote), the API, and the web app, at **https://localhost:18443**. Nothing else on the PC is touched: it has its own Docker project (`vmgs-local`) and uses only the ports 18080, 18443 and 15432 on `127.0.0.1`, so nobody else on your network can see it.
+
+**One terminal is enough**, in the folder of this repository. Everything runs in the background inside Docker, so each command does its job and gives the prompt back. The commands are plain `pnpm local ...`, the same in PowerShell, cmd, Git Bash and WSL (tried on Windows). One difference: `pnpm local owner` and `pnpm local admin` ask for a password; PowerShell and Windows Terminal hide what you type, Git Bash shows it.
+
+**Before the first start (once)**
+
+1. Install Docker Desktop.
+2. `pnpm install` (the history import needs it).
+3. Optional, for a full chart at once: put the HistData zips in `data/histdata/` (how: `docs/06_Phases_and_Setup.md`, "HistData download and import"). Without them the system works too, but the chart fills only as live candles arrive and the engine needs about a day of live data before it can think.
+
+### First time
+
+Start Docker Desktop and wait until it says the engine is running. Then, one after the other:
+
+```text
+pnpm local up        # builds and starts everything (a few minutes the first time)
+pnpm local owner     # makes your dashboard login: asks for a password twice (at least 12 characters)
+pnpm local import    # fills the chart from the HistData zips and restarts the worker (optional)
+pnpm local open      # opens https://localhost:18443
+```
+
+The browser warns about the certificate (Caddy made it for this PC only): choose Advanced, then Proceed to localhost. Log in with the user `owner` and the password of the second command.
+
+### Every day
+
+Start Docker Desktop, then:
+
+```text
+pnpm local up        # starts everything (about a minute)
+pnpm local open      # opens the dashboard
+```
+
+When you are done: `pnpm local down` (stops everything and keeps all data).
+
+**What you should see:** the price at the top moving every second, `FEED FRESH`, the chart, the news and the calendar. `Signals 0` is normal: a signal is rare, and after a start the engine says "Recovering from a data gap" until 12 clean 5-minute candles (about an hour) have come in. When the market is closed (Friday night to Sunday night, India time) the price does not move and the chip says `MARKET CLOSED`.
+
+**Other commands**
+
+| What                                                                   | Command                                                                                                                             |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Is the worker alive? Which containers run?                             | `pnpm local status` (it ends with "heartbeat is N s old")                                                                           |
+| Watch the worker log                                                   | `pnpm local logs` (or `pnpm local logs api`; Ctrl+C stops watching, not the system)                                                 |
+| Forgot the password                                                    | `pnpm local admin owner:password owner` (other commands: `owner:status`, `owner:totp-off`, `sessions:revoke-all`, `throttle:reset`) |
+| Start again from nothing (**deletes** the recorded data and the login) | `pnpm local reset`, then `pnpm local up` and `pnpm local owner`                                                                     |
+
+**If something goes wrong**
+
+- "Docker Desktop is not running": start it and wait for "Engine running".
+- A port is already used: something else holds 18443, 18080 or 15432. Close it, or run `pnpm local down` if it is an older copy of this.
+- The page does not load right after `up`: wait half a minute and reload; `pnpm local status` shows if the api and the worker are healthy.
+- The price does not move: it is the weekend, or the feed is down (`pnpm local logs`; the status bar says `STALE` or `DISCONNECTED`).
+- A recorded gap: while Docker or the PC is off, no price is recorded, and that time never comes back. The system notices the gap and says so; a PC that is on only some hours gives a thin history.
+
+This is for looking at the system and recording data on your PC. The server for every day (always on, with a real certificate, backups and Telegram) is `deploy/README.md`.
+
 ## Commands
 
 ```text
@@ -27,6 +84,7 @@ pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (l
 pnpm e2e:install    # once: downloads Chromium for the e2e tests
 pnpm e2e            # builds the web app and runs the Playwright scenarios (DOM and axe checks, no screenshots)
 pnpm e2e:live       # U5b/U5c: builds the web app with --mode live and runs the scenarios against the whole API on a real Postgres (Docker) with a simulated worker that a test can move (a signal, a quiet feed, a dead worker), in a seeded world and then a fresh one (e2e/live/)
+pnpm local up        # the whole system on this PC with the real feed, at https://localhost:18443: the steps are in 'Run it on your PC with live data' above (scripts/local-live.mjs)
 pnpm e2e:stack      # U5c: a read-only look in a browser at a stack that is running (the drill on this PC, or the VM): headers, every screen, the price moving. Needs VMGS_STACK_PASS; see deploy/README.md section 6
 pnpm web:budget     # after a build: the initial route must stay under 400 KB gzip
 ```

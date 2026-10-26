@@ -22,6 +22,8 @@ test-results/
 
 # downloaded research data (HistData zips); never committed
 data/
+# this PC's copy of the system (scripts/local-live.mjs): its settings with random passwords
+.local/
 
 # logs and OS files
 *.log
