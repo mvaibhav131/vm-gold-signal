@@ -12,31 +12,34 @@ declare module 'fastify' {
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
 
-export interface RouteContext<P, B> {
+export interface RouteContext<P, B, Q = undefined> {
   readonly request: FastifyRequest;
   readonly reply: FastifyReply;
   readonly params: P;
   readonly body: B;
+  readonly query: Q;
 }
 
-interface RouteBase<P, B> {
+interface RouteBase<P, B, Q = undefined> {
   readonly method: Method;
   readonly url: string;
   /** Without this the route needs a session. There is no other way to open a route. */
   readonly public?: true;
   readonly params?: z.ZodType<P>;
   readonly body?: z.ZodType<B>;
+  /** The query string; a name the contract does not know is a 400, like a wrong value. */
+  readonly query?: z.ZodType<Q>;
 }
 
 /** A route that answers 200 with JSON that must match its contract. */
-export interface JsonRoute<P, B, R> extends RouteBase<P, B> {
+export interface JsonRoute<P, B, R, Q = undefined> extends RouteBase<P, B, Q> {
   readonly response: z.ZodType<R>;
-  readonly handler: (context: RouteContext<P, B>) => Promise<R>;
+  readonly handler: (context: RouteContext<P, B, Q>) => Promise<R>;
 }
 
 /** A route that answers 204. */
-export interface EmptyRoute<P, B> extends RouteBase<P, B> {
-  readonly handler: (context: RouteContext<P, B>) => Promise<void>;
+export interface EmptyRoute<P, B, Q = undefined> extends RouteBase<P, B, Q> {
+  readonly handler: (context: RouteContext<P, B, Q>) => Promise<void>;
 }
 
 /** The fields that are wrong, never their values (a password may be among them). */
@@ -52,10 +55,10 @@ function parseInput<T>(schema: z.ZodType<T> | undefined, value: unknown): T {
   return result.data;
 }
 
-function register<P, B>(
+function register<P, B, Q>(
   app: FastifyInstance,
-  spec: RouteBase<P, B>,
-  run: (context: RouteContext<P, B>) => Promise<void>,
+  spec: RouteBase<P, B, Q>,
+  run: (context: RouteContext<P, B, Q>) => Promise<void>,
 ): void {
   app.route({
     method: spec.method,
@@ -64,26 +67,28 @@ function register<P, B>(
     handler: async (request, reply) => {
       const params = parseInput(spec.params, request.params);
       const body = parseInput(spec.body, request.body);
-      await run({ request, reply, params, body });
+      const query = parseInput(spec.query, request.query);
+      await run({ request, reply, params, body, query });
       return reply;
     },
   });
 }
 
 /** Registers a route with a contract for its input and its answer: a mismatch is a 400, or a 500 for the answer. */
-export function jsonRoute<P = undefined, B = undefined, R = undefined>(
+export function jsonRoute<P = undefined, B = undefined, R = undefined, Q = undefined>(
   app: FastifyInstance,
-  spec: JsonRoute<P, B, R>,
+  spec: JsonRoute<P, B, R, Q>,
 ): void {
   register(app, spec, async (context) => {
     const result = spec.response.parse(await spec.handler(context));
-    await context.reply.code(200).send(result);
+    // 200 unless the handler chose another status for this answer (a not-ready probe answers 503)
+    await context.reply.send(result);
   });
 }
 
-export function emptyRoute<P = undefined, B = undefined>(
+export function emptyRoute<P = undefined, B = undefined, Q = undefined>(
   app: FastifyInstance,
-  spec: EmptyRoute<P, B>,
+  spec: EmptyRoute<P, B, Q>,
 ): void {
   register(app, spec, async (context) => {
     await spec.handler(context);

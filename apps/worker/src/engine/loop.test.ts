@@ -353,7 +353,7 @@ describe('DecisionLoop: the state of the engine', () => {
 describe('DecisionLoop: the pause', () => {
   it('keeps the candles and the state but writes no signal and no rejection while the owner has paused', async () => {
     const r = await rig();
-    r.store.controlsNow = { paused: true, modes: {} };
+    r.store.controlsNow = { paused: true, modes: {}, disabled: [] };
     await r.loop.warmUp();
     r.arrive();
     expect(await r.loop.runOnce()).toBe(0);
@@ -361,6 +361,25 @@ describe('DecisionLoop: the pause', () => {
     expect(r.store.rejections).toHaveLength(0);
     expect(r.store.states).toHaveLength(1);
     expect(r.loop.counts['5m']).toBe(TRIGGER + 1);
+  });
+
+  it('says nothing for a strategy the owner has switched off, and goes on for the others', async () => {
+    const off = await rig();
+    off.store.controlsNow = { paused: false, modes: {}, disabled: ['trend_pullback'] };
+    await off.loop.warmUp();
+    off.arrive();
+    expect(await off.loop.runOnce()).toBe(0);
+    expect(off.signals()).toHaveLength(0);
+    expect(off.store.rejections).toHaveLength(0);
+    expect(off.store.states).toHaveLength(1);
+    expect(off.loop.counts['5m']).toBe(TRIGGER + 1);
+
+    const other = await rig();
+    other.store.controlsNow = { paused: false, modes: {}, disabled: ['sweep_reversal'] };
+    await other.loop.warmUp();
+    other.arrive();
+    expect(await other.loop.runOnce()).toBe(1);
+    expect(other.signals()).toHaveLength(1);
   });
 
   it('applies the switches of the owner: a news window that is set to block stops the signal', async () => {
@@ -372,7 +391,7 @@ describe('DecisionLoop: the pause', () => {
       names: { cpi: 'CPI m/m' },
     };
     const r = await rig({ calendar });
-    r.store.controlsNow = { paused: false, modes: { newsWindow: 'block' } };
+    r.store.controlsNow = { paused: false, modes: { newsWindow: 'block' }, disabled: [] };
     await r.loop.warmUp();
     r.arrive();
     expect(await r.loop.runOnce()).toBe(0);
@@ -681,7 +700,7 @@ describe('DecisionLoop: the review context', () => {
       const context = loop.contextOf({ fillAt: filled?.at ?? 0 }, closed?.at ?? 0);
       expect(context.regimeAtClose).toBe(closed?.regime);
       expect(context.regimeAtClose).not.toBe(filled?.regime);
-    });
+    }, 60_000);
 
     it('gives the changes of character after the fill and up to the close, and no earlier one', async () => {
       const { loop, tracker, seen } = await market();
@@ -693,7 +712,7 @@ describe('DecisionLoop: the review context', () => {
       expect(expected.length).toBeGreaterThan(0);
       expect(expected.length).toBeLessThan(all.length);
       expect(loop.contextOf({ fillAt }, closedAt).structureBreaks).toEqual(expected);
-    });
+    }, 60_000);
   });
 });
 

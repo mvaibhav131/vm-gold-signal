@@ -33,6 +33,8 @@ export interface HarnessOptions {
   readonly throttle?: ThrottlePolicy;
   readonly logger?: Parameters<typeof buildApp>[0]['logger'];
   readonly noOwner?: boolean;
+  /** The routes of B30 that a test brings (usually with fakes); they come after the guard like the real ones. */
+  readonly routes?: (app: FastifyInstance, clock: Clock) => void;
 }
 
 export interface Reply {
@@ -92,9 +94,17 @@ export async function makeHarness(options: HarnessOptions = {}): Promise<Harness
   if (options.noOwner !== true) {
     await store.createOwner(OWNER.username, await hasher.hash(OWNER.password), clock.now);
   }
+  const routes = options.routes;
   const app = await buildApp({
     service,
     siteOrigin: SITE,
+    ...(routes === undefined
+      ? {}
+      : {
+          routes: (instance: FastifyInstance) => {
+            routes(instance, clock);
+          },
+        }),
     ...(options.logger === undefined ? {} : { logger: options.logger }),
     ...(options.trustedProxyHops === undefined
       ? {}

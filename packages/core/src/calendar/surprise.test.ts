@@ -66,4 +66,23 @@ describe('surpriseOf', () => {
     expect(surpriseOf(0.5, 0.3, pastOf([0.2, 0.2, 0.2, 0.2, 0.2, 0.2]))).toBeNull();
     expect(surpriseOf(0.5, 0.3, pastOf([0, 0, 0, 0, 0, 0]))).toBeNull();
   });
+
+  it('is null too when they were all the same but the subtractions left rounding noise (a deviation of 1e-16)', () => {
+    const noisy = [
+      [0.5, 0.3],
+      [0.8, 0.6],
+      [1.1, 0.9],
+      [0.7, 0.5],
+      [1.4, 1.2],
+      [2.3, 2.1],
+    ].map(([actual, forecast]) => ({ actual: actual ?? 0, forecast: forecast ?? 0 }));
+    const differences = noisy.map((release) => release.actual - release.forecast);
+    expect(new Set(differences).size).toBeGreaterThan(1);
+    expect(surpriseOf(0.5, 0.3, noisy)).toBeNull();
+  });
+
+  it('keeps a small but real deviation: it is judged against the size of the surprises, not against zero', () => {
+    const tiny = pastOf([0.0001, 0.0002, 0.0003, 0.0004, 0.0005, 0.0006]);
+    expect(surpriseOf(0.0005, 0, tiny)?.sigma).toBeGreaterThan(2);
+  });
 });

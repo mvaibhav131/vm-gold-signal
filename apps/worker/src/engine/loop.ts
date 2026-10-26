@@ -260,6 +260,8 @@ export class DecisionLoop {
 
     let written = 0;
     for (const outcome of decision.outcomes) {
+      // a strategy the owner has switched off is evaluated like the others (it keeps its state) but says nothing
+      if (controls.disabled.includes(outcome.candidate.spec.strategyKey)) continue;
       try {
         if (outcome.kind === 'SIGNAL') {
           const result = await this.options.creator.create(outcome.draft);

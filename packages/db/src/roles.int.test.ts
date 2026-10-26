@@ -93,7 +93,7 @@ const API: Record<string, string> = {
   app_settings: 'SIUD',
   push_subscriptions: 'SIUD',
   notification_outbox: 'SI',
-  schema_migrations: '',
+  schema_migrations: 'S',
 };
 
 const PRIVILEGES = [
@@ -265,8 +265,9 @@ describe('the application roles are plain roles', () => {
       expect((await failureOf(url, 'DROP TABLE signals'))?.code).toBe('42501');
       expect((await failureOf(url, 'ALTER TABLE signals DISABLE TRIGGER ALL'))?.code).toBe('42501');
       expect((await failureOf(url, 'SELECT * FROM schema_migrations'))?.code).toBe(
-        url === backup ? undefined : '42501',
+        url === backup || url === api ? undefined : '42501',
       );
+      expect((await failureOf(url, 'DELETE FROM schema_migrations'))?.code).toBe('42501');
     }
   });
 });

@@ -15,21 +15,29 @@ class GatedHasher extends SecretHasher {
   verifyGate: Promise<void> | null = null;
   hashGate: Promise<void> | null = null;
   hashed = 0;
+  /** How many requests are held at a gate right now. */
+  waiting = 0;
 
   constructor() {
     super(TEST_ARGON, new Limiter(8, 64));
   }
 
+  private async held(gated: Promise<void>): Promise<void> {
+    this.waiting += 1;
+    await gated;
+    this.waiting -= 1;
+  }
+
   override async verify(hashed: string, secret: string): Promise<boolean> {
     const result = await super.verify(hashed, secret);
-    if (this.verifyGate !== null) await this.verifyGate;
+    if (this.verifyGate !== null) await this.held(this.verifyGate);
     return result;
   }
 
   override async hash(secret: string): Promise<string> {
     this.hashed += 1;
     const result = await super.hash(secret);
-    if (this.hashGate !== null) await this.hashGate;
+    if (this.hashGate !== null) await this.held(this.hashGate);
     return result;
   }
 }
@@ -42,6 +50,14 @@ function gate(): { promise: Promise<void>; open: () => void } {
   return { promise, open };
 }
 
+/** Waits until the hasher holds a request at its gate: a fixed pause is too short on a busy machine. */
+async function heldAt(hasher: GatedHasher): Promise<void> {
+  for (let i = 0; i < 1000 && hasher.waiting === 0; i += 1) {
+    await new Promise<void>((resolve) => setTimeout(resolve, 5));
+  }
+  expect(hasher.waiting).toBeGreaterThan(0);
+}
+
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
 
 describe('a change that comes while a request is being worked out', () => {
@@ -52,7 +68,7 @@ describe('a change that comes while a request is being worked out', () => {
     hasher.verifyGate = held.promise;
 
     const login = h.send({ url: LOGIN, body: OWNER }); // right password, stopped after the check
-    await tick();
+    await heldAt(hasher);
     hasher.verifyGate = null;
     await h.store.setPasswordHash(await hasher.hash('a reset password phrase'), h.clock.now);
     await h.store.revokeAllExcept(null, h.clock.now); // what the command on the server does
@@ -75,7 +91,7 @@ describe('a change that comes while a request is being worked out', () => {
     hasher.verifyGate = held.promise;
 
     const login = h.send({ url: LOGIN, body: OWNER });
-    await tick();
+    await heldAt(hasher);
     hasher.verifyGate = null;
     // the owner turns the second step on from a session of their own while the password is being checked
     await h.store.setPendingTotp(Buffer.from('sealed'));
@@ -104,7 +120,7 @@ describe('a change that comes while a request is being worked out', () => {
       body: { ...OWNER, totp: await h.code(a, 30) },
       ip: '198.51.100.30',
     });
-    await tick();
+    await heldAt(hasher);
     hasher.verifyGate = null;
 
     // the owner rotates the second step (the codes are of the steps before it): off, then on with a new secret
@@ -140,7 +156,7 @@ describe('a change that comes while a request is being worked out', () => {
       body: { current: OWNER.password, next: 'an attacker chosen passphrase' },
       cookie,
     });
-    await tick();
+    await heldAt(hasher);
     hasher.hashGate = null;
     const reset = await hasher.hash('the reset the owner made');
     await h.store.setPasswordHash(reset, h.clock.now);
@@ -164,7 +180,7 @@ describe('a change that comes while a request is being worked out', () => {
       body: { current: OWNER.password, next: 'an attacker chosen passphrase' },
       cookie,
     });
-    await tick();
+    await heldAt(hasher);
     await h.service.endToken(cookie); // the owner revokes it from the other device
     held.open();
 

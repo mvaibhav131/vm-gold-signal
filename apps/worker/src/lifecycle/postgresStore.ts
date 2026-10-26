@@ -4,7 +4,12 @@ import {
   strategyConfigSchema,
   type StrategyConfig,
 } from '@vmgs/config';
-import { explanationSchema, settingsSchema, type SignalDraft } from '@vmgs/contracts';
+import {
+  SIGNAL_NOTIFY_CHANNEL,
+  explanationSchema,
+  settingsSchema,
+  type SignalDraft,
+} from '@vmgs/contracts';
 import {
   TRADED_SYMBOL,
   causeChangeDelta,
@@ -42,7 +47,7 @@ import type {
 } from './types';
 
 /** The channel of `LISTEN` that the API uses to learn that a signal was written or changed (01_HLD section 5, step 5). */
-export const SIGNAL_NOTIFY_CHANNEL = 'vmgs_signals';
+export { SIGNAL_NOTIFY_CHANNEL };
 
 const READ_CHUNK_MS = 6 * 60 * 60 * 1000;
 const SETTING_KEYS = [

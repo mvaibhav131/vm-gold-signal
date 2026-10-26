@@ -193,6 +193,15 @@ The code is `apps/api` (`src/auth`, `src/http`); the contract is `04` section 2 
 - **Logs and audit:** never a password, a code, a token, a cookie or a typed user name; an address only as a keyed hash. The audit (`security_audit_events`) records what happened and when, with a reason code at most.
 - **Purge (API process):** sessions a day after they expired or a week after they were revoked, login attempts after 30 days, the audit after 365 days; at start and every six hours.
 
+### 8.2 As built (B30)
+
+The routes of `04` section 2 are in `apps/api/src/<area>` (`health`, `strategies`, `engine`, `settings`, `notifications`, `system`, `market`, `signals`, `news`, `analytics`, `stream`), each with a reader or store (an interface and its PostgreSQL class), its routes and its tests; `routes/index.ts` registers them after the guard. The decisions are in `04` ("As built (B30)"); the ones that touch this document:
+
+- **The API reads with SQL it owns, the worker writes.** The API role reads nearly everything and writes only `auth_*`, `app_settings`, `push_subscriptions` and, for a test message, the outbox. It reuses the pure code of `packages/core` (statistics, indicators, the news window, the open-signal functions) so that a screen and the engine give the same numbers, and the contracts of `packages/contracts` for every input and every answer: an answer that does not match its schema is a 500, never a wrong body.
+- **The owner's switches live in `app_settings`**, the table both processes read: `engine` (the pause), `strategyEnabled` (strategies switched off), and the six settings keys. The worker's decision loop reads them at each decision. Two writers of the same key (the settings and the strategies routes both change `strategyAlerts`) take the same row lock.
+- **The health routes are public** and say nothing but `ok` and `not_ready`; ready is worked out at most once in 2 s however many probes come. The API role may read `schema_migrations` (migration 0006) so that ready can compare the schema with the version of the build.
+- **The stream** is one hub, one publisher and one `LISTEN` connection in the API process; it holds no state that matters (a restart gives every client a `resync`). It never blocks the rest of the API: a step that fails is logged and tried again.
+
 ## 9. Technology stack (versions verified against the npm registry on 2026-10-23)
 
 Re-query the registry at the start of B0 and pin exact versions in the lockfile. Never use alpha, beta or RC builds.

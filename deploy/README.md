@@ -158,11 +158,14 @@ gone after a restore, and the candles, signals, results, rollups and settings ar
 
 ## 6. The web side (B31b)
 
-When B30 (the rest of the API) and U5 (web) exist: the `api` service joins `docker-compose.yml` (the image already
+When B30 (the rest of the API, built) and U5 (web) exist: the `api` service joins `docker-compose.yml` (the image already
 carries it, with `API_TRUSTED_PROXY_HOPS=1` and `APP_ENCRYPTION_KEY` in the `.env`), `apps/web` is built into
 `VMGS_WEB_DIST`, and `COMPOSE_PROFILES=web` in `.env` makes `deploy.sh` start `caddy` too. Then
-`smoke.sh --public` calls `https://PUBLIC_HOST/health/ready`. The `Caddyfile` is ready and checked: headers, the
-fallback to the index for a single-page app, no cache for `/api` and `/health`, the redirect to HTTPS.
+`smoke.sh --public` calls `https://PUBLIC_HOST/api/v1/health/ready` (the health routes are public, under the API's
+prefix, which the Caddyfile proxies). The API holds one connection for the event stream (`LISTEN`) besides its pool of
+10, and `reverse_proxy` does not buffer, so the stream reaches the browser as it is written. The `Caddyfile` is ready
+and checked: headers, the fallback to the index for a single-page app, no cache for `/api` and `/health`, the redirect
+to HTTPS.
 
 ## 7. What was checked where
 

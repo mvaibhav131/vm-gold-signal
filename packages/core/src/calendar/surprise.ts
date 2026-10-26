@@ -48,6 +48,8 @@ export function surpriseOf(
   const mean = surprises.reduce((sum, value) => sum + value, 0) / n;
   const variance = surprises.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (n - 1);
   const std = Math.sqrt(variance);
-  if (!(std > 0)) return null;
+  // past surprises that are all the same leave rounding noise (about 1e-17) as the "deviation": no spread, no sigma
+  const scale = Math.max(1e-12, ...surprises.map((value) => Math.abs(value)));
+  if (!(std > scale * 1e-9)) return null;
   return { sigma: (actual - forecast) / std, n, std };
 }

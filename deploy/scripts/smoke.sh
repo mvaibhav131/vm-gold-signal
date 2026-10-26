@@ -2,7 +2,7 @@
 # Smoke test of the stack (06_Phases_and_Setup section 4): what must be true after a deploy.
 #   sudo /opt/vmgs/deploy/scripts/smoke.sh [--telegram] [--public]
 # --telegram  queues one test message to the owner's Telegram chat (needs the bot token and a linked chat)
-# --public    also calls https://PUBLIC_HOST/health/ready (B31b, when caddy and the api are up)
+# --public    also calls https://PUBLIC_HOST/api/v1/health/ready (B31b, when caddy and the api are up)
 # Exit 0 when nothing failed. A warning is not a failure (the market may be closed, a Telegram token may be missing).
 set -uo pipefail
 
@@ -63,8 +63,8 @@ fi
 
 if $public; then
   host="$(grep -E '^PUBLIC_HOST=' "${VMGS_ENV_FILE:-$HERE/../../.env}" | cut -d= -f2-)"
-  body="$(curl -fsS -m 15 "https://$host/health/ready" 2>&1 || true)"
-  if [[ "$body" == *ok* ]]; then ok "https://$host/health/ready answers ok"; else bad "https://$host/health/ready did not answer ok: $body"; fi
+  body="$(curl -fsS -m 15 "https://$host/api/v1/health/ready" 2>&1 || true)"
+  if [[ "$body" == *ok* ]]; then ok "https://$host/api/v1/health/ready answers ok"; else bad "https://$host/api/v1/health/ready did not answer ok: $body"; fi
 fi
 
 say "smoke test: $failed failed, $warned warnings"

@@ -19,6 +19,18 @@ export const SSE_HEARTBEAT_COMMENT = ': hb';
 export const SSE_HEARTBEAT_SECONDS = 15;
 export const SSE_REPLAY_BUFFER = 200;
 
+/**
+ * The PostgreSQL channel on which the worker announces a changed signal (04 section 3): sent inside the transaction, so
+ * it arrives only after the commit. `created` is a new signal, `state` an event such as TP1 with a new working state,
+ * `closed` the outcome, `review` the final review.
+ */
+export const SIGNAL_NOTIFY_CHANNEL = 'vmgs_signals';
+export const signalNotificationSchema = z.strictObject({
+  id: uuidSchema,
+  change: z.enum(['created', 'state', 'closed', 'review']),
+});
+export type SignalNotification = z.infer<typeof signalNotificationSchema>;
+
 export const quoteEventSchema = z.strictObject({
   event: z.literal('quote'),
   data: z.strictObject({

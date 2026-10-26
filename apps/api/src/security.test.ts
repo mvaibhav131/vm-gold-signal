@@ -1,18 +1,42 @@
 import { Writable } from 'node:stream';
 
+import pg from 'pg';
 import { describe, expect, it } from 'vitest';
 
 import { PROBLEM_CONTENT_TYPE, problemSchema } from '@vmgs/contracts';
 
 import { SESSION_COOKIE } from './auth/guard';
 import { SECURITY_HEADERS, parseSiteOrigin } from './http/security';
+import { registerApiRoutes } from './routes';
 import { MemoryAuthStore } from './testing/memoryAuthStore';
 import { OWNER, SITE, makeHarness, type Harness, type Reply } from './testing/harness';
 
 /** The routes that anybody may call. A new one has to be added here on purpose, with a reason. */
-const PUBLIC_ROUTES = ['POST /api/v1/auth/login'];
+const PUBLIC_ROUTES = [
+  'GET /api/v1/health/live', // the process is up; says nothing else
+  'GET /api/v1/health/ready', // ok or not_ready for the deploy smoke test; says nothing else
+  'POST /api/v1/auth/login',
+];
 
 const SOME_ID = '0123456789abcdef';
+
+/**
+ * The app with every real route of B30 on it, on a database that is not there: a request that is refused (no session,
+ * no Origin) never reaches it, and that is what these tests walk through.
+ */
+function fullHarness(options: Parameters<typeof makeHarness>[0] = {}): Promise<Harness> {
+  return makeHarness({
+    ...options,
+    routes: (app) => {
+      registerApiRoutes(app, {
+        pool: new pg.Pool({ connectionString: 'postgres://nobody@127.0.0.1:1/none', max: 1 }),
+        now: Date.now,
+        expectedMigration: 6,
+        background: false,
+      });
+    },
+  });
+}
 
 function concrete(url: string): string {
   return url.replace(/:[A-Za-z]+/g, SOME_ID);
@@ -67,8 +91,8 @@ describe('what exists', () => {
     }
   });
 
-  it('opens exactly one route to a visitor without a session: the login', async () => {
-    const h = await makeHarness();
+  it('opens exactly three routes to a visitor without a session: the login and the two health routes', async () => {
+    const h = await fullHarness();
     const open = h.app.routeTable
       .filter((route) => route.public)
       .map((route) => `${route.method} ${route.url}`);
@@ -78,7 +102,7 @@ describe('what exists', () => {
 
 describe('a visitor without a session', () => {
   it('gets 401 from every route that is not public, with every method and a made-up id', async () => {
-    const h = await makeHarness();
+    const h = await fullHarness();
     const closed = h.app.routeTable.filter((route) => !route.public);
     expect(closed.length).toBeGreaterThanOrEqual(9);
     for (const route of closed) {
@@ -244,7 +268,7 @@ describe('a request that does not come from the site (CSRF)', () => {
     h.app.routeTable.filter((route) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(route.method));
 
   it('is refused by every route that changes anything unless Origin is the site and the custom header is there', async () => {
-    const h = await makeHarness();
+    const h = await fullHarness();
     const cookie = await h.login();
     const routes = unsafeRoutes(h);
     expect(routes.length).toBeGreaterThanOrEqual(7);

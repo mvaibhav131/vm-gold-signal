@@ -136,6 +136,15 @@ export class AuthService {
     };
   }
 
+  /**
+   * Whether the session of a cookie value is still a session, without using it (no sliding of the expiry): what a stream
+   * that stays open for hours asks every minute, so that a logout or a revocation ends it.
+   */
+  async stillValid(token: string | undefined): Promise<boolean> {
+    if (!isSessionToken(token)) return false;
+    return (await this.store.session(sessionIdHash(token), this.now())) !== null;
+  }
+
   /** A new session, if the owner is still as the login found it (a change that came meanwhile refuses it: null). */
   private async newSession(
     client: ClientInfo,

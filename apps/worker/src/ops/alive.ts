@@ -1,8 +1,6 @@
-/** The recorder writes its heartbeat under this name every 15 seconds (`worker_heartbeats.worker_name`). */
-export const WORKER_HEARTBEAT = 'worker';
+import { WORKER_ALIVE_MAX_AGE_MS, WORKER_HEARTBEAT } from '@vmgs/db';
 
-/** Three missed heartbeats: the worker is not working. */
-export const WORKER_ALIVE_MAX_AGE_MS = 45_000;
+export { WORKER_ALIVE_MAX_AGE_MS, WORKER_HEARTBEAT };
 
 export interface HeartbeatReader {
   query(text: string, values: unknown[]): Promise<{ rows: readonly { heartbeat_at: Date }[] }>;

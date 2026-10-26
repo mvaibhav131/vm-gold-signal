@@ -1,6 +1,13 @@
-import { engineStateSchema, settingsSchema } from '@vmgs/contracts';
+import {
+  STRATEGY_ENABLED_KEY,
+  engineStateSchema,
+  settingsSchema,
+  strategyEnabledSchema,
+} from '@vmgs/contracts';
 import {
   BUCKET_LEVELS,
+  ENGINE_STATE_KEY,
+  STRATEGY_KEYS,
   TRADED_SYMBOL,
   bucketKeys,
   isPaused,
@@ -38,8 +45,7 @@ const num = (value: Num): number => {
   return result;
 };
 
-/** The `app_settings` key that holds the engine state after each decision (`engineStateOf`). */
-export const ENGINE_STATE_KEY = 'engineState';
+export { ENGINE_STATE_KEY };
 
 const TIMEFRAMES: readonly EngineTimeframe[] = ['5m', '15m', '1h'];
 const SCOPES: readonly StatsScope[] = ['FORWARD', 'BACKTEST_OOS'];
@@ -120,7 +126,8 @@ export class PostgresEngineStore implements EngineStore {
 
   async controls(now: number): Promise<EngineControls> {
     const { rows } = await this.pool.query<{ key: string; value: unknown }>(
-      "SELECT key, value FROM app_settings WHERE key IN ('engine', 'advisoryGates')",
+      'SELECT key, value FROM app_settings WHERE key = ANY($1::text[])',
+      [['engine', 'advisoryGates', STRATEGY_ENABLED_KEY]],
     );
     const stored = new Map(rows.map((row) => [row.key, row.value]));
     const engine = stored.get('engine');
@@ -140,7 +147,10 @@ export class PostgresEngineStore implements EngineStore {
     const gates = stored.get('advisoryGates');
     const modes: Partial<AdvisoryModes> =
       gates === undefined ? {} : settingsSchema.shape.advisoryGates.parse(gates);
-    return { paused, modes };
+    const switches = stored.get(STRATEGY_ENABLED_KEY);
+    const enabled = switches === undefined ? {} : strategyEnabledSchema.parse(switches);
+    const disabled = STRATEGY_KEYS.filter((key) => enabled[key] === false);
+    return { paused, modes, disabled };
   }
 
   async openSignals(): Promise<OpenSignalFacts[]> {

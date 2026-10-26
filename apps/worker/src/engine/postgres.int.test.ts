@@ -191,8 +191,29 @@ describe('the controls of the owner', () => {
     );
 
   it('is running with no switch before the owner sets anything', async () => {
-    await run("DELETE FROM app_settings WHERE key IN ('engine', 'advisoryGates')");
-    expect(await store.controls(NOW)).toEqual({ paused: false, modes: {} });
+    await run(
+      "DELETE FROM app_settings WHERE key IN ('engine', 'advisoryGates', 'strategyEnabled')",
+    );
+    expect(await store.controls(NOW)).toEqual({ paused: false, modes: {}, disabled: [] });
+  });
+
+  it('lists the strategies the owner has switched off, in the order of the strategies, and keeps the others on', async () => {
+    await put('strategyEnabled', {
+      squeeze_retest: false,
+      trend_pullback: true,
+      sweep_reversal: false,
+    });
+    expect((await store.controls(NOW)).disabled).toEqual(['sweep_reversal', 'squeeze_retest']);
+    await put('strategyEnabled', {});
+    expect((await store.controls(NOW)).disabled).toEqual([]);
+  });
+
+  it('refuses a strategy switch it does not understand rather than guess', async () => {
+    await put('strategyEnabled', { trend_pullback: 'no' });
+    await expect(store.controls(NOW)).rejects.toThrow();
+    await put('strategyEnabled', { not_a_strategy: false });
+    await expect(store.controls(NOW)).rejects.toThrow();
+    await run("DELETE FROM app_settings WHERE key = 'strategyEnabled'");
   });
 
   it('is paused from a pause with no end, and from one that has not run out', async () => {

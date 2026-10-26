@@ -399,6 +399,8 @@ describe('listeners', () => {
     expect(() => {
       thrown[0]?.();
     }).toThrow('recorder failed');
+    // stopped while the spy still holds what the listener throws: a timer of the feed must not throw it later, unseen
+    await feed.stop();
     spy.mockRestore();
   });
 });

@@ -28,6 +28,8 @@ declare module 'fastify' {
   interface FastifyInstance {
     /** Every route that was registered, with whether it is open to a visitor. The security tests walk it. */
     routeTable: readonly RouteInfo[];
+    /** Whether the session of a cookie value still stands, without using it (a stream asks this while it is open). */
+    sessionStillValid(token: string | undefined): Promise<boolean>;
   }
 }
 
@@ -58,6 +60,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     }
   });
   app.decorate('routeTable', table);
+  app.decorate('sessionStillValid', (token: string | undefined) =>
+    options.service.stillValid(token),
+  );
 
   await app.register(cookie);
   registerProblemHandlers(app);

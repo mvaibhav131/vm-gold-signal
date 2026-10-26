@@ -38,7 +38,7 @@ export class MemoryEngineStore implements EngineStore {
   };
   readonly quotes: StoredQuote[] = [];
   open: OpenSignalFacts[] = [];
-  controlsNow: EngineControls = { paused: false, modes: {} };
+  controlsNow: EngineControls = { paused: false, modes: {}, disabled: [] };
   evidenceOf: (dims: BucketDims) => ExplanationEvidence = () => EMPTY;
   readonly rejections: { at: number; rejection: Rejection }[] = [];
   readonly states: { state: EngineStateDoc; at: number }[] = [];

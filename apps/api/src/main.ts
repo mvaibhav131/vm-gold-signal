@@ -1,5 +1,5 @@
 import { apiEnvSchema, parseEnv, siteOriginOf } from '@vmgs/config';
-import { createPool } from '@vmgs/db';
+import { createPool, loadMigrations } from '@vmgs/db';
 
 import { buildApp } from './app';
 import { SecretHasher, PRODUCTION_ARGON } from './auth/hasher';
@@ -8,6 +8,7 @@ import { Limiter } from './auth/limiter';
 import { PostgresAuthStore } from './auth/postgresStore';
 import { AuthPurge } from './auth/purge';
 import { AuthService } from './auth/service';
+import { registerApiRoutes } from './routes';
 
 type Level = 'info' | 'error';
 
@@ -18,7 +19,8 @@ function log(level: Level, message: string, details: Record<string, unknown> = {
 
 async function main(): Promise<void> {
   const env = parseEnv(apiEnvSchema, process.env);
-  const pool = createPool(env.DATABASE_URL_API, { max: 6 });
+  // one connection always listens to the worker (the stream); the rest serve the requests, the stream's looks and the auth
+  const pool = createPool(env.DATABASE_URL_API, { max: 10 });
   const store = new PostgresAuthStore(pool);
   const service = new AuthService({
     store,
@@ -28,10 +30,15 @@ async function main(): Promise<void> {
     now: Date.now,
   });
 
+  const expectedMigration = (await loadMigrations()).length;
+
   const app = await buildApp({
     service,
     siteOrigin: siteOriginOf(env),
     trustedProxyHops: env.API_TRUSTED_PROXY_HOPS,
+    routes: (instance) => {
+      registerApiRoutes(instance, { pool, now: Date.now, expectedMigration, log });
+    },
     logger: {
       level: env.LOG_LEVEL,
       redact: {

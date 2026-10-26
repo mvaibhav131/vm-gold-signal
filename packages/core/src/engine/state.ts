@@ -4,6 +4,9 @@ import { warmupProgress } from '../gates/blocking';
 import type { GateParams } from '../gates/types';
 import type { DecisionReport } from './types';
 
+/** The `app_settings` key that holds the engine state after each decision (the worker writes it, the API reads it). */
+export const ENGINE_STATE_KEY = 'engineState';
+
 /**
  * What the engine says about itself between decisions: the regime, the session, the news state, how far the warm-up is, and the
  * reasons why a signal could not be sent now. The decision loop stores it after every 5m candle; `/status`, `/open` and the dashboard read it.

@@ -7,6 +7,7 @@ import type {
   ExplanationEvidence,
   OpenSignalInput,
   Rejection,
+  StrategyKey,
 } from '@vmgs/core';
 
 /** A closed candle with its timeframe, as the store hands it over. */
@@ -42,10 +43,12 @@ export interface QuoteSource {
   firstQuoteAtOrAfter(ts: number): Promise<StoredQuote | null>;
 }
 
-/** What the owner has set that the decision reads each time: the pause and the advisory switches. */
+/** What the owner has set that the decision reads each time: the pause, the advisory switches and the strategy switches. */
 export interface EngineControls {
   readonly paused: boolean;
   readonly modes: Partial<AdvisoryModes>;
+  /** The strategies the owner has switched off: they make no new signal and no rejection. */
+  readonly disabled: readonly StrategyKey[];
 }
 
 /** An open signal as the decision needs it, with its public label (`#S-0042`). */
