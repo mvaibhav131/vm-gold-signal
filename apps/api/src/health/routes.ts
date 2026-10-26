@@ -51,6 +51,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): vo
     method: 'GET',
     url: `${API_BASE}/health/live`,
     public: true,
+    quiet: true,
     response: healthLiveSchema,
     handler: () => Promise.resolve({ status: 'ok' as const }),
   });
@@ -59,6 +60,7 @@ export function registerHealthRoutes(app: FastifyInstance, deps: HealthDeps): vo
     method: 'GET',
     url: `${API_BASE}/health/ready`,
     public: true,
+    quiet: true,
     response: healthReadySchema,
     handler: async ({ reply }) => {
       const ok = await ready();

@@ -3,20 +3,20 @@
 Everything that puts VM Gold Signal on a server and keeps it there. The decisions are in
 [`docs/06_Phases_and_Setup.md`](../docs/06_Phases_and_Setup.md) section 4; this file is the runbook.
 
-| File                                            | What it is                                                                                                                                                 |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Dockerfile`                                    | One image for the worker, the migrations and the backup jobs (Node 24, `pg_dump` 17, `age`, `rclone`). Built on the VM, so the A1 builds `arm64` natively. |
-| `docker-compose.yml`                            | `db`, `migrate`, `worker` (always); `backup`, `drill` (profile `ops`); `caddy` (profile `web`). Only `caddy` publishes ports.                              |
-| `Caddyfile`                                     | TLS, security headers, the web app, the proxy to the api (B31b).                                                                                           |
-| `env.example`                                   | Every variable of the VM's `.env`, with how to make each one.                                                                                              |
-| `scripts/vm-setup.sh`                           | One-time preparation of the VM: updates, time, Docker, SSH, secrets directory, timers.                                                                     |
-| `scripts/deploy.sh`                             | Backup, checkout, build, environment check, migrations, `up -d`, smoke test.                                                                               |
-| `scripts/smoke.sh`                              | What must be true after a deploy (also `--telegram`, `--public`).                                                                                          |
-| `scripts/backup.sh`, `scripts/restore-drill.sh` | Run inside the image by the systemd timers (`systemd/`).                                                                                                   |
-| `scripts/drill.sh`                              | The failure drills: crash the worker, stop the database, block the feed.                                                                                   |
-| `scripts/duckdns.sh`                            | The DuckDNS address update (timer every 5 minutes).                                                                                                        |
-| `scripts/compose.sh`                            | The one way to call `docker compose` for this stack.                                                                                                       |
-| `drills/`                                       | Compose files for the drills and for trying the backup without the bucket.                                                                                 |
+| File                                            | What it is                                                                                                                                                                                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Dockerfile`                                    | Two images from one file: `app` (the worker, the api, the migrations and the backup jobs; Node 24, `pg_dump` 17, `age`, `rclone`) and `web` (Caddy with the built web app inside). Built on the VM, so the A1 builds `arm64` natively. |
+| `docker-compose.yml`                            | `db`, `migrate`, `worker` (always); `backup`, `drill`, `owner` (profile `ops`); `api`, `caddy` (profile `web`). Only `caddy` publishes ports.                                                                                          |
+| `Caddyfile`                                     | TLS, security headers, the web app, the proxy to the api (B31b).                                                                                                                                                                       |
+| `env.example`                                   | Every variable of the VM's `.env`, with how to make each one.                                                                                                                                                                          |
+| `scripts/vm-setup.sh`                           | One-time preparation of the VM: updates, time, Docker, SSH, secrets directory, timers.                                                                                                                                                 |
+| `scripts/deploy.sh`                             | Backup, checkout, build, environment check, migrations, `up -d`, smoke test.                                                                                                                                                           |
+| `scripts/smoke.sh`                              | What must be true after a deploy (also `--telegram`, `--public`).                                                                                                                                                                      |
+| `scripts/backup.sh`, `scripts/restore-drill.sh` | Run inside the image by the systemd timers (`systemd/`).                                                                                                                                                                               |
+| `scripts/drill.sh`                              | The failure drills: crash the worker, stop the database, block the feed.                                                                                                                                                               |
+| `scripts/duckdns.sh`                            | The DuckDNS address update (timer every 5 minutes).                                                                                                                                                                                    |
+| `scripts/compose.sh`                            | The one way to call `docker compose` for this stack.                                                                                                                                                                                   |
+| `drills/`                                       | Compose files for the drills and for trying the backup without the bucket.                                                                                                                                                             |
 
 ## 1. What you create (once, all free)
 
@@ -81,13 +81,13 @@ sudo /opt/vmgs/deploy/scripts/drill.sh                                       # t
 ```
 
 From that day the worker records ticks, spreads, the calendar and the headlines, and Telegram and Healthchecks.io tell
-you when something stops. The web app and the API come with B30 and U5 (section 6).
+you when something stops. The web app and the API are the next step (section 6); they stay off until you ask for them.
 
 ### Making yourself the owner (B29)
 
 There is no sign-up page and no "forgot password": the owner is made, and got back into, on the server. Once the stack
-is up, put `DB_PASSWORD_API` (`openssl rand -hex 24`) into `/opt/vmgs/.env`, run `deploy.sh` again (the migrate step
-gives the role its login), then:
+is up (`DB_PASSWORD_API` is one of the passwords of the `.env` from the first deploy: compose refuses to run
+without it, and the migrate step gives the role its login), then:
 
 ```bash
 sudo /opt/vmgs/deploy/scripts/compose.sh --profile ops run --rm owner owner:create yourname
@@ -158,14 +158,33 @@ gone after a restore, and the candles, signals, results, rollups and settings ar
 
 ## 6. The web side (B31b)
 
-When B30 (the rest of the API, built) and U5 (web) exist: the `api` service joins `docker-compose.yml` (the image already
-carries it, with `API_TRUSTED_PROXY_HOPS=1` and `APP_ENCRYPTION_KEY` in the `.env`), `apps/web` is built into
-`VMGS_WEB_DIST`, and `COMPOSE_PROFILES=web` in `.env` makes `deploy.sh` start `caddy` too. Then
-`smoke.sh --public` calls `https://PUBLIC_HOST/api/v1/health/ready` (the health routes are public, under the API's
-prefix, which the Caddyfile proxies). The API holds one connection for the event stream (`LISTEN`) besides its pool of
-10, and `reverse_proxy` does not buffer, so the stream reaches the browser as it is written. The `Caddyfile` is ready
-and checked: headers, the fallback to the index for a single-page app, no cache for `/api` and `/health`, the redirect
-to HTTPS.
+The API and Caddy are the profile `web` of the compose file. They stay off until you turn them on, so a stack that only
+records data needs neither the key nor the ports. To turn them on:
+
+1. In the `.env`: `COMPOSE_PROFILES=web` and `APP_ENCRYPTION_KEY` (`openssl rand -hex 32`; keep it apart from the
+   passwords; losing it makes the second step unreadable and `owner:totp-off` is the way out). `PUBLIC_HOST` is the
+   DuckDNS name; `DB_PASSWORD_API` is there since the first deploy.
+2. In the Oracle security list: ingress 80 and 443 from everywhere (they were in the list of section 1).
+3. `sudo /opt/vmgs/deploy/scripts/deploy.sh`. It builds the web image (Caddy with the web app inside: nothing to copy
+   by hand), checks the environment of the api in its own container (`env:check api`: the key and the role, named but
+   never printed), starts the api and waits for its health.
+4. Make the owner (above), then `sudo /opt/vmgs/deploy/scripts/smoke.sh --public`. The first request makes Caddy get
+   the certificate (a few seconds; DuckDNS must already point at the VM and 80 and 443 must be open).
+
+The api publishes no port: only Caddy reaches it, on the compose network, and `API_TRUSTED_PROXY_HOPS=1` makes the
+client the address Caddy saw. Its health is `curl http://127.0.0.1:3000/api/v1/health/live` (alive), and
+`/api/v1/health/ready` says whether the schema is current and the worker has been heard from. `smoke.sh` checks the
+containers, that only Caddy publishes a port, and that the api says ready; with `--public` it also looks from the
+outside, through Caddy: ready, HSTS, a screen of the API closed without a session (401), and port 80 going to https.
+The API holds one connection for the event stream (`LISTEN`) besides its pool of 10, and `reverse_proxy` does not
+buffer, so the stream reaches the browser as it is written. The `Caddyfile` has the headers, the fallback to the index
+for a single-page app, no cache for `/api` and `/health`, and the redirect to HTTPS.
+
+**Until the screens are wired to the API (phase U5) the web image is built with the mock data** (`VITE_DATA_SOURCE`
+in the Dockerfile): the site opens, with the `SIMULATED` badge, and shows nothing real. U5 turns it to `live`.
+
+To try the whole thing on a PC beside other containers (high ports, a certificate of Caddy's own for `localhost`):
+`deploy/drills/local-web.yml` (its header says how).
 
 ## 7. What was checked where
 
@@ -176,6 +195,21 @@ on a damaged file and on a wrong manifest, the offline key opening the backup, t
 the API, the Argon2 native binary on Alpine, the `owner` service (made the owner from a pipe, refused a second one and a
 short password, a hidden prompt on a real terminal), and the API started from the image against the database with curl:
 cookie flags, the 403 without `Origin` and `X-VMGS-CSRF`, logout, and the 429 with `Retry-After` on the sixth failure.
+
+For B31b, in the same way (project `vmgs-b31btest`, `deploy/drills/local-web.yml`: Caddy on `127.0.0.1:18080` and `:18443`
+with a certificate of its own for `localhost`; the checks go to Caddy with the TLS verified against that CA, never with
+verification off): both images built; the stack up with the real feed; `smoke.sh --public` with 0 failures, and with 5
+when Caddy is stopped; ready and live, the headers (no `Server`, no double `Cache-Control`), the web app, the index for
+an address that is no file, a 404 for a missing file under `/assets`; the API closed without a session (also for an
+address it does not have); login with 403 for no or a foreign `Origin`, 204 for the right one, a `__Host-` cookie with
+`HttpOnly`, `Secure`, `SameSite=Strict`; the event stream (the `retry` line at once, the quotes every second, an `engine`
+event a moment after a pause through the API, `: hb` after 15 s, replay with `Last-Event-ID`, `resync` for an unknown
+id); seven wrong logins with seven different `X-Forwarded-For` counted as one client (429 from the sixth); a stop of
+the api with a stream open (1.4 s, exit code 0); the owner made from a pipe; `env:check api` for a good and a short
+key; the container of the api as `node`, read-only, no capability; the profile `web` off giving only `db`, `migrate`
+and `worker`; `shellcheck` on every script. The run found and fixed: a Caddy `Cache-Control` on top of the api's
+(twice), a missing file under `/assets` answered with the index (a tab of an older release would get a page as its
+script), and the request log writing the address of the client (it now holds the method, the path and the status).
 
 Only the VM can check: the `arm64` build, `vm-setup.sh` (it was not run on Ubuntu), the Oracle bucket and its S3
 settings, Healthchecks.io delivery, DuckDNS, and the certificate. The first run of each on the VM is the test: the

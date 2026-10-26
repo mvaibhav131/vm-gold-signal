@@ -1,3 +1,5 @@
+import { Writable } from 'node:stream';
+
 import { describe, expect, it } from 'vitest';
 
 import { healthLiveSchema, healthReadySchema } from '@vmgs/contracts';
@@ -55,6 +57,30 @@ describe('isReady', () => {
 });
 
 describe('the health routes', () => {
+  it('are left out of the log while they go well: a probe every 30 s would fill it', async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        lines.push(chunk.toString('utf8'));
+        done();
+      },
+    });
+    const reader = new FakeReader({ migrationVersion: 6, workerHeartbeatAt: 0 });
+    const h = await makeHarness({
+      logger: { level: 'info', stream },
+      routes: (app, c) => {
+        registerHealthRoutes(app, { reader, expectedMigration: 6, now: () => c.now, cacheMs: 0 });
+      },
+    });
+    expect((await h.send({ url: LIVE })).status).toBe(200);
+    expect((await h.send({ url: READY })).status).toBe(503); // not ready: still a probe, still quiet
+    expect(lines.join('')).not.toContain('/health/');
+
+    // any other request is logged
+    await h.send({ url: '/api/v1/auth/me' });
+    expect(lines.join('')).toContain('/api/v1/auth/me');
+  });
+
   it('answer without a session, say nothing but ok, and carry the usual headers', async () => {
     const { h } = await harness(new FakeReader({ migrationVersion: 6, workerHeartbeatAt: 0 }));
     const live = await h.send({ url: LIVE });

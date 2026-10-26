@@ -1,12 +1,12 @@
-# Everything is left out except what the image needs (deploy/Dockerfile). Secrets, history data, tests and the web app
-# never enter a build context.
+# Everything is left out except what the images need (deploy/Dockerfile). Secrets, history data and tests never
+# enter a build context.
 **
 !package.json
 !pnpm-lock.yaml
 !pnpm-workspace.yaml
 !.npmrc
 !tsconfig.base.json
-!apps/web/package.json
+!apps/web/
 !apps/api/
 !apps/worker/
 !e2e/package.json
@@ -20,4 +20,6 @@
 **/*.tsbuildinfo
 **/*.test.ts
 **/*.int.test.ts
+**/*.test.tsx
+apps/web/vitest.config.ts
 packages/db/test

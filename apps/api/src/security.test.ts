@@ -7,6 +7,7 @@ import { PROBLEM_CONTENT_TYPE, problemSchema } from '@vmgs/contracts';
 
 import { SESSION_COOKIE } from './auth/guard';
 import { SECURITY_HEADERS, parseSiteOrigin } from './http/security';
+import { apiLoggerOptions } from './logging';
 import { registerApiRoutes } from './routes';
 import { MemoryAuthStore } from './testing/memoryAuthStore';
 import { OWNER, SITE, makeHarness, type Harness, type Reply } from './testing/harness';
@@ -575,6 +576,27 @@ describe('the log', () => {
       SESSION_COOKIE,
     ]) {
       expect(log, secret).not.toContain(secret);
+    }
+  });
+
+  it('holds no address of a client with the logger of the process: the method, the path and the status are enough', async () => {
+    const lines: string[] = [];
+    const stream = new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        lines.push(chunk.toString('utf8'));
+        done();
+      },
+    });
+    const h = await makeHarness({ logger: { ...apiLoggerOptions('trace'), stream } });
+    const reply = await h.send({ url: '/api/v1/auth/me', ip: '198.51.100.77' });
+    expect(reply.status).toBe(401);
+
+    const log = lines.join('');
+    expect(log).toContain('"method":"GET"');
+    expect(log).toContain('/api/v1/auth/me');
+    expect(log).toContain('"statusCode":401');
+    for (const forbidden of ['198.51.100.77', 'remoteAddress', 'remotePort']) {
+      expect(log, forbidden).not.toContain(forbidden);
     }
   });
 });

@@ -74,8 +74,67 @@ describe('env:check', () => {
 
   it('refuses a kind it does not know', async () => {
     const { io: fake, out } = io();
-    expect(await runOps('env:check', ['api'], WORKER_ENV, fake)).toBe(2);
-    expect(out[0]).toContain('unknown kind api');
+    expect(await runOps('env:check', ['nonsense'], WORKER_ENV, fake)).toBe(2);
+    expect(out[0]).toContain('unknown kind nonsense');
+  });
+
+  describe('for the api', () => {
+    const KEY = 'ab'.repeat(32);
+    const API_ENV = {
+      NODE_ENV: 'production',
+      PUBLIC_HOST: 'vmgs-owner.duckdns.org',
+      API_PORT: '3000',
+      API_TRUSTED_PROXY_HOPS: '1',
+      DATABASE_URL_API: `postgres://vmgs_api:${'x'.repeat(12)}@db:5432/vmgs`,
+      APP_ENCRYPTION_KEY: KEY,
+    };
+
+    it('says OK for what compose gives the api service', async () => {
+      const { io: fake, out } = io();
+      expect(await runOps('env:check', ['api'], API_ENV, fake)).toBe(0);
+      expect(out).toEqual(['OK api']);
+    });
+
+    it('names a missing key (an empty value counts as not set)', async () => {
+      const { io: fake, out } = io();
+      const env = { ...API_ENV, APP_ENCRYPTION_KEY: '' };
+      expect(await runOps('env:check', ['api'], env, fake)).toBe(1);
+      expect(out[0]).toBe('PROBLEM api');
+      expect(out.join('\n')).toContain('APP_ENCRYPTION_KEY');
+    });
+
+    it('refuses a key that is too short, and a login as the wrong role, without printing them', async () => {
+      const short = io();
+      expect(
+        await runOps('env:check', ['api'], { ...API_ENV, APP_ENCRYPTION_KEY: 'abc123' }, short.io),
+      ).toBe(1);
+      expect(short.out.join('\n')).toContain('32 random bytes');
+      expect(short.out.join('\n')).not.toContain('abc123');
+
+      const role = io();
+      const env = {
+        ...API_ENV,
+        DATABASE_URL_API: `postgres://vmgs_worker:${'y'.repeat(12)}@db/vmgs`,
+      };
+      expect(await runOps('env:check', ['api'], env, role.io)).toBe(1);
+      expect(role.out.join('\n')).toContain('must connect as database role vmgs_api');
+      expect(role.out.join('\n')).not.toContain('y'.repeat(12));
+    });
+
+    it('does not accept a site that is not https in production', async () => {
+      const { io: fake, out } = io();
+      const env = { ...API_ENV, SITE_ORIGIN: 'http://localhost:5173' };
+      expect(await runOps('env:check', ['api'], env, fake)).toBe(1);
+      expect(out.join('\n')).toContain('the site origin must be https in production');
+    });
+
+    it('is checked together with the others', async () => {
+      const { io: fake, out } = io();
+      expect(
+        await runOps('env:check', ['worker', 'api'], { ...WORKER_ENV, ...API_ENV }, fake),
+      ).toBe(0);
+      expect(out).toEqual(['OK worker', 'OK api']);
+    });
   });
 });
 

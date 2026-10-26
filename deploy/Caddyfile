@@ -16,11 +16,12 @@
 		-Server
 	}
 
-	# The api: REST, the event stream and the health checks. Never cached. Not buffered: the stream must reach the
-	# browser as it is written (a comment line every 15 s keeps it open).
+	# The api: REST, the event stream and the health checks. Never cached (the api says so itself; `>` replaces what it
+	# sent, so the header is there once). Not buffered: the stream must reach the browser as it is written (a comment
+	# line every 15 s keeps it open).
 	@api path /api/* /health/*
 	handle @api {
-		header Cache-Control "no-store"
+		header >Cache-Control "no-store"
 		reverse_proxy api:3000 {
 			flush_interval -1
 			transport http {
@@ -29,14 +30,20 @@
 		}
 	}
 
-	# The web app: a single-page app, so an address that is not a file is the index. The service worker and the
-	# index are checked at every visit; the hashed files are kept for a year.
+	# The hashed files of the build: kept for a year, and a file that is not there is a 404, never the index (a tab of
+	# an older release asks for files that the new release no longer has, and must not get a page as its script).
+	handle /assets/* {
+		root * /srv/web
+		@present file
+		header @present Cache-Control "public, max-age=31536000, immutable"
+		file_server
+	}
+
+	# The web app: a single-page app, so an address that is not a file is the index. Everything here is checked at every
+	# visit (the index, the service worker, the manifest: an answer of 304 costs nothing).
 	handle {
 		root * /srv/web
-		@hashed path /assets/*
-		header @hashed Cache-Control "public, max-age=31536000, immutable"
-		@entry path / /index.html /sw.js /registerSW.js /manifest.webmanifest
-		header @entry Cache-Control "no-cache"
+		header Cache-Control "no-cache"
 		try_files {path} /index.html
 		file_server
 	}

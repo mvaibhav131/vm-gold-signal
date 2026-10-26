@@ -3,7 +3,7 @@
 #
 #   default services   db, migrate (one run before the worker), worker
 #   profile ops        backup, drill: one-shot jobs of the systemd timers; owner: the owner commands (B29)
-#   profile web        caddy (B31b: the api service and the web app arrive with B30 and U5)
+#   profile web        api and caddy (B31b): COMPOSE_PROFILES=web in the .env turns them on
 name: vmgs
 
 x-logging: &logging
@@ -17,6 +17,7 @@ x-app: &app
   build:
     context: ..
     dockerfile: deploy/Dockerfile
+    target: app
   logging: *logging
   cap_drop: [ALL]
   security_opt: ['no-new-privileges:true']
@@ -170,16 +171,58 @@ services:
     environment:
       DATABASE_URL_API: postgres://vmgs_api:${DB_PASSWORD_API:?set DB_PASSWORD_API in the .env and run deploy.sh again}@db:5432/vmgs
 
-  # B31b. TLS, security headers, the web app and the proxy to the api (which arrives with B30). The only service
-  # that publishes ports.
+  # B31b. The API: REST and the event stream, behind Caddy. It publishes no port: only Caddy reaches it, on the compose
+  # network. It needs the database role `vmgs_api` (DB_PASSWORD_API) and the key of the authentication
+  # (APP_ENCRYPTION_KEY); `deploy.sh` checks both before it starts anything. `API_TRUSTED_PROXY_HOPS=1`: the client is
+  # the address Caddy saw, never what the client wrote in X-Forwarded-For.
+  api:
+    <<: *app
+    profiles: [web]
+    restart: unless-stopped
+    working_dir: /app/apps/api
+    command: ['node', '--import', 'tsx', 'src/main.ts']
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in the .env}
+      API_PORT: '3000'
+      API_TRUSTED_PROXY_HOPS: '1'
+      DATABASE_URL_API: postgres://vmgs_api:${DB_PASSWORD_API:?set DB_PASSWORD_API in the .env and run deploy.sh again}@db:5432/vmgs
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+    # Alive means the process answers; whether the worker and the schema are fine is /health/ready (smoke.sh).
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', '-o', '/dev/null', 'http://127.0.0.1:3000/api/v1/health/live']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    stop_grace_period: 20s
+
+  # B31b. TLS, security headers, the web app and the proxy to the api. The only service that publishes ports. The web
+  # app is built into this image (Dockerfile, target `web`), so a release is one thing.
   caddy:
-    image: caddy:2.11-alpine
+    image: vmgs-web:${VMGS_VERSION:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
     profiles: [web]
     restart: unless-stopped
     logging: *logging
+    depends_on:
+      api:
+        condition: service_healthy
     cap_drop: [ALL]
     cap_add: [NET_BIND_SERVICE]
     security_opt: ['no-new-privileges:true']
+    read_only: true
+    tmpfs: ['/tmp:size=16m,mode=1777']
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in the .env}
     ports:
@@ -188,7 +231,6 @@ services:
       - '443:443/udp'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${VMGS_WEB_DIST:-../apps/web/dist}:/srv/web:ro
       - caddy_data:/data
       - caddy_config:/config
 

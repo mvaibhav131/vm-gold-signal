@@ -3,8 +3,9 @@
 #   sudo /opt/vmgs/deploy/scripts/deploy.sh [--ref TAG_OR_BRANCH] [--first] [--skip-backup]
 # 1. a database backup (skipped on the first deploy, when there is nothing to save)
 # 2. the release: git fetch and checkout of the ref (without --ref the checkout stays as it is)
-# 3. the image, built here (the A1 builds linux/arm64 natively)
-# 4. the environment check
+# 3. the images, built here (the A1 builds linux/arm64 natively): the app image, and with COMPOSE_PROFILES=web the
+#    one of caddy with the web app inside
+# 4. the environment check (with the web side also the one of the api)
 # 5. the migrations (forward only; the backup of step 1 is the way back)
 # 6. docker compose up -d
 # 7. the smoke test
@@ -48,13 +49,23 @@ VMGS_VERSION="$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || e
 export VMGS_VERSION
 say "deploying $VMGS_VERSION (previous: $previous)"
 
-say "building the image (one image for the worker, the migrations and the backup jobs)"
+say "building the image (one image for the worker, the api, the migrations and the backup jobs)"
 compose build worker
+web=false
+if web_on; then
+  web=true
+  say "building the web image (caddy with the web app inside)"
+  compose --profile web build caddy
+fi
 
 say "checking the environment"
 compose run --rm --no-deps -T migrate node --import tsx src/cli/main.ts env:check admin
 compose run --rm --no-deps -T worker node --import tsx src/cli/main.ts env:check worker
 compose --profile ops run --rm --no-deps -T backup node --import tsx src/cli/main.ts env:check backup
+if $web; then
+  # what the api service would get, checked in its own container (the key of the authentication, its database role)
+  compose --profile web run --rm --no-deps -T -w /app/apps/worker api node --import tsx src/cli/main.ts env:check api
+fi
 
 if $skip_backup; then
   say "no backup before this deploy"
@@ -73,12 +84,13 @@ compose run --rm -T migrate
 say "starting the stack"
 compose up -d --remove-orphans
 wait_for 300 "the worker is healthy" worker_healthy || true
+if $web; then wait_for 120 "the api is healthy" api_healthy || true; fi
 
 say "smoke test"
 if "$HERE/smoke.sh"; then
   printf '%s %s (previous %s)\n' "$(date -u +%FT%TZ)" "$VMGS_VERSION" "$previous" >>"$ROOT/.deployed"
   say "deployed $VMGS_VERSION"
 else
-  say "the smoke test failed. Look: compose.sh logs --tail 100 worker. Way back: deploy.sh --ref $previous"
+  say "the smoke test failed. Look: compose.sh logs --tail 100 worker (or api, caddy). Way back: deploy.sh --ref $previous"
   exit 1
 fi

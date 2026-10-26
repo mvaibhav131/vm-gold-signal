@@ -1,4 +1,11 @@
-import { adminEnvSchema, backupEnvSchema, parseEnv, workerEnvSchema, EnvError } from '@vmgs/config';
+import {
+  adminEnvSchema,
+  apiEnvSchema,
+  backupEnvSchema,
+  parseEnv,
+  workerEnvSchema,
+  EnvError,
+} from '@vmgs/config';
 import { createPool } from '@vmgs/db';
 
 import { WORKER_ALIVE_MAX_AGE_MS, isFresh, workerHeartbeatAgeMs } from './alive';
@@ -26,13 +33,14 @@ export const OPS_COMMANDS = [
 ] as const;
 
 export const OPS_USAGE =
-  'db:migrate | worker:alive [max-age-seconds] | env:check [worker|admin|backup]... | ' +
+  'db:migrate | worker:alive [max-age-seconds] | env:check [worker|admin|backup|api]... | ' +
   'backup:counts [ENV_VAR] | backup:plan | backup:check manifest.json restored.json live.json';
 
 const SCHEMAS = {
   worker: workerEnvSchema,
   admin: adminEnvSchema,
   backup: backupEnvSchema,
+  api: apiEnvSchema,
 } as const;
 
 /** Whether the environment is complete for the named processes. Names the variable and the rule, never the value. */
@@ -41,7 +49,7 @@ function envCheck(kinds: readonly string[], env: Env, io: OpsIo): number {
   let failed = false;
   for (const kind of wanted) {
     if (!(kind in SCHEMAS)) {
-      io.print(`unknown kind ${kind}: use worker, admin or backup`);
+      io.print(`unknown kind ${kind}: use worker, admin, backup or api`);
       return 2;
     }
     try {

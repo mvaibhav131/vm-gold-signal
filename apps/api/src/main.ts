@@ -8,6 +8,7 @@ import { Limiter } from './auth/limiter';
 import { PostgresAuthStore } from './auth/postgresStore';
 import { AuthPurge } from './auth/purge';
 import { AuthService } from './auth/service';
+import { apiLoggerOptions } from './logging';
 import { registerApiRoutes } from './routes';
 
 type Level = 'info' | 'error';
@@ -39,13 +40,7 @@ async function main(): Promise<void> {
     routes: (instance) => {
       registerApiRoutes(instance, { pool, now: Date.now, expectedMigration, log });
     },
-    logger: {
-      level: env.LOG_LEVEL,
-      redact: {
-        paths: ['req.headers.cookie', 'req.headers["x-vmgs-csrf"]', 'res.headers["set-cookie"]'],
-        censor: '[redacted]',
-      },
-    },
+    logger: apiLoggerOptions(env.LOG_LEVEL),
   });
   const purge = new AuthPurge({ store, log });
 

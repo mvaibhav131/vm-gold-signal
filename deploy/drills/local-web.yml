@@ -1,0 +1,15 @@
+# For trying the web side on a PC (B31b) beside whatever else runs there: caddy listens on high ports instead of 80 and
+# 443 and makes a certificate of its own for `localhost` (PUBLIC_HOST=localhost). A browser or curl on this PC then
+# reaches the stack at https://localhost:18443. The api must know the origin the browser writes, port included.
+#   VMGS_PROJECT=vmgs-try VMGS_ENV_FILE=/path/to/try.env VMGS_COMPOSE_FILES=deploy/drills/local-web.yml \
+#     deploy/scripts/compose.sh up -d
+# In the .env: PUBLIC_HOST=localhost and COMPOSE_PROFILES=web. Remove everything after the try:
+#   ... compose.sh down --volumes --rmi local
+services:
+  api:
+    environment:
+      SITE_ORIGIN: https://localhost:18443
+  caddy:
+    ports: !override
+      - '127.0.0.1:18080:80'
+      - '127.0.0.1:18443:443'

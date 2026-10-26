@@ -25,6 +25,8 @@ interface RouteBase<P, B, Q = undefined> {
   readonly url: string;
   /** Without this the route needs a session. There is no other way to open a route. */
   readonly public?: true;
+  /** A probe that comes every few seconds: its requests are left out of the log while they go well. */
+  readonly quiet?: true;
   readonly params?: z.ZodType<P>;
   readonly body?: z.ZodType<B>;
   /** The query string; a name the contract does not know is a 400, like a wrong value. */
@@ -64,6 +66,7 @@ function register<P, B, Q>(
     method: spec.method,
     url: spec.url,
     config: { public: spec.public === true },
+    ...(spec.quiet === true ? { logLevel: 'warn' as const } : {}),
     handler: async (request, reply) => {
       const params = parseInput(spec.params, request.params);
       const body = parseInput(spec.body, request.body);
