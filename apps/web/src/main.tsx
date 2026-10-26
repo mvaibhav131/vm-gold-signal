@@ -4,7 +4,7 @@ import './styles.css';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
-import { loadApiClient } from './api/client';
+import { loadApiClient } from './api/loadClient';
 import { App } from './App';
 
 const container = document.getElementById('root');

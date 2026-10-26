@@ -157,12 +157,3 @@ export interface ApiClient {
   /** The SSE stream (GET /stream): every event of 04_API_and_Notifications section 3. Returns the unsubscribe function. */
   subscribe(listener: (event: SseEvent) => void): () => void;
 }
-
-export async function loadApiClient(): Promise<ApiClient> {
-  if (import.meta.env.VITE_DATA_SOURCE === 'live') {
-    throw new Error('The live API is wired in phase U5. Use the mock data source until then.');
-  }
-  // Loaded on demand, so a live build can leave the mock data out of the bundle (phase U5).
-  const { createMockClient } = await import('../mocks/mockClient');
-  return createMockClient();
-}
