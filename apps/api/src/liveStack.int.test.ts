@@ -15,6 +15,10 @@ import { startSeedWorld, type SeedWorld } from './testing/seedWorld';
  */
 const enabled = process.env.VMGS_LIVE_STACK === '1';
 
+/** The example key of the web-push documentation: a public value, good for a stack that never sends a real push. */
+const VAPID_PUBLIC =
+  'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM';
+
 let api: PgApi | null = null;
 let world: SeedWorld | null = null;
 
@@ -29,7 +33,7 @@ describe.skipIf(!enabled)('the live stack for the browser', () => {
     async () => {
       const site = process.env.VMGS_LIVE_SITE ?? 'http://127.0.0.1:4174';
       const port = Number(process.env.VMGS_LIVE_PORT ?? 3000);
-      api = await startPgApi({ siteOrigin: site });
+      api = await startPgApi({ siteOrigin: site, vapidPublicKey: VAPID_PUBLIC });
       // the service lives in real time, like the one on the VM
       api.clock.now = Date.now();
       const clock = api.clock;

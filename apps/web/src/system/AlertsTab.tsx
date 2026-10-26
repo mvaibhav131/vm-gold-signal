@@ -16,6 +16,8 @@ import { useMutation } from '@tanstack/react-query';
 import { useApi } from '../api/context';
 import { ApiError } from '../api/client';
 import { QueryBoundary, Section } from '../components/page';
+import { enableProblemText, type PushState } from '../push/state';
+import { usePushDevice } from '../push/usePush';
 import { useUpdateSettings } from '../data/mutations';
 import { useSettings } from '../data/queries';
 import { IMPACT_LABELS, TOPIC_LABELS } from '../format/news';
@@ -111,8 +113,41 @@ function TelegramSection({ settings, save }: { settings: Settings; save: Patch }
   );
 }
 
+/** What the section says about this device, in words that say what to do. */
+function pushNote(state: PushState): string {
+  switch (state.kind) {
+    case 'preview':
+      return 'Web Push does not work in the preview: it needs the live app and a server with VAPID keys.';
+    case 'checking':
+      return 'Looking at this device…';
+    case 'failed':
+      return 'The state of Web Push could not be read. Reload the page to try again.';
+    case 'needs-install':
+      return 'On an iPhone or iPad Web Push works only for an app on the Home Screen. In Safari, choose Share, then Add to Home Screen, and open the app from there.';
+    case 'unsupported':
+      return 'This browser cannot receive Web Push. Telegram still works.';
+    case 'not-set-up':
+      return 'Web Push is not set up on the server: it has no VAPID keys. The steps are in deploy/README.md, section 6.';
+    case 'blocked':
+      return 'Notifications are blocked for this site. Allow them in the settings of the browser, then subscribe this device.';
+    case 'off':
+      return state.devices === 0
+        ? 'No device is subscribed. Subscribe this device to get alerts here.'
+        : `This device is not subscribed. ${String(state.devices)} other device${state.devices === 1 ? '' : 's'} receive Web Push.`;
+    case 'on':
+      return `This device is subscribed. ${String(state.devices)} device${state.devices === 1 ? '' : 's'} in all receive Web Push.`;
+    case 'lost':
+      return 'This browser holds a subscription that the server does not know any more. Unsubscribe this device and subscribe it again.';
+  }
+}
+
 function WebPushSection({ settings, save }: { settings: Settings; save: Patch }) {
+  const api = useApi();
   const push = settings.alerts.webpush;
+  const { state, enable, disable, canTest } = usePushDevice();
+  const test = useMutation({ mutationFn: () => api.sendTestNotification({ channel: 'webpush' }) });
+  const testable =
+    canTest && (state.kind === 'on' || state.kind === 'off' || state.kind === 'lost');
   return (
     <Section title="Web Push" description="Alerts on this phone or computer, without Telegram.">
       <Stack gap="md">
@@ -137,17 +172,75 @@ function WebPushSection({ settings, save }: { settings: Settings; save: Patch })
           data-testid="alerts-webpush-grade"
         />
         <Group gap="sm">
-          <Button variant="default" disabled data-testid="alerts-webpush-subscribe">
-            Subscribe this device
-          </Button>
-          <Button variant="default" disabled data-testid="alerts-webpush-test">
+          {state.kind === 'on' || state.kind === 'lost' ? (
+            <Button
+              variant="default"
+              loading={disable.isPending}
+              onClick={() => {
+                enable.reset();
+                disable.mutate();
+              }}
+              data-testid="alerts-webpush-unsubscribe"
+            >
+              Unsubscribe this device
+            </Button>
+          ) : (
+            <Button
+              variant="default"
+              disabled={state.kind !== 'off'}
+              loading={enable.isPending}
+              onClick={() => {
+                disable.reset();
+                enable.mutate();
+              }}
+              data-testid="alerts-webpush-subscribe"
+            >
+              Subscribe this device
+            </Button>
+          )}
+          <Button
+            variant="default"
+            disabled={!testable}
+            loading={test.isPending}
+            onClick={() => {
+              test.mutate();
+            }}
+            data-testid="alerts-webpush-test"
+          >
             Send test notification
           </Button>
         </Group>
         <Text size="sm" c="dimmed" data-testid="alerts-webpush-note">
-          Subscribing a device needs the service worker of the app, which is built in phase U6.
-          Until then no device can receive Web Push, and these two buttons stay off.
+          {pushNote(state)}
         </Text>
+        {enable.isError && (
+          <Text size="sm" role="alert" className="text-negative" data-testid="alerts-webpush-error">
+            {enableProblemText(enable.error)}
+          </Text>
+        )}
+        {disable.isError && (
+          <Text size="sm" role="alert" className="text-negative" data-testid="alerts-webpush-error">
+            This device could not be unsubscribed. Try again.
+          </Text>
+        )}
+        {test.isSuccess && (
+          <Text size="sm" role="status" data-testid="alerts-webpush-result">
+            Test notification queued ({test.data.eventKey}). It reaches the subscribed devices
+            within a few seconds.
+          </Text>
+        )}
+        {test.isError && (
+          <Text
+            size="sm"
+            role="alert"
+            className="text-negative"
+            data-testid="alerts-webpush-result"
+          >
+            {test.error instanceof ApiError
+              ? test.error.message
+              : 'The test notification could not be queued.'}
+          </Text>
+        )}
       </Stack>
     </Section>
   );

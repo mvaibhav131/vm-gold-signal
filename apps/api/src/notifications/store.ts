@@ -31,6 +31,8 @@ export interface PushStore {
   subscribe(input: PushSubscriptionInput): Promise<void>;
   /** An endpoint that is not there is not an error. */
   unsubscribe(endpoint: string): Promise<void>;
+  /** How many devices are subscribed. */
+  countSubscriptions(): Promise<number>;
 }
 
 /** The SQLSTATE of a failed statement and nothing else: the message of a database error may quote the values (the endpoint). */
@@ -76,6 +78,17 @@ export class PostgresNotificationStore implements NotificationStore, PushStore {
       );
     } catch (error) {
       throw withoutValues(error, 'the push subscription could not be saved');
+    }
+  }
+
+  async countSubscriptions(): Promise<number> {
+    try {
+      const { rows } = await this.pool.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM push_subscriptions',
+      );
+      return rows[0]?.n ?? 0;
+    } catch (error) {
+      throw withoutValues(error, 'the push subscriptions could not be counted');
     }
   }
 

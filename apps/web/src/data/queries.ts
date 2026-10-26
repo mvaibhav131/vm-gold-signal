@@ -34,6 +34,9 @@ export const KEYS = {
   /** Health, incidents, storage and latency of the System screen. */
   system: ['system'],
   sessions: ['auth', 'sessions'],
+  /** What the server says about Web Push (the public key and the devices), and what this browser holds. */
+  pushStatus: ['push', 'status'],
+  pushDevice: ['push', 'device'],
   strategyConfig: ['strategies', 'config'],
   candles: ['candles'],
 } as const;

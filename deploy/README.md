@@ -196,6 +196,15 @@ pnpm e2e:stack
 
 It only reads: it logs in, opens the twelve screens and tabs, looks at the headers, watches the price move and logs out, and it fails on any console error, refused request or `Could not load`. Run it from your PC against the VM after the first deploy, and again after each release.
 
+**Web Push on your phone (U6).** The app installs from the browser and can show alerts like any other app; Telegram stays the reliable channel, Web Push is the second. What is tested here is everything up to the push service; the last step, a real push on a real phone, is yours:
+
+1. Make the keys, once: `sudo /opt/vmgs/deploy/scripts/compose.sh run --rm --no-deps -T worker node --import tsx src/cli/main.ts vapid:generate`. It prints three lines. Put them in the `.env` (change the subject to a `mailto:` address of yours), then `sudo /opt/vmgs/deploy/scripts/deploy.sh`. The private key is printed once and belongs in the `.env` only.
+2. Open System, Alerts, Web Push. It must say "No device is subscribed", not "not set up on the server".
+3. On the phone, open the site and install it. Android (Chrome): the menu, then Install app. iPhone or iPad (Safari, iOS 16.4 or newer): Share, then Add to Home Screen, and open the app from the Home Screen: **Web Push does not exist on an iPhone for a page that is only in a Safari tab**, and the section says so.
+4. In the installed app: System, Alerts, Subscribe this device, and allow notifications. It must say "This device is subscribed".
+5. Send test notification. Within a few seconds a notification "TEST: Delivery works. Nothing here is a signal." must appear, and a tap must open the app. Switch on "Web Push alerts" (and choose the minimum grade) so that signals reach the phone too: the test goes out whatever the switch says.
+6. If nothing comes: check that the phone is online and that notifications are allowed for the app in the settings of the phone. A device that the push service has dropped (it answered `404` or `410`) is removed by the worker; the section then says that the server does not know this browser's subscription: Unsubscribe this device, then subscribe again. The delivery of every message (status, attempts, last error) is a row of `notification_outbox`. Android may hold the notifications of an app that has been closed for long when the battery saver is on.
+
 ## 7. What was checked where
 
 Checked on a PC with Docker (project `vmgs-b31test`, nothing else touched): image build, migrations and role passwords,
@@ -220,6 +229,8 @@ key; the container of the api as `node`, read-only, no capability; the profile `
 and `worker`; `shellcheck` on every script. The run found and fixed: a Caddy `Cache-Control` on top of the api's
 (twice), a missing file under `/assets` answered with the index (a tab of an older release would get a page as its
 script), and the request log writing the address of the client (it now holds the method, the path and the status).
+
+For U6, in the same way (project `vmgs-u6test`): `vapid:generate` run in the image, its three lines in the `.env`, and `pnpm e2e:stack` with six scenarios: the type of the manifest, the icons, the worker over HTTPS (Chromium needs `--ignore-certificate-errors` for the certificate of the drill: it does not hear the setting of Playwright when it fetches a worker), and the Web Push section reading the key through Caddy. A real push to a real phone was not tried: that is the list above.
 
 For U5c, in the same way (project `vmgs-u5ctest`): the web image built with the default `live` (no mock data in the bundle), the stack up with the real worker on the real feed, the owner made from a pipe, and `pnpm e2e:stack` in Chromium against Caddy: its headers and policy (no violation), all twelve screens with real headlines, the real calendar and the real price, the price moving through the proxy, the worker's heartbeat, and the logout. Removed afterwards (containers, volumes, images, network).
 

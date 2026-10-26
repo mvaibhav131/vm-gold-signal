@@ -6,6 +6,7 @@ import type { Pool } from 'pg';
 import {
   notificationTestRequestSchema,
   notificationTestResponseSchema,
+  pushStatusResponseSchema,
   pushSubscribeRequestSchema,
   pushUnsubscribeRequestSchema,
 } from '@vmgs/contracts';
@@ -21,6 +22,8 @@ const API_BASE = '/api/v1';
 export interface NotificationDeps {
   readonly notifications: NotificationStore;
   readonly push: PushStore;
+  /** The public VAPID key of the server (the one the browsers subscribe with), or null when Web Push is not set up. */
+  readonly vapidPublicKey: string | null;
   /** The language and the time zone of the test message are the ones of the settings of that moment. */
   readonly settings: Pick<SettingsStore, 'read'>;
   readonly now: () => number;
@@ -31,13 +34,20 @@ export interface NotificationDeps {
 export function postgresNotificationDeps(
   pool: Pick<Pool, 'query' | 'connect'>,
   now: () => number,
+  vapidPublicKey: string | null = null,
 ): NotificationDeps {
   const store = new PostgresNotificationStore(pool);
-  return { notifications: store, push: store, settings: new PostgresSettingsStore(pool), now };
+  return {
+    notifications: store,
+    push: store,
+    vapidPublicKey,
+    settings: new PostgresSettingsStore(pool),
+    now,
+  };
 }
 
 /**
- * `POST /notifications/test` and the Web Push subscription (04 sections 2 and 5).
+ * `POST /notifications/test`, `GET /push/status` and the Web Push subscription (04 sections 2 and 5).
  *
  * The test message is built by the same functions as `pnpm cli telegram:test` and goes into the outbox the same way
  * (event key `test:<uuid>`, kind `TEST`, an hour to live), so the worker's sender delivers it and labels it as a test.
@@ -85,6 +95,18 @@ export function registerNotificationRoutes(app: FastifyInstance, deps: Notificat
       }
       return { eventKey };
     },
+  });
+
+  // The public key is not a secret (every browser that subscribes is given it), but the route is private like the others:
+  // only the owner has a reason to ask.
+  jsonRoute(app, {
+    method: 'GET',
+    url: `${API_BASE}/push/status`,
+    response: pushStatusResponseSchema,
+    handler: async () => ({
+      publicKey: deps.vapidPublicKey,
+      devices: await deps.push.countSubscriptions(),
+    }),
   });
 
   emptyRoute(app, {

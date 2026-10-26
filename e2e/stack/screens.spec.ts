@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { bodyText, expectNoProblems, openScreen, watch } from '../live/support';
+import { expectInstallable, expectWorkerThatCachesNothing } from '../pwa-checks';
 
 // The site on a running stack, read only (see playwright.stack.config.ts). What a browser can tell that a request cannot: the
 // headers of Caddy and its policy for scripts and styles (a page that the policy breaks is blank, with an error in the console),
@@ -89,6 +90,32 @@ test('the price of the status bar moves: the event stream reaches the browser th
   const first = await price.innerText();
   await expect.poll(() => price.innerText(), { timeout: 90_000 }).not.toBe(first);
   await expect(chip).toHaveText(/^(FRESH|WARMING UP)/);
+});
+
+test('the app can be installed: a manifest of the right type, real icons, and a worker that caches nothing', async ({
+  page,
+}) => {
+  await page.goto('/login');
+  await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
+  await expectInstallable(page, { manifestType: /^application\/manifest\+json/ });
+  await expectWorkerThatCachesNothing(page);
+  // the worker is checked at every visit, so that a new release reaches the phone
+  const worker = await page.request.get('/sw.js');
+  expect(worker.headers()['cache-control']).toBe('no-cache');
+  expect(worker.headers()['content-type']).toMatch(/javascript/);
+});
+
+test('the Web Push section knows what this browser and the server can do, whichever it is', async ({
+  page,
+}) => {
+  await logIn(page);
+  await openScreen(page, '/system?tab=alerts', 'System');
+  const note = page.getByTestId('alerts-webpush-note');
+  await expect(note).not.toContainText(/Looking at this device|could not be read|preview/);
+  // set up on the server or not, it is said in words
+  await expect(note).toContainText(
+    /No device is subscribed|not set up on the server|subscribed|blocked/,
+  );
 });
 
 test('the worker is heard from, and the owner can log out', async ({ page }) => {

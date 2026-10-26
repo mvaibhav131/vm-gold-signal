@@ -32,6 +32,9 @@ import type {
   OverviewQuery,
   OverviewResponse,
   PasswordChangeRequest,
+  PushStatusResponse,
+  PushSubscribeRequest,
+  PushUnsubscribeRequest,
   SessionsResponse,
   Settings,
   SettingsPatch,
@@ -143,6 +146,12 @@ export interface ApiClient {
   updateStrategy(key: StrategyKey, patch: StrategyPatch): Promise<StrategyInfo>;
   /** POST /notifications/test: queues a message that says it is a test. */
   sendTestNotification(request: NotificationTestRequest): Promise<NotificationTestResponse>;
+  /** GET /push/status: the public VAPID key to subscribe with (null: Web Push is not set up on the server) and the number of devices. */
+  getPushStatus(): Promise<PushStatusResponse>;
+  /** POST /push/subscribe: the same endpoint again updates its keys. */
+  subscribePush(request: PushSubscribeRequest): Promise<void>;
+  /** DELETE /push/subscribe: an endpoint that is not there is not an error. */
+  unsubscribePush(request: PushUnsubscribeRequest): Promise<void>;
 
   // Security
   /** POST /auth/password. Fails with `ApiError` 403 `wrong_password` when the current password is wrong. */

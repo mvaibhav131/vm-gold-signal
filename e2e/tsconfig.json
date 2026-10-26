@@ -8,6 +8,7 @@
     "tests",
     "live",
     "stack",
+    "pwa-checks.ts",
     "playwright.config.ts",
     "live-config.ts",
     "playwright.live.config.ts",

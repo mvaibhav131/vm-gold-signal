@@ -54,6 +54,7 @@ import {
   type NewsStateResponse,
   type NotificationTestRequest,
   type NotificationTestResponse,
+  type PushStatusResponse,
   type OpenSignalsResponse,
   type OverviewQuery,
   type OverviewResponse,
@@ -693,6 +694,19 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
     async getSystemLatency(): Promise<SystemLatency> {
       await wait();
       return latencyAt(scenario.systemWarning === true);
+    },
+
+    // The preview has no service worker with a server behind it: Web Push is off (no key), and the screen says so.
+    async getPushStatus(): Promise<PushStatusResponse> {
+      await wait();
+      return { publicKey: null, devices: 0 };
+    },
+    async subscribePush(): Promise<void> {
+      await wait();
+      throw new ApiError(409, 'push_not_set_up', 'Web Push is not set up in the preview.');
+    },
+    async unsubscribePush(): Promise<void> {
+      await wait();
     },
 
     async sendTestNotification(

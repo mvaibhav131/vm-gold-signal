@@ -103,7 +103,20 @@ export const pushSubscribeRequestSchema = z.strictObject({
   keys: z.strictObject({ p256dh: base64UrlSchema, auth: base64UrlSchema }),
   userAgent: z.string().max(300).optional(),
 });
+export type PushSubscribeRequest = z.infer<typeof pushSubscribeRequestSchema>;
+
+/** GET /push/status: what a browser needs before it can subscribe (the public VAPID key) and how many devices are subscribed. */
+export const pushStatusResponseSchema = z.strictObject({
+  /** The application server key of the server, or null when the owner has not set up Web Push (no VAPID keys). */
+  publicKey: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{87}$/, 'VAPID public key (87 base64url characters)')
+    .nullable(),
+  devices: countSchema,
+});
+export type PushStatusResponse = z.infer<typeof pushStatusResponseSchema>;
 
 export const pushUnsubscribeRequestSchema = z.strictObject({
   endpoint: z.url({ protocol: /^https$/ }).max(2048),
 });
+export type PushUnsubscribeRequest = z.infer<typeof pushUnsubscribeRequestSchema>;

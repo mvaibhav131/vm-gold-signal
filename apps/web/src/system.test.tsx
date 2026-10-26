@@ -1108,11 +1108,13 @@ describe('the alerts tab', () => {
     );
   });
 
-  it('keeps the Web Push buttons off until the app can subscribe a device, and says why', async () => {
+  it('keeps the Web Push buttons off in the preview, and says why (the live cases are in push.test.tsx)', async () => {
     await open('/system?tab=alerts');
     expect(await screen.findByTestId('alerts-webpush-subscribe')).toBeDisabled();
     expect(screen.getByTestId('alerts-webpush-test')).toBeDisabled();
-    expect(screen.getByTestId('alerts-webpush-note')).toHaveTextContent('built in phase U6');
+    expect(screen.getByTestId('alerts-webpush-note')).toHaveTextContent(
+      'does not work in the preview',
+    );
   });
 
   it('says that the settings could not be loaded, and loads them on a retry', async () => {

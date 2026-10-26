@@ -304,6 +304,7 @@ describe('every endpoint', () => {
       (c) => c.getStrategyConfig('trend_pullback'),
       '/strategies/trend_pullback/config',
     ],
+    ['getPushStatus', (c) => c.getPushStatus(), '/push/status'],
     ['getSessions', (c) => c.getSessions(), '/auth/sessions'],
     ['me', (c) => c.me(), '/auth/me'],
   ];
@@ -338,6 +339,27 @@ describe('every endpoint', () => {
       'POST',
       '/notifications/test',
       { channel: 'telegram' },
+    ],
+    [
+      'subscribePush',
+      (c) =>
+        c.subscribePush({
+          endpoint: 'https://push.example.org/send/abc',
+          keys: { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) },
+        }),
+      'POST',
+      '/push/subscribe',
+      {
+        endpoint: 'https://push.example.org/send/abc',
+        keys: { p256dh: 'p'.repeat(20), auth: 'a'.repeat(16) },
+      },
+    ],
+    [
+      'unsubscribePush',
+      (c) => c.unsubscribePush({ endpoint: 'https://push.example.org/send/abc' }),
+      'DELETE',
+      '/push/subscribe',
+      { endpoint: 'https://push.example.org/send/abc' },
     ],
     ['setupTotp', (c) => c.setupTotp(), 'POST', '/auth/totp/setup', undefined],
     [

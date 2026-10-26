@@ -59,7 +59,12 @@ export interface PgApi {
  * at `T0` of the test harness.
  */
 export async function startPgApi(
-  options: { streamIntervals?: StreamSetup['intervals']; siteOrigin?: string } = {},
+  options: {
+    streamIntervals?: StreamSetup['intervals'];
+    siteOrigin?: string;
+    /** The public VAPID key the server hands to browsers that subscribe to Web Push. */
+    vapidPublicKey?: string;
+  } = {},
 ): Promise<PgApi> {
   const site = options.siteOrigin ?? SITE;
   const database = await migratedDatabase();
@@ -87,6 +92,7 @@ export async function startPgApi(
         pool: apiPool,
         now: () => clock.now,
         expectedMigration,
+        ...(options.vapidPublicKey === undefined ? {} : { vapidPublicKey: options.vapidPublicKey }),
         ...(options.streamIntervals === undefined
           ? {}
           : { streamIntervals: options.streamIntervals }),

@@ -18,6 +18,7 @@ import {
   notificationTestResponseSchema,
   openSignalsResponseSchema,
   overviewResponseSchema,
+  pushStatusResponseSchema,
   sessionsResponseSchema,
   settingsSchema,
   signalDetailSchema,
@@ -330,6 +331,9 @@ export function createHttpClient(options: HttpClientOptions = {}): ApiClient {
     updateStrategy: (key, request) => patch(`/strategies/${id(key)}`, strategyInfoSchema, request),
     sendTestNotification: (request) =>
       post('/notifications/test', notificationTestResponseSchema, request),
+    getPushStatus: () => get('/push/status', pushStatusResponseSchema),
+    subscribePush: (request) => change('POST', '/push/subscribe', request),
+    unsubscribePush: (request) => change('DELETE', '/push/subscribe', request),
 
     changePassword: (request) => change('POST', '/auth/password', request),
     setupTotp: () => post('/auth/totp/setup', totpSetupResponseSchema),

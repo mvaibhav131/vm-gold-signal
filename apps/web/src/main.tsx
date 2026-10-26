@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 
 import { loadApiClient } from './api/loadClient';
 import { App } from './App';
+import { registerServiceWorker } from './push/register';
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('Missing #root element');
@@ -17,3 +18,5 @@ createRoot(container).render(
     <App client={client} />
   </StrictMode>,
 );
+
+registerServiceWorker();

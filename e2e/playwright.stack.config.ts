@@ -21,6 +21,10 @@ export default defineConfig({
     screenshot: 'off',
     video: 'off',
     trace: 'off',
+    // the service worker is fetched by the browser itself, which does not hear `ignoreHTTPSErrors`: the drill needs the flag
+    launchOptions: {
+      args: process.env.VMGS_STACK_INSECURE === '1' ? ['--ignore-certificate-errors'] : [],
+    },
   },
   projects: [
     {

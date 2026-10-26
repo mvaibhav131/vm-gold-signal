@@ -154,8 +154,12 @@ const five = marketCandles('2026-10-05T00:00', '2026-10-23T12:30', 12).map((c) =
   c: Math.round(c.c * 1000) / 1000,
 }));
 
+const VAPID_PUBLIC =
+  'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM';
+
 beforeAll(async () => {
   api = await startPgApi({
+    vapidPublicKey: VAPID_PUBLIC,
     streamIntervals: { marketMs: 100, idleMs: 300, signalMs: 100, newsMs: 300, healthMs: 300 },
   });
   world = await startSeedWorld(api);
@@ -460,6 +464,28 @@ describe('the live client on the real API', () => {
       code: 'no_push_subscription',
     });
     expect((await client.sendTestNotification({ channel: 'telegram' })).eventKey).toMatch(/^test:/);
+  });
+
+  it('subscribes a device to Web Push, queues a test for it, and takes the device away again', async () => {
+    const endpoint = 'https://push.example.org/send/client-contract-device';
+    const keys = {
+      p256dh:
+        'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM',
+      auth: 'tBHItJI5svbpez7KI4CCXg',
+    };
+    expect(await client.getPushStatus()).toEqual({ publicKey: VAPID_PUBLIC, devices: 0 });
+
+    await client.subscribePush({ endpoint, keys, userAgent: 'client contract test' });
+    await client.subscribePush({ endpoint, keys }); // the same device again is still one
+    expect(await client.getPushStatus()).toEqual({ publicKey: VAPID_PUBLIC, devices: 1 });
+    expect((await client.sendTestNotification({ channel: 'webpush' })).eventKey).toMatch(/^test:/);
+
+    await client.unsubscribePush({ endpoint });
+    await client.unsubscribePush({ endpoint }); // an endpoint that is not there is not an error
+    expect((await client.getPushStatus()).devices).toBe(0);
+    expect(
+      await failure(client.subscribePush({ endpoint: 'http://push.example.org/plain', keys })),
+    ).toMatchObject({ status: 400, code: 'invalid_request' });
   });
 
   it('pauses and resumes the engine, and the stream tells the page the engine changed', async () => {

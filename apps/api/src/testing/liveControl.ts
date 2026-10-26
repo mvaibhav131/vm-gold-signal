@@ -24,6 +24,7 @@ interface Reply {
  *   POST /signal/new?side=&strategy=   a new open signal, made now; answers { id, seq }
  *   POST /signal/<id>/tp1|win|loss     moves that signal as the tracker would
  *   POST /sessions/revoke-all     ends every session (each scenario that logs in starts one, and the list of sessions shows them all)
+ *   POST /outbox/last             the newest row of the outbox (channel, kind, payload): what the API queued for the worker to send
  *   POST /throttle/reset          forgets the failed logins (a scenario that fails on purpose leaves the owner as it found him)
  */
 export function startLiveControl(options: {
@@ -51,6 +52,12 @@ export function startLiveControl(options: {
     if (area === 'throttle' && what === 'reset') {
       await api.admin.query('DELETE FROM login_attempts WHERE NOT success');
       return { status: 200, body: { reset: true } };
+    }
+    if (area === 'outbox' && what === 'last') {
+      const { rows } = await api.admin.query<{ channel: string; kind: string; payload: unknown }>(
+        'SELECT channel, kind, payload FROM notification_outbox ORDER BY created_at DESC LIMIT 1',
+      );
+      return { status: 200, body: rows[0] ?? null };
     }
     if (area === 'sessions' && what === 'revoke-all') {
       await api.admin.query('UPDATE auth_sessions SET revoked_at = $1 WHERE revoked_at IS NULL', [

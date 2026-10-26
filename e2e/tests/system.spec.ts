@@ -342,7 +342,9 @@ test.describe('E12 system: alerts', () => {
     await openSystem(page, { tab: 'alerts' });
     await expect(page.getByTestId('alerts-webpush-subscribe')).toBeDisabled();
     await expect(page.getByTestId('alerts-webpush-test')).toBeDisabled();
-    await expect(page.getByTestId('alerts-webpush-note')).toContainText('built in phase U6');
+    await expect(page.getByTestId('alerts-webpush-note')).toContainText(
+      'does not work in the preview',
+    );
   });
 });
 

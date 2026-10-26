@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { notificationTestResponseSchema, pushSubscribeRequestSchema } from '@vmgs/contracts';
+import {
+  notificationTestResponseSchema,
+  pushStatusResponseSchema,
+  pushSubscribeRequestSchema,
+} from '@vmgs/contracts';
 import { defaultSettings } from '@vmgs/config';
 
 import { startPgApi, type PgApi } from '../testing/pgApi';
@@ -9,8 +13,11 @@ import { T0 } from '../testing/harness';
 const HOUR = 3_600_000;
 let api: PgApi;
 
+const VAPID_PUBLIC =
+  'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM';
+
 beforeAll(async () => {
-  api = await startPgApi();
+  api = await startPgApi({ vapidPublicKey: VAPID_PUBLIC });
 });
 
 afterAll(async () => {
@@ -174,6 +181,35 @@ describe('POST /notifications/test on Postgres', () => {
     });
     expect(reply.statusCode).toBe(401);
     expect(await outboxRows()).toHaveLength(0);
+  });
+});
+
+describe('GET /push/status on Postgres', () => {
+  const status = () => api.send({ url: '/api/v1/push/status' });
+
+  it('counts the subscribed devices as they come and go, and gives the key of the server', async () => {
+    const none = await status();
+    expect(none.status, none.body).toBe(200);
+    expect(pushStatusResponseSchema.parse(none.json())).toEqual({
+      publicKey: VAPID_PUBLIC,
+      devices: 0,
+    });
+
+    await subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    await subscribe({ endpoint: 'https://push.example.org/send/second-device-0002', keys: KEYS });
+    expect((await status()).json()).toEqual({ publicKey: VAPID_PUBLIC, devices: 2 });
+    // the same device again is one device
+    await subscribe({ endpoint: ENDPOINT, keys: KEYS });
+    expect(pushStatusResponseSchema.parse((await status()).json()).devices).toBe(2);
+
+    await unsubscribe({ endpoint: ENDPOINT });
+    expect(pushStatusResponseSchema.parse((await status()).json()).devices).toBe(1);
+  });
+
+  it('is refused without a session, and says nothing of the key', async () => {
+    const reply = await api.anonymous('/api/v1/push/status');
+    expect(reply.status).toBe(401);
+    expect(reply.body).not.toContain(VAPID_PUBLIC);
   });
 });
 

@@ -38,7 +38,13 @@ async function main(): Promise<void> {
     siteOrigin: siteOriginOf(env),
     trustedProxyHops: env.API_TRUSTED_PROXY_HOPS,
     routes: (instance) => {
-      registerApiRoutes(instance, { pool, now: Date.now, expectedMigration, log });
+      registerApiRoutes(instance, {
+        pool,
+        now: Date.now,
+        expectedMigration,
+        log,
+        vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
+      });
     },
     logger: apiLoggerOptions(env.LOG_LEVEL),
   });

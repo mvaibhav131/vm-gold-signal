@@ -7,6 +7,7 @@ import {
   EnvError,
 } from '@vmgs/config';
 import { createPool } from '@vmgs/db';
+import webpush from 'web-push';
 
 import { WORKER_ALIVE_MAX_AGE_MS, isFresh, workerHeartbeatAgeMs } from './alive';
 import { COUNTS_SQL, checkBackup, countsOf, type Counts } from './manifest';
@@ -30,11 +31,12 @@ export const OPS_COMMANDS = [
   'backup:counts',
   'backup:plan',
   'backup:check',
+  'vapid:generate',
 ] as const;
 
 export const OPS_USAGE =
   'db:migrate | worker:alive [max-age-seconds] | env:check [worker|admin|backup|api]... | ' +
-  'backup:counts [ENV_VAR] | backup:plan | backup:check manifest.json restored.json live.json';
+  'backup:counts [ENV_VAR] | backup:plan | backup:check manifest.json restored.json live.json | vapid:generate';
 
 const SCHEMAS = {
   worker: workerEnvSchema,
@@ -110,6 +112,16 @@ export async function runOps(
           ? 'no role password set'
           : `login set for ${result.roles.join(', ')}`,
       );
+      return 0;
+    }
+
+    case 'vapid:generate': {
+      // The keys that Web Push is set up with (04 section 5): a new pair, and the line for the subject to fill in. Needs no
+      // database and no .env. The private key is printed once, here: it goes into the .env and nowhere else.
+      const keys = webpush.generateVAPIDKeys();
+      io.print(`VAPID_PUBLIC_KEY=${keys.publicKey}`);
+      io.print(`VAPID_PRIVATE_KEY=${keys.privateKey}`);
+      io.print('VAPID_SUBJECT=mailto:you@example.com');
       return 0;
     }
 

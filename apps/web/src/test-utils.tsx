@@ -6,6 +6,7 @@ import { RouterProvider } from 'react-router/dom';
 import type { ApiClient } from './api/client';
 import { AppProviders } from './AppProviders';
 import { MOCK_PASSWORD, MOCK_USERNAME, createMockClient } from './mocks/mockClient';
+import { PushEnvContext, type PushEnv } from './push/env';
 import { appRoutes } from './routes';
 
 export function memoryStorage() {
@@ -22,15 +23,17 @@ export function memoryStorage() {
 }
 
 /** Renders the whole app on an in-memory router, with a mock client that answers at once. */
-export function renderApp(options: { client?: ApiClient; route?: string } = {}) {
+export function renderApp(options: { client?: ApiClient; route?: string; pushEnv?: PushEnv } = {}) {
   const client =
     options.client ??
     createMockClient({ storage: memoryStorage(), latencyMs: 0, quoteIntervalMs: 60_000 });
   const router = createMemoryRouter(appRoutes, { initialEntries: [options.route ?? '/'] });
   render(
-    <AppProviders client={client}>
-      <RouterProvider router={router} />
-    </AppProviders>,
+    <PushEnvContext.Provider value={options.pushEnv ?? null}>
+      <AppProviders client={client}>
+        <RouterProvider router={router} />
+      </AppProviders>
+    </PushEnvContext.Provider>,
   );
   return { client, router };
 }

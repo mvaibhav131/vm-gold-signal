@@ -99,6 +99,7 @@ The figures of the overview, the monthly rows, the breakdowns and the equity cur
 | `GET /system/latency` | p50 and p95 for feed lag, candle-to-signal, DB commit, notification dispatch. |
 | `GET /settings`, `PATCH /settings` | `{displayTz, locale: en|hinglish, alerts: {telegram: {enabled, minGrade, kinds[]}, webpush: {enabled, minGrade}}, advisoryGates: {newsWindow, rollover, offHours, nearLevel: warn or block}, strategyAlerts: {<key>: on or off}, newsAlerts: {minImpact, topics: {<topic>: on or off}, marketMoves: on or off}}`. |
 | `POST /notifications/test` `{channel}` | Queues a clearly labelled test message. |
+| `GET /push/status` | `{publicKey: string|null, devices: int}`: the public VAPID key that a browser subscribes with (null when the server has no VAPID keys) and how many devices are subscribed. Private like the rest. |
 | `POST /push/subscribe`, `DELETE /push/subscribe` | Web Push subscription management. |
 
 ### Health
@@ -399,6 +400,14 @@ A win means net R above zero after costs. Time exits count as wins or losses by 
 - TTL 180 s for `SIGNAL_NEW` (same validity as the entry), urgency high. Results use TTL 6 h.
 - VAPID keys live in `.env`. The service worker handles push and notification click only; it does not cache API responses.
 - iPhone and iPad need the PWA installed to the home screen before Web Push works. Telegram is the reliable primary channel.
+
+### As built (U6)
+
+- **The keys.** `pnpm cli vapid:generate` (in the container: `compose.sh run --rm --no-deps -T worker node --import tsx src/cli/main.ts vapid:generate`) prints a new pair and a subject line to paste into the `.env`: `VAPID_PUBLIC_KEY` (87 base64url characters), `VAPID_PRIVATE_KEY` (43) and `VAPID_SUBJECT` (`mailto:` or `https:`). The worker needs all three, the API only the public one (it hands it to the browser). With none of them Web Push is simply off and the page says so.
+- **The key reaches the browser** through `GET /push/status` (a browser must not need a build with the key in it). The page asks for it when the owner presses Subscribe, turns it into bytes and calls `PushManager.subscribe({userVisibleOnly: true, applicationServerKey})`, then sends the endpoint and the two keys to `POST /push/subscribe`. If the server does not take the subscription the browser lets it go too, so the two never part by a failed call. Unsubscribing tells the server first and the browser after.
+- **The service worker** (`apps/web/public/sw.js`, registered at `/sw.js` with the scope `/` by production builds only) has four listeners: `install` and `activate` (take over at once), `push` and `notificationclick`. It has no `fetch` handler and no cache, so no answer of the API is stored on the device (E17 checks both). A push is JSON `{title, body, url, tag}`; a push that cannot be read is still shown, with a plain text, because a browser that gets a push and shows nothing puts up a notification of its own. The `tag` replaces an older message about the same signal and tells the owner again (`renotify`). The page to open is a path of this site: an address of another site becomes `/`. A tap focuses a window of the app and takes it to the page, or opens one.
+- **What the Web Push section says** (System, Alerts): the preview (no server), an iPhone or iPad that has not got the app on its Home Screen, a browser without Web Push, a server without keys, notifications blocked in the browser, a device that can subscribe, one that is subscribed (with the number of devices in all), and one that the server has forgotten (the push service said `404` or `410`): it offers to unsubscribe, then to subscribe again. The test button sends to every subscribed device and is off while the server holds none.
+- **Not built:** `pushsubscriptionchange` (a browser that replaces a subscription by itself). The server drops a dead one on its next `404` or `410`, and the owner subscribes again. Not tested here either: a real push service and a real phone (the manual test of `deploy/README.md`).
 
 ## 6. Outbox event keys
 

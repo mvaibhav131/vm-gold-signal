@@ -203,11 +203,16 @@ test.describe('alerts', () => {
     expectNoProblems(problems);
   });
 
-  test('the Web Push buttons stay off, and the note says why', async ({ page }) => {
+  test('the Web Push section says in words what this browser can do: the server has its keys, and a headless browser has no permission', async ({
+    page,
+  }) => {
     await logIn(page);
     await openTab(page, 'alerts');
+    // the headless shell of Chromium always says "denied"; the subscribing itself is run in seeded-2b-push.spec.ts
+    await expect(page.getByTestId('alerts-webpush-note')).toContainText(
+      'Notifications are blocked for this site',
+    );
     await expect(page.getByTestId('alerts-webpush-subscribe')).toBeDisabled();
-    await expect(page.getByTestId('alerts-webpush-note')).toContainText('built in phase U6');
   });
 });
 

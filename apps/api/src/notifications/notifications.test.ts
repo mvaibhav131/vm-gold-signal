@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { notificationTestResponseSchema } from '@vmgs/contracts';
+import { notificationTestResponseSchema, pushStatusResponseSchema } from '@vmgs/contracts';
 import { defaultSettings } from '@vmgs/config';
 import type { Settings } from '@vmgs/contracts';
 
@@ -28,6 +28,7 @@ class FakeStores implements NotificationStore, PushStore {
   removed: string[] = [];
   subscribers = 0;
   failure: Error | null = null;
+  devices = 0;
 
   queueTest(row: TestOutboxRow, now: number) {
     if (this.failure !== null) return Promise.reject(this.failure);
@@ -46,9 +47,19 @@ class FakeStores implements NotificationStore, PushStore {
     this.removed.push(endpoint);
     return Promise.resolve();
   }
+  countSubscriptions() {
+    if (this.failure !== null) return Promise.reject(this.failure);
+    return Promise.resolve(this.devices);
+  }
 }
 
-async function harness(stores: FakeStores, settings: Settings = defaultSettings()) {
+const VAPID_PUBLIC = 'B'.repeat(87);
+
+async function harness(
+  stores: FakeStores,
+  settings: Settings = defaultSettings(),
+  vapidPublicKey: string | null = null,
+) {
   let clock: Clock | null = null;
   let ids = 0;
   const h = await makeHarness({
@@ -57,6 +68,7 @@ async function harness(stores: FakeStores, settings: Settings = defaultSettings(
       registerNotificationRoutes(app, {
         notifications: stores,
         push: stores,
+        vapidPublicKey,
         settings: { read: () => Promise.resolve(settings) },
         now: () => c.now,
         newId: () => (ids++ === 0 ? ID : '11111111-2222-4333-8444-555555555555'),
@@ -159,6 +171,43 @@ describe('POST /notifications/test', () => {
     const reply = await h.send({ url: TEST, cookie, body: { channel: 'telegram' } });
     expect(reply.status).toBe(500);
     expect(reply.res.body).not.toContain('notification_outbox');
+  });
+});
+
+describe('GET /push/status', () => {
+  const STATUS = '/api/v1/push/status';
+
+  it('gives the public key of the server and the number of devices, and the key is null when Web Push is not set up', async () => {
+    const stores = new FakeStores();
+    stores.devices = 2;
+    const set = await harness(stores, defaultSettings(), VAPID_PUBLIC);
+    const reply = await set.h.send({ url: STATUS, cookie: set.cookie });
+    expect(reply.status).toBe(200);
+    expect(pushStatusResponseSchema.parse(reply.json())).toEqual({
+      publicKey: VAPID_PUBLIC,
+      devices: 2,
+    });
+
+    stores.devices = 0;
+    const bare = await harness(stores);
+    const none = await bare.h.send({ url: STATUS, cookie: bare.cookie });
+    expect(none.json()).toEqual({ publicKey: null, devices: 0 });
+  });
+
+  it('needs a session', async () => {
+    const { h } = await harness(new FakeStores(), defaultSettings(), VAPID_PUBLIC);
+    const reply = await h.send({ url: STATUS });
+    expect(reply.status).toBe(401);
+    expect(reply.res.body).not.toContain(VAPID_PUBLIC);
+  });
+
+  it('answers a failure of the store as a plain 500', async () => {
+    const stores = new FakeStores();
+    stores.failure = new Error('connection terminated');
+    const { h, cookie } = await harness(stores, defaultSettings(), VAPID_PUBLIC);
+    const reply = await h.send({ url: STATUS, cookie });
+    expect(reply.status).toBe(500);
+    expect(reply.res.body).not.toContain('connection');
   });
 });
 

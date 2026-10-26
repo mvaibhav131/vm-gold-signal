@@ -138,6 +138,37 @@ describe('env:check', () => {
   });
 });
 
+describe('vapid:generate', () => {
+  const pair = async () => {
+    const { io: fake, out } = io();
+    expect(await runOps('vapid:generate', [], {}, fake)).toBe(0);
+    return out;
+  };
+
+  it('prints a new pair of keys and the subject to fill in, three lines for the .env', async () => {
+    const out = await pair();
+    expect(out).toHaveLength(3);
+    expect(out[0]).toMatch(/^VAPID_PUBLIC_KEY=[A-Za-z0-9_-]{87}$/);
+    expect(out[1]).toMatch(/^VAPID_PRIVATE_KEY=[A-Za-z0-9_-]{43}$/);
+    expect(out[2]).toBe('VAPID_SUBJECT=mailto:you@example.com');
+  });
+
+  it('makes lines that the environment check of the worker accepts, as the three belong together', async () => {
+    const out = await pair();
+    const vapid = Object.fromEntries(
+      out.map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]),
+    );
+    const { io: fake, out: checked } = io();
+    expect(await runOps('env:check', ['worker'], { ...WORKER_ENV, ...vapid }, fake)).toBe(0);
+    expect(checked).toEqual(['OK worker']);
+  });
+
+  it('makes another pair every time, and is one of the commands that the CLI knows', async () => {
+    expect((await pair())[0]).not.toBe((await pair())[0]);
+    expect(OPS_COMMANDS).toContain('vapid:generate');
+  });
+});
+
 describe('backup:plan', () => {
   it('says what to keep, what to remove and what to leave alone', async () => {
     const stdin = [

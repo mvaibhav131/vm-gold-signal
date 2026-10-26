@@ -33,6 +33,8 @@ export interface ApiDeps {
   /** `false` leaves the stream's own work (the listener of the database, the timers) off: for tests that only walk the routes. */
   readonly background?: boolean;
   readonly streamIntervals?: StreamSetup['intervals'];
+  /** The public VAPID key (VAPID_PUBLIC_KEY) that browsers subscribe with; none when the owner has not set up Web Push. */
+  readonly vapidPublicKey?: string | null;
   /** Told once, when the stream is made (tests wait for its listener, and read its hub). */
   readonly onStream?: (stream: StreamHandle) => void;
 }
@@ -81,5 +83,8 @@ export function registerApiRoutes(app: FastifyInstance, deps: ApiDeps): void {
   registerNewsRoutes(app, { reader: news, now: deps.now });
   registerSystemRoutes(app, { reader: system, now: deps.now });
   registerSettingsRoutes(app, { store: new PostgresSettingsStore(deps.pool), now: deps.now });
-  registerNotificationRoutes(app, postgresNotificationDeps(deps.pool, deps.now));
+  registerNotificationRoutes(
+    app,
+    postgresNotificationDeps(deps.pool, deps.now, deps.vapidPublicKey ?? null),
+  );
 }

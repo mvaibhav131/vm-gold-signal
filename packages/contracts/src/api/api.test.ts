@@ -41,6 +41,7 @@ import {
   pageQueryShape,
   passwordChangeRequestSchema,
   problemSchema,
+  pushStatusResponseSchema,
   pushSubscribeRequestSchema,
   sessionsResponseSchema,
   settingsPatchSchema,
@@ -1097,6 +1098,24 @@ describe('push subscription', () => {
         keys: { ...subscription.keys, auth: 'a b c d e f g h i j k' },
       }),
     ).toBe(false);
+  });
+});
+
+describe('push status', () => {
+  const key = 'B'.repeat(87);
+
+  it('is the public key of the server, or null, and a count of devices', () => {
+    expect(ok(pushStatusResponseSchema, { publicKey: key, devices: 2 })).toBe(true);
+    expect(ok(pushStatusResponseSchema, { publicKey: null, devices: 0 })).toBe(true);
+  });
+
+  it('refuses a key that is not 87 characters of base64url, a negative or fractional count, and extra fields', () => {
+    expect(ok(pushStatusResponseSchema, { publicKey: 'B'.repeat(86), devices: 0 })).toBe(false);
+    expect(ok(pushStatusResponseSchema, { publicKey: `+`, devices: 0 })).toBe(false);
+    expect(ok(pushStatusResponseSchema, { publicKey: key, devices: -1 })).toBe(false);
+    expect(ok(pushStatusResponseSchema, { publicKey: key, devices: 1.5 })).toBe(false);
+    expect(ok(pushStatusResponseSchema, { publicKey: key })).toBe(false);
+    expect(ok(pushStatusResponseSchema, { publicKey: key, devices: 1, private: 'x' })).toBe(false);
   });
 });
 
