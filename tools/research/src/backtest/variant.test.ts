@@ -33,6 +33,11 @@ describe('parseAssignment', () => {
       expect(() => parseAssignment(text)).toThrow();
     },
   );
+
+  it('says an assignment with no path or no equals sign is not path=value', () => {
+    expect(() => parseAssignment('=5')).toThrow('"=5" is not path=value');
+    expect(() => parseAssignment('quality.min')).toThrow('"quality.min" is not path=value');
+  });
 });
 
 describe('variantOf', () => {
@@ -56,6 +61,12 @@ describe('variantOf', () => {
     expect(() => variantOf(BASE, ['quality.nope=1'], 1)).toThrow('no "quality.nope"');
     expect(() => variantOf(BASE, ['nothing.here=1'], 1)).toThrow('no "nothing"');
     expect(() => variantOf(BASE, ['quality.min.deeper=1'], 1)).toThrow();
+  });
+
+  it('does not go into a list on the way to a value: a list has no names to set', () => {
+    expect(() => variantOf(BASE, ['gates.stopAtr.0=1'], 1)).toThrow(
+      'there is no "stopAtr" in the config on the way to gates.stopAtr.0',
+    );
   });
 
   it('is checked by the config schema: a threshold below the lowest grade is refused', () => {

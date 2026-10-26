@@ -135,6 +135,19 @@ describe('simulateTrade: a SELL is followed on the ask', () => {
     expect(outcome).toMatchObject({ result: 'WIN', tp1Hit: true, tp2Hit: true });
     expect(outcome.realizedRGross).toBeCloseTo(1.5, 2);
   });
+
+  it('follows the ask low, not the bid low: a bid low at TP2 with the ask low above it is no win', () => {
+    // fill 999.95; TP1 995.9 and TP2 991.85 on the ask. A bid low of 991.8 is an ask low of 991.92: TP1 only
+    const bars = [
+      bar(0, 1000, 1000.2, 999.5, 999.6),
+      bar(1, 999.6, 999.7, 991.8, 992),
+      bar(2, 992, 992.1, 991.95, 992),
+    ];
+    expect(simulateTrade(plan, bars, spreadAt, A)).toEqual({
+      kind: 'UNFINISHED',
+      fillAt: plan.decidedAt,
+    });
+  });
 });
 
 describe('simulateTrade: the cost scenarios', () => {
@@ -205,5 +218,25 @@ describe('simulateTrade: the cost scenarios', () => {
     const result = simulateTrade(sell, bars, spreadAt, COST_SCENARIOS.C);
     // bid 1000 - (1000 - 999.4) / 3 = 999.8, fill 999.75; the next bar's ask high 1004.32 is through the stop
     expect(closed(result).realizedRGross).toBeCloseTo((999.75 - 1004) / 4.05, 2);
+  });
+
+  it('meets the open of a bar that falls exactly on the order, even with a bar less than a minute before it', () => {
+    const bars = [
+      bar(0, 1000, 1001, 999.5, 1000.5),
+      { ts: plan.decidedAt + 30_000, o: 1000.2, h: 1000.4, l: 1000, c: 1000.3 },
+      bar(2, 1000.3, 1000.5, 995.9, 996),
+    ];
+    const result = simulateTrade(plan, bars, spreadAt, { simSlippageUsd: 0.05, execDelaySec: 30 });
+    // the open of the bar at 30 s, not a half of the way to the high of the bar before it: 1000.2 + 0.12 + 0.05
+    expect(result).toMatchObject({ kind: 'CLOSED', fillAt: plan.decidedAt + 30_000 });
+    expect(closed(result).realizedRGross).toBeCloseTo((996 - 1000.37) / 4.17, 2);
+  });
+
+  it('takes the first bar that comes when the order is exactly a minute after the bar before it', () => {
+    const bars = [bar(0, 1000, 1001, 999.5, 1000.5), bar(2, 1000.1, 1000.5, 995.9, 996)];
+    const result = simulateTrade(plan, bars, spreadAt, { simSlippageUsd: 0.05, execDelaySec: 60 });
+    // a whole minute has passed: the bar before says nothing about the price any more, the next open is the quote
+    expect(result).toMatchObject({ kind: 'CLOSED', fillAt: plan.decidedAt + 2 * MINUTE });
+    expect(closed(result).realizedRGross).toBeCloseTo((996 - 1000.27) / 4.17, 2);
   });
 });

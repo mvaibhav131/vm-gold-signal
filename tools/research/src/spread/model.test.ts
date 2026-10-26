@@ -48,6 +48,23 @@ describe('SpreadModel', () => {
     expect(model.wideAt(at(1))).toBe(0.6);
   });
 
+  it('trusts an hour from 30 candles exactly: 29 and 25 are too thin, 30 and 31 are enough', () => {
+    expect(MIN_HOUR_SAMPLES).toBe(30);
+    const model = SpreadModel.from([
+      row(4, 0.1, 0.2, 29),
+      row(5, 0.2, 0.4, 30),
+      row(6, 0.6, 1.2, 31),
+      row(7, 0.7, 1.4, 25),
+    ]);
+    // the typical value of all the hours: the middle of 0.1, 0.2, 0.6 and 0.7
+    expect(model.spreadAt(at(4))).toBe(0.4);
+    expect(model.spreadAt(at(5))).toBe(0.2);
+    expect(model.spreadAt(at(6))).toBe(0.6);
+    expect(model.spreadAt(at(7))).toBe(0.4);
+    expect(model.wideAt(at(5))).toBe(0.4);
+    expect(model.wideAt(at(7))).toBe(0.8);
+  });
+
   it('gives an hour without any candle the typical value of the others, the middle of an even count', () => {
     const model = SpreadModel.from([row(1, 0.1, 0.2), row(2, 0.3, 0.6)]);
     expect(model.spreadAt(at(9))).toBe(0.2);

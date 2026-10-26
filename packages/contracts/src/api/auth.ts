@@ -7,9 +7,10 @@ export const loginRequestSchema = z.strictObject({
   username: z.string().min(1).max(100),
   // The upper bound keeps an oversized body from reaching the password hash.
   password: z.string().min(1).max(1024),
+  // The six digits of the authenticator app, or one of the eight recovery codes (`xxxx-xxxx`, each works once).
   totp: z
     .string()
-    .regex(/^\d{6}$/)
+    .regex(/^(\d{6}|[a-z0-9]{4}-[a-z0-9]{4})$/)
     .optional(),
 });
 

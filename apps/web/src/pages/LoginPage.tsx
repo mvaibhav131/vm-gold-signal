@@ -94,10 +94,13 @@ export function LoginPage() {
                   {...form.getInputProps('password')}
                 />
                 <TextInput
-                  label="Authenticator code (only if you turned on 2-step login)"
+                  label="Authenticator code or recovery code (only if you turned on 2-step login)"
+                  description="6 digits from the app, or a recovery code like abcd-efgh (each works once)"
                   autoComplete="one-time-code"
-                  inputMode="numeric"
-                  maxLength={6}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  maxLength={12}
                   key={form.key('totp')}
                   {...form.getInputProps('totp')}
                 />

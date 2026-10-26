@@ -76,6 +76,24 @@ describe('halfYears', () => {
     expect(second).toEqual({ key: '2023H1', from: utc(2023, 1, 1), until: utc(2023, 7, 1) });
   });
 
+  it('starts a range that begins in July with the second half: June is the first half, July the second', () => {
+    expect(halfYears(utc(2022, 7, 1), utc(2023, 1, 1))).toEqual([
+      { key: '2022H2', from: utc(2022, 7, 1), until: utc(2023, 1, 1) },
+    ]);
+    expect(halfYears(utc(2022, 7, 15), utc(2023, 7, 1)).map((p) => p.key)).toEqual([
+      '2022H2',
+      '2023H1',
+    ]);
+    expect(halfYears(utc(2022, 6, 30), utc(2022, 12, 1)).map((p) => p.key)).toEqual([
+      '2022H1',
+      '2022H2',
+    ]);
+    expect(halfYears(utc(2022, 12, 31), utc(2023, 2, 1)).map((p) => p.key)).toEqual([
+      '2022H2',
+      '2023H1',
+    ]);
+  });
+
   it('has none for an empty range', () => {
     expect(halfYears(utc(2023, 1, 1), utc(2023, 1, 1))).toEqual([]);
   });

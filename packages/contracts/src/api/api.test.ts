@@ -217,9 +217,12 @@ describe('pagination and queries', () => {
 });
 
 describe('auth payloads', () => {
-  it('accepts a login with an optional six digit code', () => {
+  it('accepts a login with an optional six digit code or recovery code', () => {
     expect(ok(loginRequestSchema, { username: 'owner', password: 'pw' })).toBe(true);
     expect(ok(loginRequestSchema, { username: 'owner', password: 'pw', totp: '123456' })).toBe(
+      true,
+    );
+    expect(ok(loginRequestSchema, { username: 'owner', password: 'pw', totp: 'k7m2-q9x4' })).toBe(
       true,
     );
   });
@@ -228,6 +231,9 @@ describe('auth payloads', () => {
     expect(ok(loginRequestSchema, { username: 'owner', password: 'pw', totp: '12345' })).toBe(
       false,
     );
+    for (const totp of ['K7M2-Q9X4', 'k7m2q9x4', 'k7m2-q9x', ' 123456', '123456 ']) {
+      expect(ok(loginRequestSchema, { username: 'owner', password: 'pw', totp })).toBe(false);
+    }
     expect(ok(loginRequestSchema, { username: 'owner', password: 'x'.repeat(1025) })).toBe(false);
     expect(ok(loginRequestSchema, { username: 'owner', password: 'pw', admin: true })).toBe(false);
   });

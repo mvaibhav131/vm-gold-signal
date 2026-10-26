@@ -28,6 +28,25 @@ Contracts live as Zod schemas in `packages/contracts` and are shared by `apps/ap
 
 There is no registration route. A test asserts that it does not exist.
 
+**As built (B29).** The codes of `application/problem+json` that the Auth routes answer (the UI relies on them):
+
+| Status and `code` | When |
+|---|---|
+| `400 invalid_request` | The body does not match the contract (the detail names the fields, never their values), or is not JSON. |
+| `400 invalid_code` | The code of the app is wrong for `totp/enable` or `totp/disable`. |
+| `400 password_unchanged` | `POST /auth/password` with a new password equal to the current one. |
+| `401 invalid_credentials` | Every failed login: wrong user name, wrong password, a missing or wrong code. One answer for all of them. |
+| `401 unauthenticated` | No session, an expired or revoked one, or an address that is no route (the answer does not tell which addresses exist). |
+| `403 csrf_rejected` | A `POST`, `PUT`, `PATCH` or `DELETE` without `Origin` equal to the site origin and `X-VMGS-CSRF: 1` (also when `Sec-Fetch-Site` says anything but `same-origin`). Checked before the session and before any attempt is counted. |
+| `403 wrong_password` | `POST /auth/password` with a wrong current password. |
+| `404 not_found` | `DELETE /auth/sessions/:id` for an id that is no valid session of any shape; any route for an authenticated visitor. |
+| `409 conflict` | `POST /auth/password` or `totp/enable` that lost to a change that came while it was being worked out (a reset on the server, another device, a second setup). Nothing was done; try again. |
+| `409 totp_already_enabled`, `totp_not_set_up`, `totp_not_enabled` | A `totp/*` call that does not fit the state. |
+| `413 payload_too_large`, `415 unsupported_media_type` | A body over 64 KiB; anything but `application/json`. |
+| `429 rate_limited` | Too many failed tries (`Retry-After` in seconds), too many password checks or admissions waiting (`Retry-After: 5`). Applies to a login, to a wrong current password and to wrong codes of the second step. A client that has got in before is not stopped by the failures of others, and a change that needs a session never is. |
+
+Details that the table leaves out: the `login` body's `totp` is the six digits of the app or a recovery code (`abcd-efgh`, lower case; each works once); `GET /auth/sessions` shows 16 characters of the stored hash as `id` (the real cookie value is never shown); a login ends the session the browser still holds and a password change ends every other session; a session ends 7 days after its last use and 30 days after the login at the latest, and the cookie is sent again with the new lifetime when the session is extended; every answer, errors included, has `Cache-Control: no-store`. The rules and their reasons are in `01_HLD.md` section 8.1.
+
 ### Market and engine
 
 | Path | Returns |

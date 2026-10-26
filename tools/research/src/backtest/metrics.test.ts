@@ -31,6 +31,26 @@ describe('statsOf', () => {
     expect(statsOf([late, outcome(-1, { closedAt: 5 }), early]).maxDrawdownR).toBe(2);
   });
 
+  it('keeps the order trades came in when they closed at the same time, and puts the later closes after them', () => {
+    const wins = outcome(2, { closedAt: 1 });
+    const loss = outcome(-1, { closedAt: 1 });
+    const later = outcome(-3, { closedAt: 2 });
+    // in order: +2, -1, -3 falls from 2 to -2; from the latest to the first it would fall only 3
+    expect(statsOf([later, wins, loss]).maxDrawdownR).toBe(4);
+    expect(statsOf([wins, loss, later]).maxDrawdownR).toBe(4);
+  });
+
+  it('leaves a trade that does not count out of the drawdown and out of the ambiguous ones, whatever it carries', () => {
+    const stray = outcome(-5, {
+      result: 'DATA_INVALID',
+      countsInStats: false,
+      ambiguous: true,
+      closedAt: 2,
+    });
+    const stats = statsOf([outcome(1, { closedAt: 1 }), stray, outcome(1, { closedAt: 3 })]);
+    expect(stats).toMatchObject({ n: 2, netR: 2, maxDrawdownR: 0, ambiguous: 0, dataInvalid: 1 });
+  });
+
   it('has no expectancy and no profit factor without trades, and no profit factor without a loss', () => {
     expect(statsOf([])).toMatchObject({ n: 0, expectancyR: null, profitFactor: null, netR: 0 });
     expect(statsOf([outcome(1)]).profitFactor).toBeNull();

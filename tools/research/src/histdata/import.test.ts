@@ -367,6 +367,19 @@ describe('importHistData: ticks', () => {
     expect(report.accepted).toBe(14);
   });
 
+  it.each([0, 500, 1_999])(
+    'keeps the last minute when its only tick came %i ms into it: the builder seals a minute two seconds after its end',
+    (offset) => {
+      const lines = [
+        ...tickLines(0, 3),
+        `${stampOf(T + 4 * MINUTE + offset, true)},1004.00,1004.20,0`,
+      ];
+      const { minutes, report } = importHistData([source(TICKS, lines)], { spreadAt: flat(0) });
+      expect(minutes.at(-1)).toMatchObject({ openTime: T + 4 * MINUTE, tickCount: 1, o: 1004.1 });
+      expect(report).toMatchObject({ accepted: 9, minutes: 5, lastAt: T + 4 * MINUTE });
+    },
+  );
+
   it('builds a 5m candle across two monthly files', () => {
     const { candles } = importHistData(
       [source(TICKS, tickLines(0, 2)), source('DAT_ASCII_XAUUSD_T_202302.csv', tickLines(3, 9))],

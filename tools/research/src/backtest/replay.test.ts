@@ -1,10 +1,19 @@
-import { describe, expect, it } from 'vitest';
+import {
+  DecisionEngine,
+  type Candidate,
+  type DecisionContext,
+  type EngineDecision,
+  type Side,
+  type TradePlan,
+} from '@vmgs/core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { pullbackSpec } from '../../../../packages/core/src/engine/test-data';
-import { replay } from './replay';
+import type { BidBar } from '../histdata/format';
+import { replay, type ReplayOptions } from './replay';
 import { runBacktest } from './run';
 import { DEFAULT_SPLIT } from './splits';
-import { FROM, MINUTE, spreadAt, wavyBars } from './test-data';
+import { FROM, MINUTE, bar, planAt, quiet, spreadAt, wavyBars } from './test-data';
 import { SCENARIO_KEYS, type BacktestSignal } from './types';
 
 const options = { specs: [pullbackSpec()], spreadAt };
@@ -90,6 +99,11 @@ describe('replay: the history through the engine', () => {
     }
     expect(compared).toBeGreaterThan(0);
   });
+  it('says the news state is unknown on every signal: there is no calendar for the past', () => {
+    expect(FULL.signals.length).toBeGreaterThan(0);
+    for (const signal of FULL.signals) expect(signal.warnings).toContain('NEWS_UNKNOWN');
+  });
+
   it('counts a setup with no bar to decide on', () => {
     // the bars stop right after the last close of the data: the first quote of the last close is missing
     const last = BARS.at(-1)?.ts ?? 0;
@@ -150,5 +164,177 @@ describe('replay: the holdout guard', () => {
     for (const signal of closedRun.replay.signals) {
       expect(signal.decidedAt).toBeLessThan(DEFAULT_SPLIT.TEST.from);
     }
+  });
+});
+
+describe('runBacktest: the half years', () => {
+  const START = Date.UTC(2025, 6, 1);
+  const keysOf = (lastBarAt: number): string[] =>
+    runBacktest(wavyBars(lastBarAt - 5 * MINUTE, 6), {
+      specs: [pullbackSpec()],
+      spreadUsd: 0.12,
+    })
+      .periods.map((period) => period.key)
+      .filter((key) => /^\d{4}H[12]$/.test(key));
+
+  it('has the half year of the last bar when that bar is exactly at its start', () => {
+    expect(keysOf(START)).toEqual(['2025H1', '2025H2']);
+  });
+
+  it('has no half year that starts after the last bar', () => {
+    expect(keysOf(START - MINUTE)).toEqual(['2025H1']);
+  });
+});
+
+interface Setup {
+  readonly side: Side;
+  readonly key?: string;
+  readonly plan?: (plan: TradePlan) => TradePlan;
+}
+
+interface Meeting {
+  readonly closeTime: number;
+  readonly quoteAt: number;
+  readonly open: DecisionContext['open'];
+  readonly calendar: DecisionContext['calendar'];
+}
+
+/**
+ * Replay with the answer of the engine put in by hand: `setups` says which 5m closes (in minutes after FROM)
+ * have a setup and what it is. What replay does around the engine (the quote it finds, the trades it says are
+ * open, the signals it keeps) is the real code, and `meetings` is what the engine was told at each decision.
+ */
+function drive(
+  bars: readonly BidBar[],
+  setups: Readonly<Record<number, readonly Setup[]>>,
+  change: Partial<ReplayOptions> = {},
+) {
+  const pushed = vi.spyOn(DecisionEngine.prototype, 'push');
+  const closeTime = (): number =>
+    (pushed.mock.calls.filter(([tf]) => tf === '5m').at(-1)?.[1].openTime ?? 0) + 5 * MINUTE;
+  const setupsNow = (): readonly Setup[] => setups[(closeTime() - FROM) / MINUTE] ?? [];
+  vi.spyOn(DecisionEngine.prototype, 'candidates').mockImplementation(() =>
+    setupsNow().map(() => ({}) as Candidate),
+  );
+  const meetings: Meeting[] = [];
+  vi.spyOn(DecisionEngine.prototype, 'decide').mockImplementation((context) => {
+    const decidedAt = closeTime();
+    meetings.push({
+      closeTime: decidedAt,
+      quoteAt: context.quote.t,
+      open: context.open,
+      calendar: context.calendar,
+    });
+    return {
+      report: { decidedAt },
+      outcomes: setupsNow().map(({ side, key = 'leg-1', plan }) => ({
+        kind: 'SIGNAL',
+        draft: {
+          strategyKey: 'trend_pullback',
+          strategyVersion: '0.1.0',
+          side,
+          setupKey: key,
+          qualityScore: 70,
+          regime: 'TREND_UP',
+          session: 'LONDON',
+          warnings: [],
+        },
+        plan: (plan ?? ((own: TradePlan) => own))(planAt(side, decidedAt)),
+      })),
+    } as unknown as EngineDecision;
+  });
+  const result = replay(bars, { specs: [pullbackSpec()], spreadAt, ...change });
+  return { result, meetings };
+}
+
+describe('replay: what it keeps and tells around the engine', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const BUY: Setup = { side: 'BUY' };
+  const SELL: Setup = { side: 'SELL' };
+  const longer = (entryValidSec: number) =>
+    pullbackSpec({ risk: { ...pullbackSpec().risk, entryValidSec } });
+
+  it('decides on a bar exactly as late after the close as the entry validity, and not on a later one', () => {
+    const atLimit = drive([...quiet(0, 10, 1000), ...quiet(13, 30, 1000)], { 10: [BUY] });
+    expect(atLimit.result.noQuote).toBe(0);
+    expect(atLimit.meetings.map((meeting) => meeting.quoteAt)).toEqual([FROM + 13 * MINUTE]);
+    const past = drive([...quiet(0, 10, 1000), ...quiet(14, 30, 1000)], { 10: [BUY] });
+    expect(past.result.noQuote).toBe(1);
+    expect(past.meetings).toEqual([]);
+  });
+
+  it('takes the shortest entry validity of the strategies', () => {
+    const bars = [...quiet(0, 10, 1000), ...quiet(14, 30, 1000)];
+    const mixed = drive(bars, { 10: [BUY] }, { specs: [longer(600), pullbackSpec()] });
+    expect(mixed.result.noQuote).toBe(1);
+    expect(mixed.meetings).toEqual([]);
+    const long = drive(bars, { 10: [BUY] }, { specs: [longer(600)] });
+    expect(long.result.noQuote).toBe(0);
+    expect(long.meetings).toHaveLength(1);
+  });
+
+  it('tells the engine the calendar is not there, as the past has none', () => {
+    const { meetings } = drive(quiet(0, 20, 1000), { 10: [BUY] });
+    expect(meetings.map((meeting) => meeting.calendar)).toEqual([{ available: false, events: [] }]);
+  });
+
+  it('makes a signal for the BUY and for the SELL of one setup of one strategy, and one only for each', () => {
+    const { result } = drive(quiet(0, 40, 1000), {
+      10: [BUY, SELL],
+      15: [BUY],
+      20: [SELL],
+    });
+    expect(result.signals.map((signal) => signal.side)).toEqual(['BUY', 'SELL']);
+    expect(result.duplicates).toBe(2);
+  });
+
+  it('keeps a trade that is not finished open for every later decision', () => {
+    const { meetings } = drive(quiet(0, 40, 1000), { 10: [BUY], 20: [SELL] });
+    expect(meetings.map((meeting) => meeting.open)).toEqual([
+      [],
+      [{ id: 'bt:0', side: 'BUY', riskR: 1 }],
+    ]);
+  });
+
+  it('takes a trade out of the open ones at the close it closed on, and not before', () => {
+    const stoppedAt = (minute: number) => [
+      ...quiet(0, minute, 1000),
+      bar(minute, 1000, 1000.1, 995, 996),
+      ...quiet(minute + 1, 20, 996),
+    ];
+    const onClose = drive(stoppedAt(20), { 10: [BUY], 20: [SELL] });
+    expect(onClose.meetings.map((meeting) => meeting.open)).toEqual([[], []]);
+    const after = drive(stoppedAt(21), { 10: [BUY], 20: [SELL] });
+    expect(after.meetings.map((meeting) => meeting.open)).toEqual([
+      [],
+      [{ id: 'bt:0', side: 'BUY', riskR: 1 }],
+    ]);
+  });
+
+  it('counts a trade as open by what it did in scenario A, the one without slippage or delay', () => {
+    const narrow = {
+      side: 'BUY',
+      plan: (plan) => ({ ...plan, maxValidEntry: plan.entry + 0.1 }),
+    } satisfies Setup;
+    const bars = [
+      ...quiet(0, 10, 1000),
+      bar(10, 1000, 1001, 999.9, 1000),
+      ...quiet(11, 14, 1000),
+      bar(25, 1000, 1000.1, 995, 996),
+      ...quiet(26, 10, 996),
+    ];
+    const { result, meetings } = drive(bars, { 10: [narrow], 20: [SELL] });
+    const [buy] = result.signals;
+    const skipped = { kind: 'SKIPPED', reason: 'BEYOND_MAX_VALID_ENTRY' };
+    expect(buy?.results.A.kind).toBe('CLOSED');
+    expect(buy?.results.B).toEqual(skipped);
+    expect(buy?.results.C).toEqual(skipped);
+    expect(meetings.map((meeting) => meeting.open)).toEqual([
+      [],
+      [{ id: 'bt:0', side: 'BUY', riskR: 1 }],
+    ]);
   });
 });

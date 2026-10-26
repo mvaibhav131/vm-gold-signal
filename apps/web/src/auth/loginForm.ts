@@ -15,15 +15,25 @@ export function validateLoginForm(
   const errors: Partial<Record<keyof LoginFormValues, string>> = {};
   if (values.username.trim() === '') errors.username = 'Enter your username';
   if (values.password === '') errors.password = 'Enter your password';
-  if (values.totp !== '' && !/^\d{6}$/.test(values.totp)) errors.totp = 'The code has 6 digits';
+  if (normalizeCode(values.totp) !== '' && !CODE_SHAPE.test(normalizeCode(values.totp))) {
+    errors.totp = 'The code has 6 digits';
+  }
   return errors;
+}
+
+/** Six digits from the app, or one of the eight recovery codes (`abcd-efgh`); a person may type capitals and spaces. */
+const CODE_SHAPE = /^(\d{6}|[a-z0-9]{4}-[a-z0-9]{4})$/;
+
+function normalizeCode(text: string): string {
+  return text.trim().toLowerCase();
 }
 
 /** Builds the request the API expects; an empty code is left out instead of being sent. */
 export function toLoginRequest(values: LoginFormValues): LoginRequest {
+  const totp = normalizeCode(values.totp);
   return loginRequestSchema.parse({
     username: values.username.trim(),
     password: values.password,
-    ...(values.totp === '' ? {} : { totp: values.totp }),
+    ...(totp === '' ? {} : { totp }),
   });
 }

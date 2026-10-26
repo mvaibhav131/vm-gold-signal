@@ -83,6 +83,25 @@ sudo /opt/vmgs/deploy/scripts/drill.sh                                       # t
 From that day the worker records ticks, spreads, the calendar and the headlines, and Telegram and Healthchecks.io tell
 you when something stops. The web app and the API come with B30 and U5 (section 6).
 
+### Making yourself the owner (B29)
+
+There is no sign-up page and no "forgot password": the owner is made, and got back into, on the server. Once the stack
+is up, put `DB_PASSWORD_API` (`openssl rand -hex 24`) into `/opt/vmgs/.env`, run `deploy.sh` again (the migrate step
+gives the role its login), then:
+
+```bash
+sudo /opt/vmgs/deploy/scripts/compose.sh --profile ops run --rm owner owner:create yourname
+```
+
+It asks for the password twice and shows nothing while you type (at least 12 characters, one that you use nowhere
+else: a password manager is the place for it). The same service has `owner:status`, `owner:password` (a new password;
+ends every session), `owner:totp-off` (the phone with the authenticator app and the recovery codes are both lost) and
+`sessions:revoke-all`. `throttle:reset` is for one case: you are at a place that has never logged in (a new phone, a new
+network), you are told "too many failed attempts" and you did not cause them (somebody is trying passwords against the
+login). It forgets the failed tries; log in at once, and that place is then known and is no longer stopped by what
+others do. Do not put the password in the command line: it would stay in the history of the shell. To
+script it, pipe it in (`printf '%s\n' "$PW" | ... run -T --rm owner owner:create yourname`).
+
 ## 3. Every day
 
 ```bash
@@ -139,7 +158,8 @@ gone after a restore, and the candles, signals, results, rollups and settings ar
 
 ## 6. The web side (B31b)
 
-When B30 (api) and U5 (web) exist: the api service joins `docker-compose.yml`, `apps/web` is built into
+When B30 (the rest of the API) and U5 (web) exist: the `api` service joins `docker-compose.yml` (the image already
+carries it, with `API_TRUSTED_PROXY_HOPS=1` and `APP_ENCRYPTION_KEY` in the `.env`), `apps/web` is built into
 `VMGS_WEB_DIST`, and `COMPOSE_PROFILES=web` in `.env` makes `deploy.sh` start `caddy` too. Then
 `smoke.sh --public` calls `https://PUBLIC_HOST/health/ready`. The `Caddyfile` is ready and checked: headers, the
 fallback to the index for a single-page app, no cache for `/api` and `/health`, the redirect to HTTPS.
@@ -149,7 +169,10 @@ fallback to the index for a single-page app, no cache for `/api` and `/health`, 
 Checked on a PC with Docker (project `vmgs-b31test`, nothing else touched): image build, migrations and role passwords,
 the worker against the live feed, the healthcheck, backup (without tick data), the restore drill, the drill failing
 on a damaged file and on a wrong manifest, the offline key opening the backup, the three failure drills, the Caddyfile
-(validated and run: headers, routes, redirect), `shellcheck` on every script.
+(validated and run: headers, routes, redirect), `shellcheck` on every script. For B29, in the same way: the image with
+the API, the Argon2 native binary on Alpine, the `owner` service (made the owner from a pipe, refused a second one and a
+short password, a hidden prompt on a real terminal), and the API started from the image against the database with curl:
+cookie flags, the 403 without `Origin` and `X-VMGS-CSRF`, logout, and the 429 with `Retry-After` on the sixth failure.
 
 Only the VM can check: the `arm64` build, `vm-setup.sh` (it was not run on Ubuntu), the Oracle bucket and its S3
 settings, Healthchecks.io delivery, DuckDNS, and the certificate. The first run of each on the VM is the test: the

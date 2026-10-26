@@ -8,6 +8,8 @@ coverage/
 .env
 .env.*
 !.env.example
+# key files (the backup age key: its private half must never reach git)
+*.key
 
 # the VM's own files next to the checkout (deploy/README.md)
 secrets/

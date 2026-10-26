@@ -48,16 +48,58 @@ const baseShape = {
     .refine((value) => value !== '0', 'TLS verification must not be disabled'),
 };
 
-/** Environment of the `api` process. */
-export const apiEnvSchema = z.object({
-  ...baseShape,
-  PUBLIC_HOST: publicHost,
-  API_PORT: z.coerce.number().pipe(z.int().min(1).max(65535)).default(3000),
-  DATABASE_URL_API: postgresUrl('vmgs_api'),
-  APP_ENCRYPTION_KEY: encryptionKey,
-  VAPID_PUBLIC_KEY: vapidPublicKey.optional(),
-});
+/** An origin as a browser writes it in `Origin`: scheme, host and port, no path and no trailing slash. */
+const siteOrigin = z
+  .string()
+  .refine((value) => URL.canParse(value) && new URL(value).origin === value, {
+    error: 'must be an origin like https://example.org (no path, no trailing slash)',
+  });
+
+/**
+ * Environment of the `api` process. `SITE_ORIGIN` is the only origin that may change anything (04 section 1); it is
+ * `https://PUBLIC_HOST` unless set, which a development setup does (`http://localhost:5173`). Behind Caddy
+ * `API_TRUSTED_PROXY_HOPS` is 1: the client is then the address Caddy saw, not what the client wrote in
+ * `X-Forwarded-For`. With 0 (the default) that header is ignored altogether.
+ */
+export const apiEnvSchema = z
+  .object({
+    ...baseShape,
+    PUBLIC_HOST: publicHost,
+    API_PORT: z.coerce.number().pipe(z.int().min(1).max(65535)).default(3000),
+    API_TRUSTED_PROXY_HOPS: z.coerce.number().pipe(z.int().min(0).max(3)).default(0),
+    SITE_ORIGIN: siteOrigin.optional(),
+    DATABASE_URL_API: postgresUrl('vmgs_api'),
+    APP_ENCRYPTION_KEY: encryptionKey,
+    VAPID_PUBLIC_KEY: vapidPublicKey.optional(),
+  })
+  .check((ctx) => {
+    const { NODE_ENV, SITE_ORIGIN } = ctx.value;
+    if (
+      NODE_ENV === 'production' &&
+      SITE_ORIGIN !== undefined &&
+      !SITE_ORIGIN.startsWith('https://')
+    ) {
+      ctx.issues.push({
+        code: 'custom',
+        input: ctx.value,
+        message: 'the site origin must be https in production',
+        path: ['SITE_ORIGIN'],
+      });
+    }
+  });
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
+
+/** The origin of the site: where the API accepts changes from. */
+export function siteOriginOf(env: Pick<ApiEnv, 'PUBLIC_HOST' | 'SITE_ORIGIN'>): string {
+  return env.SITE_ORIGIN ?? `https://${env.PUBLIC_HOST}`;
+}
+
+/** Environment of the owner commands (`pnpm api:cli`): they need the database and nothing else. */
+export const apiCliEnvSchema = z.object({
+  ...baseShape,
+  DATABASE_URL_API: postgresUrl('vmgs_api'),
+});
+export type ApiCliEnv = z.infer<typeof apiCliEnvSchema>;
 
 /** Environment of the `worker` process. Web Push needs all three VAPID values or none. */
 export const workerEnvSchema = z

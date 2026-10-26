@@ -2,8 +2,8 @@
 # gives the project name and the root-owned .env; never publish a port other than the ones of caddy.
 #
 #   default services   db, migrate (one run before the worker), worker
-#   profile ops        backup, drill: one-shot jobs of the systemd timers
-#   profile web        caddy (B31b: the api and the web app arrive with B30 and U5)
+#   profile ops        backup, drill: one-shot jobs of the systemd timers; owner: the owner commands (B29)
+#   profile web        caddy (B31b: the api service and the web app arrive with B30 and U5)
 name: vmgs
 
 x-logging: &logging
@@ -150,6 +150,25 @@ services:
     volumes:
       - ${VMGS_SECRETS_DIR:-../secrets}/rclone.conf:/run/secrets/rclone.conf:ro
       - ${VMGS_SECRETS_DIR:-../secrets}/drill.key:/run/secrets/drill.key:ro
+
+  # B29: the owner is made, and got back into, on the server and never through the API (it has no registration and no
+  # "forgot password"). Run it with a terminal, so that the password is asked for without an echo:
+  #   compose.sh --profile ops run --rm owner owner:create <username>
+  #   compose.sh --profile ops run --rm owner owner:password | owner:totp-off | owner:status | sessions:revoke-all
+  # It needs DB_PASSWORD_API in the .env (then run the migrate step again, which gives the role its login).
+  owner:
+    <<: *app
+    profiles: [ops]
+    working_dir: /app/apps/api
+    entrypoint: ['/sbin/tini', '--', 'node', '--import', 'tsx', 'src/cli/main.ts']
+    command: ['owner:status']
+    restart: 'no'
+    stdin_open: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_API: postgres://vmgs_api:${DB_PASSWORD_API:?set DB_PASSWORD_API in the .env and run deploy.sh again}@db:5432/vmgs
 
   # B31b. TLS, security headers, the web app and the proxy to the api (which arrives with B30). The only service
   # that publishes ports.

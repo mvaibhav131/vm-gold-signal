@@ -3,10 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   EnvError,
   adminEnvSchema,
+  apiCliEnvSchema,
   apiEnvSchema,
   backupEnvSchema,
   parseEnv,
   researchEnvSchema,
+  siteOriginOf,
   workerEnvSchema,
 } from './env';
 
@@ -117,6 +119,63 @@ describe('apiEnvSchema', () => {
     expect(problems(apiEnvSchema, { ...api, API_PORT: '0' })).toHaveLength(1);
     expect(problems(apiEnvSchema, { ...api, API_PORT: '70000' })).toHaveLength(1);
     expect(problems(apiEnvSchema, { ...api, API_PORT: 'http' })).toHaveLength(1);
+  });
+
+  it('trusts no proxy unless told how many stand in front (at most 3)', () => {
+    expect(parseEnv(apiEnvSchema, api).API_TRUSTED_PROXY_HOPS).toBe(0);
+    expect(
+      parseEnv(apiEnvSchema, { ...api, API_TRUSTED_PROXY_HOPS: '1' }).API_TRUSTED_PROXY_HOPS,
+    ).toBe(1);
+    for (const hops of ['-1', '4', '1.5', 'one']) {
+      expect(problems(apiEnvSchema, { ...api, API_TRUSTED_PROXY_HOPS: hops }), hops).toHaveLength(
+        1,
+      );
+    }
+  });
+
+  it('has the site origin https://PUBLIC_HOST unless SITE_ORIGIN says otherwise', () => {
+    expect(siteOriginOf(parseEnv(apiEnvSchema, api))).toBe('https://vmgs-owner.duckdns.org');
+    const dev = parseEnv(apiEnvSchema, { ...api, SITE_ORIGIN: 'http://localhost:5173' });
+    expect(siteOriginOf(dev)).toBe('http://localhost:5173');
+  });
+
+  it('refuses a site origin that is not an origin, and http in production', () => {
+    for (const origin of [
+      'vmgs.duckdns.org',
+      'https://vmgs.duckdns.org/',
+      'https://vmgs.duckdns.org/app',
+      'ftp:/x',
+    ]) {
+      expect(problems(apiEnvSchema, { ...api, SITE_ORIGIN: origin }), origin).toHaveLength(1);
+    }
+    expect(
+      problems(apiEnvSchema, {
+        ...api,
+        NODE_ENV: 'production',
+        SITE_ORIGIN: 'http://localhost:5173',
+      }),
+    ).toEqual(['SITE_ORIGIN: the site origin must be https in production']);
+    expect(
+      problems(apiEnvSchema, {
+        ...api,
+        NODE_ENV: 'production',
+        SITE_ORIGIN: 'https://vmgs.duckdns.org',
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe('apiCliEnvSchema', () => {
+  it('needs only the database of the api role', () => {
+    const env = parseEnv(apiCliEnvSchema, { DATABASE_URL_API: api.DATABASE_URL_API });
+    expect(env.DATABASE_URL_API).toBe(api.DATABASE_URL_API);
+    expect('APP_ENCRYPTION_KEY' in env).toBe(false);
+    expect(problems(apiCliEnvSchema, {})).toEqual([
+      expect.stringMatching(/^DATABASE_URL_API:/) as string,
+    ]);
+    expect(problems(apiCliEnvSchema, { DATABASE_URL_API: worker.DATABASE_URL_WORKER })).toEqual([
+      'DATABASE_URL_API: must connect as database role vmgs_api',
+    ]);
   });
 });
 
@@ -229,8 +288,17 @@ describe('adminEnvSchema', () => {
   });
 
   it('refuses a short password and one that would need escaping in a URL', () => {
-    for (const password of ['short', `${'a'.repeat(30)}@`, `${'a'.repeat(30)}/x`]) {
+    for (const password of [
+      'short',
+      'a'.repeat(23),
+      'a'.repeat(129),
+      `${'a'.repeat(30)}@`,
+      `${'a'.repeat(30)}/x`,
+    ]) {
       expect(problems(adminEnvSchema, { ...admin, DB_PASSWORD_WORKER: password })).toHaveLength(1);
+    }
+    for (const password of ['a'.repeat(24), 'a'.repeat(128)]) {
+      expect(problems(adminEnvSchema, { ...admin, DB_PASSWORD_WORKER: password })).toEqual([]);
     }
   });
 

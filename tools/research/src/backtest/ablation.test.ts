@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { compareRuns } from './ablation';
+import { STABLE_SHARE, compareRuns } from './ablation';
 import type { Stats } from './metrics';
 import type { BacktestRun, MetricRow } from './run';
 import { DEFAULT_SPLIT, halfYears } from './splits';
@@ -191,6 +191,64 @@ describe('compareRuns', () => {
       fakeRun([40, 0.3, 2], twoOfThree),
       'trend_pullback',
     );
+    expect(verdict.admitted).toBe(true);
+  });
+
+  it('is not stable below two thirds: one of three and two of four are too few', () => {
+    expect(STABLE_SHARE).toBe(2 / 3);
+    const base = {
+      '2022H1': [10, 0.1, 1],
+      '2022H2': [10, 0.1, 1],
+      '2023H1': [10, 0.1, 1],
+      '2023H2': [10, 0.1, 1],
+    } as const;
+    const oneOfThree = {
+      '2022H1': [10, 0.3, 2],
+      '2022H2': [10, 0.05, 1],
+      '2023H1': [10, 0.05, 1],
+    } as const;
+    const twoOfFour = {
+      '2022H1': [10, 0.3, 2],
+      '2022H2': [10, 0.3, 2],
+      '2023H1': [10, 0.05, 1],
+      '2023H2': [10, 0.05, 1],
+    } as const;
+    const unstable = ['the variant is better in too few of the half years (not stable)'];
+    const third = compareRuns(
+      fakeRun([40, 0.1, 1.2], base),
+      fakeRun([40, 0.3, 2], oneOfThree),
+      'trend_pullback',
+    );
+    expect(third.betterShare).toBe(1 / 3);
+    expect(third.reasons).toEqual(unstable);
+    const half = compareRuns(
+      fakeRun([40, 0.1, 1.2], base),
+      fakeRun([40, 0.3, 2], twoOfFour),
+      'trend_pullback',
+    );
+    expect(half.betterShare).toBe(0.5);
+    expect(half.reasons).toEqual(unstable);
+    expect(half.admitted).toBe(false);
+  });
+
+  it('does not call a half year better when the variant earns exactly what the baseline does', () => {
+    const same = {
+      '2022H1': [10, 0.3, 2],
+      '2022H2': [10, 0.3, 2],
+      '2023H1': [10, 0.1, 1.2],
+    } as const;
+    const verdict = compareRuns(baseline, fakeRun([40, 0.3, 2], same), 'trend_pullback');
+    expect(verdict.stability.map((item) => item.better)).toEqual([true, true, false]);
+    expect(verdict.betterShare).toBe(2 / 3);
+  });
+
+  it('takes a variant with exactly 30 trades in every scenario', () => {
+    const verdict = compareRuns(
+      baseline,
+      fakeRun([30, 0.25, 1.6], HALVES_BETTER),
+      'trend_pullback',
+    );
+    expect(verdict.reasons).toEqual([]);
     expect(verdict.admitted).toBe(true);
   });
 
