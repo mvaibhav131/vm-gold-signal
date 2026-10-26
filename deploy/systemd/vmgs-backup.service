@@ -1,0 +1,9 @@
+[Unit]
+Description=VM Gold Signal nightly database backup (pg_dump, age, rclone)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vmgs/deploy/scripts/compose.sh --profile ops run --rm -T backup
+TimeoutStartSec=2h

@@ -30,6 +30,8 @@ import { NewsPoller } from './news/poller';
 import { PostgresMarketReader } from './news/postgresMarketReader';
 import { PostgresNewsStore } from './news/postgresStore';
 import { NewsFeedWatcher } from './news/watcher';
+import { isFresh, workerHeartbeatAgeMs } from './ops/alive';
+import { HealthPinger } from './ops/pinger';
 import { PostgresRecorderStore } from './postgresStore';
 import { calendarContextOf } from './engine/context';
 import { DecisionLoop } from './engine/loop';
@@ -355,6 +357,16 @@ async function main(): Promise<void> {
     maintenance.start();
     reports.start();
     loop.start();
+    // The external check (B31): a ping every minute while the worker's own heartbeat is fresh.
+    const pinger =
+      env.HEALTHCHECKS_PING_URL === undefined
+        ? null
+        : new HealthPinger({
+            url: env.HEALTHCHECKS_PING_URL,
+            alive: async () => isFresh(await workerHeartbeatAgeMs(pool, Date.now())),
+            log,
+          });
+    pinger?.start();
 
     log('info', 'record-only worker started', {
       provider: provider.name,
@@ -362,12 +374,15 @@ async function main(): Promise<void> {
       openSignals: tracker.stats.open,
       telegram: bot !== null,
       webpush: VAPID_PUBLIC_KEY !== undefined,
+      heartbeatCheck: pinger !== null,
       calendar: calendarProvider.name,
       headlineFeeds: DEFAULT_FEEDS.map((source) => source.key),
       engineCandles: loop.counts,
     });
     const reason = await stopRequested;
     if (reason === 'fatal') process.exitCode = 1;
+    // A worker that is being stopped must not tell the check that it is unwell.
+    await pinger?.stop();
     await loop.stop();
     await reports.stop();
     await maintenance.stop();

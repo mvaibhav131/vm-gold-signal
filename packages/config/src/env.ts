@@ -105,14 +105,36 @@ export const researchEnvSchema = z.object({
 });
 export type ResearchEnv = z.infer<typeof researchEnvSchema>;
 
+/** A role password made by `openssl rand -hex 24`: it goes into a URL, so it has no character that needs escaping. */
+const rolePassword = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{24,128}$/, 'at least 24 letters, digits, _ or - (openssl rand -hex 24)');
+
+/**
+ * Environment of the deploy step that migrates the schema and gives the application roles their passwords (B31).
+ * It connects as the schema owner, so it is the only process that holds that URL. The password of a role that is
+ * not set is not touched, so the api role can be set when the api is deployed.
+ */
+export const adminEnvSchema = z.object({
+  DATABASE_URL_ADMIN: z.url({ protocol: /^postgres(ql)?$/ }),
+  DB_PASSWORD_WORKER: rolePassword,
+  DB_PASSWORD_API: rolePassword.optional(),
+  DB_PASSWORD_BACKUP: rolePassword.optional(),
+});
+export type AdminEnv = z.infer<typeof adminEnvSchema>;
+
 /** Variables read by the backup scripts; validated by the CLI before a backup runs. */
 export const backupEnvSchema = z.object({
+  DATABASE_URL_BACKUP: postgresUrl('vmgs_backup'),
   BACKUP_AGE_RECIPIENT: z
     .string()
     .regex(/^age1[a-z0-9]{58}$/, 'must be an age public key (age1...)'),
   BACKUP_RCLONE_REMOTE: z
     .string()
     .regex(/^[A-Za-z0-9_.-]+:\S*$/, 'must look like remote:bucket/path'),
+  // Healthchecks.io checks of the backup and of the restore drill (a failed run pings /fail, a missed one alerts).
+  HEALTHCHECKS_BACKUP_URL: z.url({ protocol: /^https$/ }).optional(),
+  HEALTHCHECKS_DRILL_URL: z.url({ protocol: /^https$/ }).optional(),
 });
 export type BackupEnv = z.infer<typeof backupEnvSchema>;
 

@@ -43,7 +43,7 @@ Rule for every phase: `pnpm typecheck`, `pnpm lint` and all tests pass before th
 | B28 Backtester | Replay on `core` (the live `DecisionEngine` over the HistData minutes, one signal for each setup), the fill and cost model of the three scenarios on bars (a stop and a target in one bar: the stop; a delayed fill drifts against the trade), train, validation and test splits with the holdout guard (the replay reads no bar of the test period unless asked, and a second look is refused without `--holdout-again`), the experiment registry (`reports/experiments.jsonl`, trials counted), the ablation command, the written report and the decision gate (`pnpm research backtest:run` and `backtest:ablate`; details in `02` section 15.1). **Decision gate** | Deterministic and look-ahead free; first written report that shows the three execution cost scenarios A, B and C of `02` section 15; the gate needs a positive net expectancy in B and C too |
 | B29 Auth and security | Login, sessions, throttling, optional TOTP, headers | Security tests: no registration route, cookie flags, CSRF, throttling, revocation |
 | B30 API and stream | All endpoints of `04_API_and_Notifications.md`, SSE | Contract, SSE and replay tests |
-| B31 Deployment | Compose stack, Caddyfile, DuckDNS update, deploy script, VM hardening, backups, restore drill, external health check | Smoke test on the public URL; restore drill; failure drills (kill worker, stop DB, block the feed) |
+| B31 Deployment | Delivered in two steps. **B31a (record-only stack, built):** the image (`deploy/Dockerfile`, one image for the worker, the migrations and the backup jobs), the compose stack (`db`, `migrate`, `worker`; the jobs `backup` and `drill` in the profile `ops`), the `.env` template (`deploy/env.example`), `vm-setup.sh` (hardening, Docker, time, secrets, timers), `deploy.sh` and `smoke.sh`, the nightly backup (`vmgs_backup` role, migration `0005`; `pg_dump` without tick data, age, rclone, pruning 7/4/3, manifest, heartbeat `backup`), the monthly restore drill, the Healthchecks.io heartbeat of the worker (`apps/worker/src/ops`), the DuckDNS updater, the failure drills (`drill.sh`), the runbook `deploy/README.md`. **B31b (when B30 and U5 exist):** the `api` service, `caddy` in the stack (the `Caddyfile` and its compose entry are ready and checked), the smoke test on the public URL. | B31a: image, migrations, backup, restore drill (also failing on a damaged file and a wrong manifest) and the three failure drills (crash the worker, stop the database, block the feed) run on a PC with Docker; unit tests of the retention plan, the manifest check, the pinger and the commands; integration tests of the provisioning and of the backup role. Still to do on the VM: the `arm64` build, `vm-setup.sh`, the Oracle bucket, the heartbeats and the certificate (the steps of `deploy/README.md` section 2). B31b: smoke test on the public URL |
 | B32 Forward paper test | Continuous run, weekly review reports, drift monitoring | Strategy status changes only by the rules in `02_Signal_Engine.md` section 15 |
 
 ### UI track
@@ -81,10 +81,12 @@ Only the owner can:
 | Task | Needed by | Notes |
 |---|---|---|
 | Create a private GitHub repository | B0 | Free. Used for CI and for the VM to pull code. |
-| Create the Oracle Cloud account and the VM (A1 Flex, 2 OCPU, 12 GB, Ubuntu aarch64) | Start early, needed for B12 recording | Sign-up may need a card for identity verification. If "out of capacity", retry another availability domain later. Paying is not required. |
+| Create the Oracle Cloud account and the VM (A1 Flex, 2 OCPU, 12 GB, Ubuntu aarch64) | Start early, needed for B12 recording | Sign-up may need a card for identity verification. If "out of capacity", retry another availability domain later. Paying is not required. In the VCN security list open 22 only to your own address, and 80 and 443. |
 | Create the Telegram bot with @BotFather | B24 | Takes a couple of minutes. The token goes only into `.env` (never in git, never in a chat). Steps: in Telegram open @BotFather, send `/newbot`, give a name and a username that ends in `bot`, copy the token it answers with. |
-| Create a DuckDNS name | B31 | Free; login with Google or GitHub. |
-| Create a free Healthchecks.io account with one check (heartbeat URL and a Telegram or email alert) | B31 | Free Hobbyist plan; the heartbeat URL goes into the VM `.env`. |
+| Create a DuckDNS name | B31 | Free; login with Google or GitHub. Put the VM's public IP in it and copy the token (the updater timer keeps the address current). |
+| Create a free Healthchecks.io account with three checks (`worker`: period 1 minute, grace 5 minutes; `backup`: period 1 day, grace 3 hours; `drill`: period 31 days, grace 1 day), each with a Telegram or email alert | B31 | Free Hobbyist plan; the three ping URLs go into the VM `.env`. |
+| Create an Object Storage bucket (private, 20 GB free) and a Customer Secret Key for its S3-compatible API | B31 | For the nightly backup; the access key and secret go into `secrets/rclone.conf` on the VM (`deploy/README.md`). |
+| Make an age key pair on your own PC (`age-keygen -o vmgs-backup.key`) | B31 | The public key goes into `BACKUP_AGE_RECIPIENT`; the private file stays offline and opens the backups if the VM is lost. |
 | Start Docker Desktop (the engine was not running on 2026-10-23) | B2 | Needed for the Testcontainers database tests. |
 | Download HistData XAUUSD M1 files (and, if you want real spreads, the tick files of the same months) | B27 | Steps below ("HistData download and import"); the import tool is `pnpm research`. An MT5 export from the broker is not supported. |
 | Review the Telegram message format | End of B24 | Run `pnpm cli telegram:preview` (needs only the bot token in `.env`), press START in the bot, and read the clearly labelled sample messages on the phone. `pnpm cli telegram:preview hinglish` for Hinglish. |
@@ -105,20 +107,26 @@ No one can remove trading risk. Signals are decision support, executed manually.
 
 ## 3. Configuration
 
-Static environment (root-owned `.env`, mode 600, never in git):
+Static environment (root-owned `.env`, mode 600, never in git; the template with every variable is `deploy/env.example`):
 
 ```text
 PUBLIC_HOST            vmgs-yourname.duckdns.org
-DATABASE_URL_API       postgres role vmgs_api
-DATABASE_URL_WORKER    postgres role vmgs_worker
+POSTGRES_PASSWORD      schema owner (read only when the database is created; only the migrate step holds it)
+DB_PASSWORD_WORKER     password of the role vmgs_worker  (DATABASE_URL_WORKER is built from it by compose)
+DB_PASSWORD_BACKUP     password of the role vmgs_backup  (DATABASE_URL_BACKUP)
+DB_PASSWORD_API        password of the role vmgs_api (set when the api is deployed; DATABASE_URL_API)
 FEED_PROVIDER          biquote
 FEED_SYMBOLS           XAUUSD,DXY,XAGUSD
 TELEGRAM_BOT_TOKEN     from BotFather
 VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT
 APP_ENCRYPTION_KEY     32 random bytes (TOTP secret encryption)
+HEALTHCHECKS_PING_URL / HEALTHCHECKS_BACKUP_URL / HEALTHCHECKS_DRILL_URL    the three checks
 BACKUP_AGE_RECIPIENT   age public key (the private key is kept offline by the owner)
-BACKUP_RCLONE_REMOTE   OCI Object Storage remote name
+BACKUP_RCLONE_REMOTE   remote:bucket/path, a section of secrets/rclone.conf
+DUCKDNS_DOMAIN / DUCKDNS_TOKEN
 ```
+
+Every password is `openssl rand -hex 24`: letters and digits only, because they go into URLs. The files `secrets/rclone.conf` (the bucket's keys) and `secrets/drill.key` (see below) are in a directory of mode 700 next to the `.env`.
 
 Runtime settings live in `app_settings` and are editable on the System page: display time zone, language, alert switches and minimum grade, strategy enable flags. Strategy parameters are not runtime settings: they live in immutable strategy versions.
 
@@ -126,28 +134,32 @@ The B12 `pnpm worker:start` executable currently requires `FEED_PROVIDER=biquote
 
 ## 4. Deployment and operations
 
-Topology: `docker compose` with `caddy`, `api`, `worker`, `db`. Only Caddy publishes ports 80 and 443. Containers use `restart: unless-stopped` and Docker log rotation (3 files of 10 MB).
+Topology: `docker compose` (`deploy/docker-compose.yml`, always called through `deploy/scripts/compose.sh`) with `db`, `migrate` (one run before the worker), `worker`, and later `api` and `caddy` (B31b). The jobs `backup` and `drill` run on demand (profile `ops`, started by systemd timers). Only Caddy publishes ports (80 and 443); the database publishes none. Containers use `restart: unless-stopped` and Docker log rotation (3 files of 10 MB); the application containers run as a non-root user with a read-only root file system, no capabilities and `no-new-privileges`. One image (`deploy/Dockerfile`, Node 24 on Alpine with `pg_dump` 17, `age` and `rclone`) serves the worker, the migrations and the backup jobs; it runs the TypeScript with `tsx`, as in development.
 
-Deploy (run on the VM, over SSH):
+Database roles: the `migrate` step is the only process that holds the schema owner's URL. It applies the migrations and gives each application role its login password from the `.env` (`pnpm cli db:migrate`; the migrations create the roles without a login, so no secret lives in git). Roles: `vmgs_worker`, `vmgs_api`, and `vmgs_backup` (migration `0005`: reads everything for `pg_dump`, writes only its own heartbeat).
 
-1. Take a database backup.
-2. `git pull` the release tag.
-3. Build images (the A1 VM builds `linux/arm64` natively) or pull images built by CI.
-4. Run migrations (forward only; the backup in step 1 is the rollback path).
-5. `docker compose up -d`.
-6. Smoke test: `/health/ready`, a login check, feed state, one test Telegram message.
+Deploy (run on the VM, over SSH: `sudo deploy/scripts/deploy.sh [--ref TAG]`; the first time with `--first`):
 
-Rollback: check out the previous tag, restore the pre-deploy backup only if a migration must be undone, `docker compose up -d`.
+1. Take a database backup (not on the first deploy).
+2. `git fetch` and check out the release tag.
+3. Build the image (the A1 VM builds `linux/arm64` natively).
+4. Check the environment (`pnpm cli env:check`: names the variable and the rule of a problem, never the value).
+5. Run migrations (forward only; the backup in step 1 is the rollback path).
+6. `docker compose up -d`.
+7. Smoke test (`deploy/scripts/smoke.sh`): database healthy, migrations applied, worker running with a fresh heartbeat, ticks arriving while the market is open, no published port on the database or the worker; with `--telegram` one test message; with `--public` (B31b) `/health/ready` on the public URL.
 
-VM hardening: SSH keys only and limited to the owner's IP in the cloud firewall, automatic security updates, `chrony` for time sync, firewall allows 22 (restricted), 80 and 443 only, no published database port.
+Rollback: `deploy.sh --ref PREVIOUS_TAG`. The older code refuses a database that is newer than itself, so when a migration ran in between, restore the pre-deploy backup first (`deploy/README.md`, "Restore").
+
+VM hardening (`deploy/scripts/vm-setup.sh`, run once): security updates now and automatically (no automatic reboot), `chrony` and UTC, Docker with log rotation, SSH by key only without root login (only when the owner's key is already there, so it cannot lock the owner out), the secrets directory (mode 700). The cloud firewall is the perimeter: 22 only from the owner's address, 80 and 443 public, no published database port.
 
 Backups and restore drill:
 
-- Nightly `pg_dump` excluding tick partitions, compressed and encrypted with `age`, uploaded with `rclone` to OCI Object Storage (20 GB free). Keep 7 daily, 4 weekly, 3 monthly.
+- Nightly (03:30 UTC, `vmgs-backup.timer`) `pg_dump` (custom format, without the data of the tick partitions) in one stream into `age` and `rclone` to OCI Object Storage (20 GB free); the upload gets its final name only when the whole stream has gone through. The backup is encrypted to two recipients: the owner's offline key (the only way to open it if the VM is lost) and the **drill key** of the VM (`secrets/drill.key`), so that the drill can open it without the owner's key. Next to each dump goes a manifest with the row counts of a few tables taken just before the dump. Pruning keeps the newest backup of each of the last 7 days, 4 weeks and 3 months that have one (days and weeks with no backup do not count, so an outage never deletes the only backups). The job writes the heartbeat `backup` (read by the daily digest and the System page: "OK" up to 36 hours).
 - The owner downloads a copy to their own PC from time to time.
-- Monthly `restore-drill.sh` restores the newest backup into a scratch database and compares row counts and the schema version. A failed drill sends a Telegram alert.
+- Monthly (the 3rd, `vmgs-restore-drill.timer`) `restore-drill.sh` restores the newest backup into a scratch database and compares it with its manifest and with the live database: the append-only tables (signals, signal events, outcomes, strategy versions, schema migrations) must hold at least what the manifest says and at most what the live database holds now, and `candles` must not be empty. The scratch database is dropped in any case. The backup job and the drill each ping their own Healthchecks.io check (`/fail` on a failure, and a missed run alerts after the grace time), which alerts the owner by Telegram or email; the drill does not need a bot of its own.
+- Failure drills (`deploy/scripts/drill.sh`): crash the worker (SIGKILL; Docker restarts it), stop the database (the worker stops and Docker starts it again until the database is back), block the feed (the worker stays up, opens a feed incident, closes it when ticks return). Each passes only when a heartbeat and a tick written after the failure are seen.
 
-External check (planned for B31): the worker will send a heartbeat to Healthchecks.io (free Hobbyist plan) every minute and Healthchecks.io will alert the owner by Telegram or email when the pings stop. The B12 recorder currently writes its database heartbeat every 15 seconds. A scheduled GitHub Actions job was rejected because one run every 10 minutes would likely exceed the 2,000 free monthly minutes of a private repository.
+External check: the worker sends a heartbeat to Healthchecks.io (free Hobbyist plan) every minute (`HEALTHCHECKS_PING_URL`) while its own database heartbeat is fresh, and `/fail` when it is stale; Healthchecks.io alerts the owner by Telegram or email when the pings stop. The recorder writes its database heartbeat every 15 seconds. A scheduled GitHub Actions job was rejected because one run every 10 minutes would likely exceed the 2,000 free monthly minutes of a private repository.
 
 Oracle idle-reclaim awareness: the System page shows CPU, memory and network use. If the VM sits close to the thresholds that Oracle documents for idle instances, we review sizing or consider the owner's own always-on machine. Upgrading the Oracle account to pay-as-you-go keeps Always Free resources free per Oracle's documentation but needs a card and a budget alert; that is the owner's choice and not part of the plan.
 

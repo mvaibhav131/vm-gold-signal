@@ -107,6 +107,7 @@ let database: TestDatabase;
 let owner: string;
 let worker: string;
 let api: string;
+let backup: string;
 const stranger = `stranger_${randomBytes(4).toString('hex')}`;
 let strangerUrl: string;
 
@@ -115,9 +116,11 @@ beforeAll(async () => {
   owner = database.url;
   await query(owner, "ALTER ROLE vmgs_worker LOGIN PASSWORD 'worker-pass'");
   await query(owner, "ALTER ROLE vmgs_api LOGIN PASSWORD 'api-pass'");
+  await query(owner, "ALTER ROLE vmgs_backup LOGIN PASSWORD 'backup-pass'");
   await query(owner, `CREATE ROLE ${stranger} LOGIN PASSWORD 'stranger-pass'`);
   worker = database.urlFor('vmgs_worker', 'worker-pass');
   api = database.urlFor('vmgs_api', 'api-pass');
+  backup = database.urlFor('vmgs_backup', 'backup-pass');
   strangerUrl = database.urlFor(stranger, 'stranger-pass');
 });
 
@@ -241,9 +244,9 @@ describe('the application roles are plain roles', () => {
     const rows = await query<Record<string, boolean>>(
       owner,
       `SELECT rolname, rolsuper, rolcreaterole, rolcreatedb, rolreplication, rolbypassrls
-       FROM pg_roles WHERE rolname IN ('vmgs_worker', 'vmgs_api')`,
+       FROM pg_roles WHERE rolname IN ('vmgs_worker', 'vmgs_api', 'vmgs_backup')`,
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect([
         row.rolsuper,
@@ -256,13 +259,47 @@ describe('the application roles are plain roles', () => {
   });
 
   it('cannot create tables or roles, or drop what the owner made', async () => {
-    for (const url of [worker, api]) {
+    for (const url of [worker, api, backup]) {
       expect((await failureOf(url, 'CREATE TABLE intruder (id integer)'))?.code).toBe('42501');
       expect((await failureOf(url, 'CREATE ROLE intruder'))?.code).toBe('42501');
       expect((await failureOf(url, 'DROP TABLE signals'))?.code).toBe('42501');
       expect((await failureOf(url, 'ALTER TABLE signals DISABLE TRIGGER ALL'))?.code).toBe('42501');
-      expect((await failureOf(url, 'SELECT * FROM schema_migrations'))?.code).toBe('42501');
+      expect((await failureOf(url, 'SELECT * FROM schema_migrations'))?.code).toBe(
+        url === backup ? undefined : '42501',
+      );
     }
+  });
+});
+
+describe('vmgs_backup (the nightly backup)', () => {
+  it('reads every table and view, and writes nothing but its own heartbeat', async () => {
+    const actual = await grantsOf('vmgs_backup');
+    for (const [name, letters] of Object.entries(actual)) {
+      expect([name, letters]).toEqual([name, name === 'worker_heartbeats' ? 'SIU' : 'S']);
+    }
+    expect(Object.keys(actual).length).toBeGreaterThan(30);
+  });
+
+  it('can read the auth tables: the backup has to hold the owner account', async () => {
+    expect(await failureOf(backup, 'SELECT count(*) FROM auth_owner')).toBeNull();
+    expect(await failureOf(backup, 'SELECT count(*) FROM auth_sessions')).toBeNull();
+  });
+
+  it('writes its heartbeat, and cannot change a signal or the worker heartbeat rows beyond the table grant', async () => {
+    expect(
+      await failureOf(
+        backup,
+        `INSERT INTO worker_heartbeats (worker_name, heartbeat_at, metadata)
+         VALUES ('backup', now(), '{}') ON CONFLICT (worker_name) DO UPDATE SET heartbeat_at = now()`,
+      ),
+    ).toBeNull();
+    expect((await failureOf(backup, 'DELETE FROM worker_heartbeats'))?.code).toBe('42501');
+    expect((await failureOf(backup, 'UPDATE signals SET entry = 1'))?.code).toBe('42501');
+    expect((await failureOf(backup, 'DELETE FROM signal_events'))?.code).toBe('42501');
+    expect((await failureOf(backup, 'TRUNCATE ticks'))?.code).toBe('42501');
+    expect((await failureOf(backup, "UPDATE app_settings SET value = '{}'::jsonb"))?.code).toBe(
+      '42501',
+    );
   });
 });
 

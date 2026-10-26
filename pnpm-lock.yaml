@@ -126,6 +126,9 @@ importers:
       fast-xml-parser:
         specifier: 5.11.2
         version: 5.11.2
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
       web-push:
         specifier: 3.6.7
         version: 3.6.7

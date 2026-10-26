@@ -1,0 +1,43 @@
+# B31b: TLS, the headers of 01_HLD section 8, the web app and the proxy to the api. Caddy gets and renews the
+# certificate of {$PUBLIC_HOST} by itself (the name must point at this VM: see the DuckDNS updater, and ports 80 and
+# 443 must be open in the cloud firewall).
+{$PUBLIC_HOST} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()"
+		# Mantine sets styles from script, so style-src needs 'unsafe-inline'; scripts never do. The api and the
+		# event stream are the same origin.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+
+	# The api: REST, the event stream and the health checks. Never cached. Not buffered: the stream must reach the
+	# browser as it is written (a comment line every 15 s keeps it open).
+	@api path /api/* /health/*
+	handle @api {
+		header Cache-Control "no-store"
+		reverse_proxy api:3000 {
+			flush_interval -1
+			transport http {
+				response_header_timeout 60s
+			}
+		}
+	}
+
+	# The web app: a single-page app, so an address that is not a file is the index. The service worker and the
+	# index are checked at every visit; the hashed files are kept for a year.
+	handle {
+		root * /srv/web
+		@hashed path /assets/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		@entry path / /index.html /sw.js /registerSW.js /manifest.webmanifest
+		header @entry Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}

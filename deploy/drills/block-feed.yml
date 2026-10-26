@@ -1,0 +1,6 @@
+# Used by deploy/scripts/drill.sh (block-feed): the worker cannot reach the feed. biquote.io is the feed, the
+# calendar and one headline source; the other headline sources and Telegram stay reachable.
+services:
+  worker:
+    extra_hosts:
+      - 'biquote.io:127.0.0.1'

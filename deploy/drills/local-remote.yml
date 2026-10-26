@@ -1,0 +1,16 @@
+# For trying the backup and the restore drill without the object storage (a laptop, or a drill on the VM before the
+# bucket exists): a volume stands in for the bucket, so the remote is `local:/backups` with this rclone.conf:
+#   [local]
+#   type = local
+# Add it to the compose files of compose.sh:
+#   VMGS_COMPOSE_FILES=deploy/drills/local-remote.yml deploy/scripts/compose.sh --profile ops run --rm backup
+services:
+  backup:
+    volumes:
+      - backups:/backups
+  drill:
+    volumes:
+      - backups:/backups
+
+volumes:
+  backups:

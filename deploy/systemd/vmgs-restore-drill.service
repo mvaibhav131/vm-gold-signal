@@ -1,0 +1,9 @@
+[Unit]
+Description=VM Gold Signal restore drill (restores the newest backup into a scratch database and compares it)
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vmgs/deploy/scripts/compose.sh --profile ops run --rm -T drill
+TimeoutStartSec=1h

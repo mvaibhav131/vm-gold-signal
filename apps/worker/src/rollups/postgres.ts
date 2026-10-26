@@ -281,26 +281,26 @@ interface CauseDb {
 }
 
 async function storedRows(db: Db): Promise<RollupDelta> {
-  const [buckets, monthly, groups, causes] = await Promise.all([
-    db.query<BucketDb>(
-      `SELECT scope, level, bucket_key, n, wins, winners, partials, losses, time_exits, tp1_hits, tp2_hits,
-              sum_r, sum_win_r, sum_loss_r
-         FROM stats_bucket WHERE scope = 'FORWARD'`,
-    ),
-    db.query<MonthlyDb>(
-      `SELECT to_char(month, 'YYYY-MM-DD') AS month, strategy_key, generated, resolved_valid, wins, winners,
-              partials, losses, time_exits, cancelled, data_invalid, net_r, sum_win_r, sum_loss_r
-         FROM stats_monthly`,
-    ),
-    db.query<GroupDb>(
-      `SELECT scope, strategy_key, group_key, state, n, wins, sum_r
-         FROM evidence_group_stats WHERE scope = 'FORWARD'`,
-    ),
-    db.query<CauseDb>(
-      `SELECT to_char(month, 'YYYY-MM-DD') AS month, strategy_key, cause_code, n, sum_r
-         FROM failure_cause_stats`,
-    ),
-  ]);
+  // One after the other: `db` is the connection that holds the advisory lock, and pg@9 will refuse a second query on
+  // a connection that is still busy with one.
+  const buckets = await db.query<BucketDb>(
+    `SELECT scope, level, bucket_key, n, wins, winners, partials, losses, time_exits, tp1_hits, tp2_hits,
+            sum_r, sum_win_r, sum_loss_r
+       FROM stats_bucket WHERE scope = 'FORWARD'`,
+  );
+  const monthly = await db.query<MonthlyDb>(
+    `SELECT to_char(month, 'YYYY-MM-DD') AS month, strategy_key, generated, resolved_valid, wins, winners,
+            partials, losses, time_exits, cancelled, data_invalid, net_r, sum_win_r, sum_loss_r
+       FROM stats_monthly`,
+  );
+  const groups = await db.query<GroupDb>(
+    `SELECT scope, strategy_key, group_key, state, n, wins, sum_r
+       FROM evidence_group_stats WHERE scope = 'FORWARD'`,
+  );
+  const causes = await db.query<CauseDb>(
+    `SELECT to_char(month, 'YYYY-MM-DD') AS month, strategy_key, cause_code, n, sum_r
+       FROM failure_cause_stats`,
+  );
   // sorted by key and without rows of zeros, as the pure tables give them
   return new RollupTables()
     .apply({

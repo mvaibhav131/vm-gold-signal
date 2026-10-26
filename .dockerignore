@@ -1,0 +1,22 @@
+# Everything is left out except what the image needs (deploy/Dockerfile). Secrets, history data, tests and the web app
+# never enter a build context.
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!.npmrc
+!tsconfig.base.json
+!apps/web/package.json
+!apps/worker/
+!e2e/package.json
+!packages/
+!tools/research/package.json
+!deploy/scripts/
+
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/*.test.ts
+**/*.int.test.ts
+packages/db/test

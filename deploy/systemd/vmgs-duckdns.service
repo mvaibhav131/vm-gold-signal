@@ -1,0 +1,12 @@
+[Unit]
+Description=VM Gold Signal DuckDNS address update
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/vmgs/deploy/scripts/duckdns.sh
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict

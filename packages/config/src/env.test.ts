@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EnvError,
+  adminEnvSchema,
   apiEnvSchema,
   backupEnvSchema,
   parseEnv,
@@ -207,6 +208,41 @@ describe('workerEnvSchema', () => {
   });
 });
 
+describe('adminEnvSchema', () => {
+  const admin = {
+    DATABASE_URL_ADMIN: 'postgres://vmgs_owner:pw@db:5432/vmgs',
+    DB_PASSWORD_WORKER: 'a'.repeat(48),
+  };
+
+  it('needs the owner URL and the worker password; the other passwords are optional', () => {
+    expect(problems(adminEnvSchema, admin)).toEqual([]);
+    expect(
+      problems(adminEnvSchema, {
+        ...admin,
+        DB_PASSWORD_API: 'b'.repeat(48),
+        DB_PASSWORD_BACKUP: 'c'.repeat(48),
+      }),
+    ).toEqual([]);
+    expect(problems(adminEnvSchema, { DATABASE_URL_ADMIN: admin.DATABASE_URL_ADMIN })).toEqual([
+      'DB_PASSWORD_WORKER: Invalid input: expected string, received undefined',
+    ]);
+  });
+
+  it('refuses a short password and one that would need escaping in a URL', () => {
+    for (const password of ['short', `${'a'.repeat(30)}@`, `${'a'.repeat(30)}/x`]) {
+      expect(problems(adminEnvSchema, { ...admin, DB_PASSWORD_WORKER: password })).toHaveLength(1);
+    }
+  });
+
+  it('does not echo a refused password', () => {
+    const text = problems(adminEnvSchema, { ...admin, DB_PASSWORD_API: 'hunter2-hunter2@' }).join(
+      '\n',
+    );
+    expect(text).toContain('DB_PASSWORD_API');
+    expect(text).not.toContain('hunter2');
+  });
+});
+
 describe('secrets never appear in error messages', () => {
   it('does not echo invalid secret values', () => {
     const secrets = ['hunter2-hunter2', 'tg-secret-token', 'bad-key-value'];
@@ -232,12 +268,22 @@ describe('secrets never appear in error messages', () => {
 
 describe('backupEnvSchema', () => {
   const backup = {
+    DATABASE_URL_BACKUP: 'postgres://vmgs_backup:pw@db:5432/vmgs',
     BACKUP_AGE_RECIPIENT: `age1${'q'.repeat(58)}`,
     BACKUP_RCLONE_REMOTE: 'oci:vmgs-backups/db',
   };
 
   it('accepts an age public key and an rclone remote', () => {
     expect(problems(backupEnvSchema, backup)).toEqual([]);
+  });
+
+  it('connects as the backup role and as no other', () => {
+    expect(
+      problems(backupEnvSchema, {
+        ...backup,
+        DATABASE_URL_BACKUP: 'postgres://vmgs_worker:pw@db:5432/vmgs',
+      }),
+    ).toEqual(['DATABASE_URL_BACKUP: must connect as database role vmgs_backup']);
   });
 
   it('rejects an age private key and a remote without a name', () => {

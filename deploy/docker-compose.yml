@@ -1,0 +1,179 @@
+# VM Gold Signal: the stack of the VM (06_Phases_and_Setup section 4). Run it with deploy/scripts/compose.sh, which
+# gives the project name and the root-owned .env; never publish a port other than the ones of caddy.
+#
+#   default services   db, migrate (one run before the worker), worker
+#   profile ops        backup, drill: one-shot jobs of the systemd timers
+#   profile web        caddy (B31b: the api and the web app arrive with B30 and U5)
+name: vmgs
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+x-app: &app
+  image: vmgs-app:${VMGS_VERSION:-local}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  logging: *logging
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  read_only: true
+  tmpfs: ['/tmp:size=64m,mode=1777']
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # Read only when the data directory is empty (the first start); a later change goes through ALTER ROLE.
+      POSTGRES_USER: vmgs_owner
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the .env}
+      POSTGRES_DB: vmgs
+    # Sized for the A1 VM (12 GB): a small cache, a few connections, one WAL setting for a write-mostly load.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - effective_cache_size=4GB
+      - -c
+      - work_mem=16MB
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_connections=40
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=2GB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+    shm_size: 256mb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vmgs_owner -d vmgs']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    stop_grace_period: 60s
+
+  # Applies the migrations and gives the application roles their passwords. The only process with the owner URL.
+  migrate:
+    <<: *app
+    command: ['node', '--import', 'tsx', 'src/cli/main.ts', 'db:migrate']
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_ADMIN: postgres://vmgs_owner:${POSTGRES_PASSWORD}@db:5432/vmgs
+      DB_PASSWORD_WORKER: ${DB_PASSWORD_WORKER:?set DB_PASSWORD_WORKER in the .env}
+      DB_PASSWORD_API: ${DB_PASSWORD_API:-}
+      DB_PASSWORD_BACKUP: ${DB_PASSWORD_BACKUP:?set DB_PASSWORD_BACKUP in the .env}
+
+  worker:
+    <<: *app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in the .env}
+      DATABASE_URL_WORKER: postgres://vmgs_worker:${DB_PASSWORD_WORKER}@db:5432/vmgs
+      FEED_PROVIDER: biquote
+      FEED_SYMBOLS: ${FEED_SYMBOLS:-XAUUSD,DXY,XAGUSD}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      HEALTHCHECKS_PING_URL: ${HEALTHCHECKS_PING_URL:-}
+    healthcheck:
+      test: ['CMD', 'node', '--import', 'tsx', 'src/cli/main.ts', 'worker:alive', '60']
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 180s
+    stop_grace_period: 30s
+
+  # Nightly (vmgs-backup.timer): pg_dump without the tick data, age, rclone to the object storage, prune.
+  backup:
+    <<: *app
+    profiles: [ops]
+    user: '0:0' # reads the root-owned secrets; it runs for a minute, with no capability and a read-only root
+    command: ['/opt/vmgs/bin/backup.sh']
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_BACKUP: postgres://vmgs_backup:${DB_PASSWORD_BACKUP}@db:5432/vmgs
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?set BACKUP_AGE_RECIPIENT in the .env}
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:?set BACKUP_RCLONE_REMOTE in the .env}
+      RCLONE_CONFIG: /run/secrets/rclone.conf
+      HEALTHCHECKS_BACKUP_URL: ${HEALTHCHECKS_BACKUP_URL:-}
+    volumes:
+      - ${VMGS_SECRETS_DIR:-../secrets}/rclone.conf:/run/secrets/rclone.conf:ro
+      - ${VMGS_SECRETS_DIR:-../secrets}/drill.key:/run/secrets/drill.key:ro
+
+  # Monthly (vmgs-restore-drill.timer): restores the newest backup into a scratch database and compares it.
+  drill:
+    <<: *app
+    profiles: [ops]
+    user: '0:0'
+    command: ['/opt/vmgs/bin/restore-drill.sh']
+    restart: 'no'
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL_ADMIN: postgres://vmgs_owner:${POSTGRES_PASSWORD}@db:5432/vmgs
+      DATABASE_URL_BACKUP: postgres://vmgs_backup:${DB_PASSWORD_BACKUP}@db:5432/vmgs
+      BACKUP_RCLONE_REMOTE: ${BACKUP_RCLONE_REMOTE:?set BACKUP_RCLONE_REMOTE in the .env}
+      RCLONE_CONFIG: /run/secrets/rclone.conf
+      HEALTHCHECKS_DRILL_URL: ${HEALTHCHECKS_DRILL_URL:-}
+    volumes:
+      - ${VMGS_SECRETS_DIR:-../secrets}/rclone.conf:/run/secrets/rclone.conf:ro
+      - ${VMGS_SECRETS_DIR:-../secrets}/drill.key:/run/secrets/drill.key:ro
+
+  # B31b. TLS, security headers, the web app and the proxy to the api (which arrives with B30). The only service
+  # that publishes ports.
+  caddy:
+    image: caddy:2.11-alpine
+    profiles: [web]
+    restart: unless-stopped
+    logging: *logging
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: ['no-new-privileges:true']
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?set PUBLIC_HOST in the .env}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${VMGS_WEB_DIST:-../apps/web/dist}:/srv/web:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

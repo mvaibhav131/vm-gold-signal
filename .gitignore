@@ -9,6 +9,10 @@ coverage/
 .env.*
 !.env.example
 
+# the VM's own files next to the checkout (deploy/README.md)
+secrets/
+.deployed
+
 # test output
 playwright-report/
 test-results/

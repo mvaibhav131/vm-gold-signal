@@ -72,7 +72,7 @@ Two application processes plus the database and the proxy. This is deliberate: f
 | `api` | REST, SSE fan-out, authentication, settings, analytics queries. Read-mostly. Restarting it never affects signal generation. |
 | `worker` | Feed adapter, tick recorder, candle builder, feature engine, regime, strategies, risk, signal persistence, outcome tracker, post-mortem, outbox sender (Telegram, Web Push), Telegram command handler, calendar poller, headline poller and classifier, market-move detector, maintenance jobs, heartbeats. |
 | `db` | PostgreSQL 17 (pgvector image so a later RAG phase needs no image change). Not published outside the Docker network. |
-| `backup` | Scheduled job (host systemd timer or a tiny container) running pg_dump, age encryption and upload. |
+| `backup` | A one-shot job of the same image (a systemd timer starts it): `pg_dump` without tick data, age encryption to two recipients, upload, pruning, heartbeat. Its own database role, `vmgs_backup`. |
 
 ### 4.2 Worker internal modules
 
@@ -160,7 +160,7 @@ Estimated volume: about 2.4 ticks per second while the market is open is roughly
 
 Safety rules: retention jobs never delete from `signals`, `signal_events` or `signal_outcomes` (these tables reject DELETE and TRUNCATE by trigger, and UPDATE too, with one exception: the trigger of `signals` lets the worker replace the `feature_snapshot` of a signal older than 365 days by a marker with `pruned = true`, once, and changes nothing else; the right is a column privilege on that one column). A size guard compares database size and disk usage with soft limits (database 10 GB, disk 70%) every hour. At 80% of either it shortens tick retention one step (14, 7, 3, 1 days), writes a `maintenance_runs` row and sends one Telegram warning a day; it restores one step when the use is under 60%. The System page shows sizes per table and last maintenance run.
 
-Backups: nightly `pg_dump` excluding tick partitions, encrypted with age, uploaded to OCI Object Storage. Keep 7 daily, 4 weekly, 3 monthly. A monthly restore test script verifies the backup restores into a scratch database.
+Backups: nightly `pg_dump` excluding tick partitions, encrypted with age (to the owner's offline key and to the VM's drill key), uploaded to OCI Object Storage. Keep 7 daily, 4 weekly, 3 monthly. A monthly restore drill restores the newest backup into a scratch database and compares it with the manifest of the backup (details in `06` section 4).
 
 ## 8. Security
 
@@ -171,7 +171,7 @@ Backups: nightly `pg_dump` excluding tick partitions, encrypted with age, upload
 - Login throttling backed by the database (survives restarts). Generic failure message.
 - Telegram bot answers only the configured owner chat id. Every other chat is ignored.
 - Caddy sets HSTS, CSP, `frame-ancestors 'none'`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. API responses use `Cache-Control: no-store`.
-- Postgres is never published to the host. Two database roles: `vmgs_worker` (writes market and signal data) and `vmgs_api` (reads everything, writes auth, settings, push subscriptions, audit).
+- Postgres is never published to the host. Three database roles: `vmgs_worker` (writes market and signal data), `vmgs_api` (reads everything except the auth tables, writes auth, settings, push subscriptions, audit) and `vmgs_backup` (reads everything for `pg_dump`, writes only its own heartbeat). Only the migrate step of a deploy holds the schema owner's URL.
 - Cloud firewall: 80 and 443 public, SSH limited to the owner's IP. Docker does not publish other ports.
 - Secrets live in a root-owned `.env` file (mode 600) outside git. TLS verification is never disabled.
 - Audit log for logins, logouts, settings changes, strategy status changes, notification tests.
@@ -221,7 +221,8 @@ packages/
 tools/
   research/       HistData importer, backtester, experiment registry CLI
   cli/            create-owner, rotate-secrets, db tools
-deploy/           docker-compose.yml, Caddyfile, backup scripts, .env.example
+deploy/           Dockerfile, docker-compose.yml, Caddyfile, scripts (deploy, backup, restore drill, failure drills,
+                  VM setup), systemd timers, env.example, README.md (the runbook)
 e2e/              Playwright tests
 docs/             this documentation
 ```
