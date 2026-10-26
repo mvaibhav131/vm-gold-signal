@@ -3,6 +3,7 @@ import { STRATEGY_KEYS } from '@vmgs/core';
 import { afterAll, describe, it } from 'vitest';
 
 import { seedLive, startWorkerSimulator, tickPartitions } from './testing/liveSeed';
+import { startLiveControl } from './testing/liveControl';
 import { startPgApi, type PgApi } from './testing/pgApi';
 import { startSeedWorld, type SeedWorld } from './testing/seedWorld';
 
@@ -45,7 +46,13 @@ describe.skipIf(!enabled)('the live stack for the browser', () => {
           await world.store.ensureStrategyVersion(defaultStrategyConfig(key));
         }
       } else await seedLive(api, world, Date.now());
-      startWorkerSimulator(api, { warm: !fresh });
+      const simulator = startWorkerSimulator(api, { warm: !fresh });
+      await startLiveControl({
+        api,
+        world,
+        simulator,
+        port: Number(process.env.VMGS_LIVE_CONTROL_PORT ?? 3001),
+      });
       await api.app.listen({ host: '127.0.0.1', port });
       await new Promise(() => undefined);
     },

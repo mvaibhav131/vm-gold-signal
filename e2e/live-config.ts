@@ -15,7 +15,8 @@ export type LiveWorld = 'seeded' | 'fresh';
 export function liveConfig(world: LiveWorld) {
   return defineConfig({
     testDir: './live',
-    testMatch: `**/${world}.spec.ts`,
+    // the files of a world run in the order of their names: the ones that only read first, those that change the stack after
+    testMatch: world === 'seeded' ? '**/seeded-*.spec.ts' : '**/fresh-*.spec.ts',
     fullyParallel: false,
     workers: 1,
     forbidOnly: Boolean(process.env.CI),
@@ -44,6 +45,7 @@ export function liveConfig(world: LiveWorld) {
           VMGS_LIVE_STACK: '1',
           VMGS_LIVE_SITE: web,
           VMGS_LIVE_PORT: '3000',
+          VMGS_LIVE_CONTROL_PORT: '3001',
           VMGS_LIVE_WORLD: world,
         },
         url: `${api}/api/v1/health/live`,

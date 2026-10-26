@@ -33,8 +33,9 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 # The web app: Vite bundles it (and the code of `core` and `contracts` that it uses) into static files. Typechecking is
 # a gate of the repository (`pnpm typecheck`), not a step of the image, so `tsc` is not needed here.
 FROM manifests AS web-build
-# `mock` until the screens are wired to the API (U5); the build of U5 turns it to `live`.
-ARG VITE_DATA_SOURCE=mock
+# `live` is the API of the server, the only thing a release shows. `--build-arg VITE_DATA_SOURCE=mock` builds the simulated
+# preview (it carries the `SIMULATED` badge) for a look at the screens without a backend.
+ARG VITE_DATA_SOURCE=live
 ENV VITE_DATA_SOURCE=${VITE_DATA_SOURCE}
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter "@vmgs/web..."

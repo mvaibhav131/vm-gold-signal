@@ -180,11 +180,21 @@ The API holds one connection for the event stream (`LISTEN`) besides its pool of
 buffer, so the stream reaches the browser as it is written. The `Caddyfile` has the headers, the fallback to the index
 for a single-page app, no cache for `/api` and `/health`, and the redirect to HTTPS.
 
-**Until the screens are wired to the API (phase U5) the web image is built with the mock data** (`VITE_DATA_SOURCE`
-in the Dockerfile): the site opens, with the `SIMULATED` badge, and shows nothing real. U5 turns it to `live`.
+The web image is built with the live client (`VITE_DATA_SOURCE=live`, the default of the Dockerfile): the page talks to the API of the same origin, through Caddy. A build with `--build-arg VITE_DATA_SOURCE=mock` is the simulated preview, which is never what a release carries.
 
 To try the whole thing on a PC beside other containers (high ports, a certificate of Caddy's own for `localhost`):
 `deploy/drills/local-web.yml` (its header says how).
+
+**A look in a browser (U5c).** `smoke.sh` asks with curl; a browser tells what curl cannot: that the policy of Caddy for scripts and styles does not break the page, that the event stream reaches the page through the proxy, and that every screen shows real data without an error. With the stack up:
+
+```powershell
+$env:VMGS_STACK_URL = 'https://your-name.duckdns.org'   # default https://localhost:18443 (the drill)
+$env:VMGS_STACK_PASS = '<your password>'                 # also VMGS_STACK_USER (default owner), VMGS_STACK_CODE (the 2-step code of the moment)
+$env:VMGS_STACK_INSECURE = '1'                           # only for the drill: trusts Caddy's own certificate
+pnpm e2e:stack
+```
+
+It only reads: it logs in, opens the twelve screens and tabs, looks at the headers, watches the price move and logs out, and it fails on any console error, refused request or `Could not load`. Run it from your PC against the VM after the first deploy, and again after each release.
 
 ## 7. What was checked where
 
@@ -210,6 +220,8 @@ key; the container of the api as `node`, read-only, no capability; the profile `
 and `worker`; `shellcheck` on every script. The run found and fixed: a Caddy `Cache-Control` on top of the api's
 (twice), a missing file under `/assets` answered with the index (a tab of an older release would get a page as its
 script), and the request log writing the address of the client (it now holds the method, the path and the status).
+
+For U5c, in the same way (project `vmgs-u5ctest`): the web image built with the default `live` (no mock data in the bundle), the stack up with the real worker on the real feed, the owner made from a pipe, and `pnpm e2e:stack` in Chromium against Caddy: its headers and policy (no violation), all twelve screens with real headlines, the real calendar and the real price, the price moving through the proxy, the worker's heartbeat, and the logout. Removed afterwards (containers, volumes, images, network).
 
 Only the VM can check: the `arm64` build, `vm-setup.sh` (it was not run on Ubuntu), the Oracle bucket and its S3
 settings, Healthchecks.io delivery, DuckDNS, and the certificate. The first run of each on the VM is the test: the

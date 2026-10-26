@@ -386,12 +386,25 @@ export async function seedLive(api: PgApi, world: SeedWorld, now: number): Promi
   await system(api, now);
 }
 
+/** What a test can do to the simulated worker while a browser looks at the stack. */
+export interface WorkerSimulator {
+  stop(): void;
+  /** Off: the recorder writes no tick but the worker still beats, so the feed goes stale after a few seconds. */
+  setTicks(on: boolean): void;
+  /** Off: the whole worker is gone, no tick and no heartbeat, so after 45 seconds the feed is disconnected. */
+  setWorker(on: boolean): void;
+}
+
 /**
  * The worker's side of the stack while a browser looks at it: a tick every second (a walk around the price), the
  * heartbeat that says the feed is live, the state of the decision loop, and the heartbeats of the other jobs.
  */
-export function startWorkerSimulator(api: PgApi, options: { warm?: boolean } = {}): () => void {
+export function startWorkerSimulator(
+  api: PgApi,
+  options: { warm?: boolean } = {},
+): WorkerSimulator {
   const warm = options.warm ?? true;
+  const running = { ticks: true, worker: true };
   let price = LIVE_PRICE;
   let seed = 11;
   const random = (): number => {
@@ -406,6 +419,7 @@ export function startWorkerSimulator(api: PgApi, options: { warm?: boolean } = {
   timers.push(
     setInterval(
       guarded(() => {
+        if (!running.ticks || !running.worker) return Promise.resolve();
         price = Math.max(4000, Math.min(4035, price + (random() - 0.5) * 0.9));
         const bid = Math.round(price * 1000) / 1000;
         const at = new Date(api.clock.now);
@@ -418,6 +432,7 @@ export function startWorkerSimulator(api: PgApi, options: { warm?: boolean } = {
     ),
   );
   const beat = guarded(async () => {
+    if (!running.worker) return;
     const now = new Date(api.clock.now);
     await api.admin.query(
       `INSERT INTO worker_heartbeats (worker_name, heartbeat_at, metadata) VALUES ('worker', $1, $2::jsonb)
@@ -462,7 +477,17 @@ export function startWorkerSimulator(api: PgApi, options: { warm?: boolean } = {
   });
   beat();
   timers.push(setInterval(beat, 8000));
-  return () => {
-    for (const timer of timers) clearInterval(timer);
+  return {
+    stop() {
+      for (const timer of timers) clearInterval(timer);
+    },
+    setTicks(on) {
+      running.ticks = on;
+    },
+    setWorker(on) {
+      running.worker = on;
+      // a worker that is back says so at once, it does not wait for the next beat
+      if (on) beat();
+    },
   };
 }

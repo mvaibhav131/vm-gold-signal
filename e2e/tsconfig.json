@@ -7,9 +7,11 @@
   "include": [
     "tests",
     "live",
+    "stack",
     "playwright.config.ts",
     "live-config.ts",
     "playwright.live.config.ts",
-    "playwright.live-fresh.config.ts"
+    "playwright.live-fresh.config.ts",
+    "playwright.stack.config.ts"
   ]
 }
