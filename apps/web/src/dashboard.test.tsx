@@ -356,5 +356,39 @@ describe('the rest of the dashboard', () => {
       expect(legend).toHaveTextContent(/EMA 20 \d{4}\.\d{3}/);
     });
     expect(await within(panel).findByTestId('chart-levels')).toHaveTextContent(/PDH \d{4}\.\d{3}/);
+    expect(within(panel).queryByTestId('chart-empty')).toBeNull();
+  });
+
+  it('says so, and does not leave a blank box, when a timeframe has no candles yet', async () => {
+    const user = userEvent.setup();
+    const { client } = await start('two-open');
+    const real = client.getCandles.bind(client);
+    vi.spyOn(client, 'getCandles').mockImplementation(async (query) => {
+      if (query.tf === '1h') return { candles: [], overlays: {}, levels: [], objects: [] };
+      const answer = await real(query);
+      return query.tf === '4h' ? { ...answer, candles: answer.candles.slice(0, 1) } : answer;
+    });
+    const panel = await screen.findByTestId('chart-panel');
+    expect(await within(panel).findByTestId('price-chart-stub')).toBeInTheDocument();
+    expect(within(panel).queryByTestId('chart-empty')).toBeNull();
+    await user.click(within(panel).getByRole('radio', { name: '1h' }));
+    expect(await within(panel).findByTestId('chart-empty')).toHaveTextContent(
+      'No 1h candles have been recorded yet.',
+    );
+    expect(
+      within(panel).getByRole('group', { name: 'XAUUSD 1h candlestick chart, no candles yet' }),
+    ).toBeInTheDocument();
+    // one candle is a chart, not an empty one
+    await user.click(within(panel).getByRole('radio', { name: '4h' }));
+    expect(
+      await within(panel).findByRole('group', {
+        name: /^XAUUSD 4h candlestick chart\. .* 1 candles\.$/,
+      }),
+    ).toBeInTheDocument();
+    expect(within(panel).queryByTestId('chart-empty')).toBeNull();
+    await user.click(within(panel).getByRole('radio', { name: '15m' }));
+    await waitFor(() => {
+      expect(within(panel).queryByTestId('chart-empty')).toBeNull();
+    });
   });
 });

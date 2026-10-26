@@ -300,6 +300,28 @@ describe('the calendar', () => {
     expect(waiting[8]).toBe('\u2013Move of gold not measured');
   });
 
+  it('says "No figure" instead of "Not delivered yet" for an event that is hours old and still has no value', async () => {
+    const stale = '00000000-0000-4000-8000-00000000e014';
+    await open('/news', {
+      override: (mock) => ({
+        getNewsEvents: async (query) => {
+          const page = await mock.getNewsEvents(query);
+          return {
+            ...page,
+            items: page.items.map((event) =>
+              event.id === stale
+                ? { ...event, scheduledAt: new Date(Date.now() - 10 * 3_600_000).toISOString() }
+                : event,
+            ),
+          };
+        },
+      }),
+    });
+    const row = cellsOf(await screen.findByTestId(`news-event-${stale}`));
+    expect(row[3]).toBe('No figure');
+    expect(row[4]).toBe('0.5%');
+  });
+
   it('shows a dash and the reason for a released event whose surprise could not be measured', async () => {
     await open('/news');
     const gdp = cellsOf(

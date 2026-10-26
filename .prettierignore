@@ -2,6 +2,7 @@ packages/db/src/types.generated.ts
 docs/
 pnpm-lock.yaml
 dist/
+dist-live/
 coverage/
 node_modules/
 reports/

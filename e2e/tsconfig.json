@@ -4,5 +4,12 @@
     "lib": ["ES2025", "DOM"],
     "types": ["node"]
   },
-  "include": ["tests", "playwright.config.ts"]
+  "include": [
+    "tests",
+    "live",
+    "playwright.config.ts",
+    "live-config.ts",
+    "playwright.live.config.ts",
+    "playwright.live-fresh.config.ts"
+  ]
 }

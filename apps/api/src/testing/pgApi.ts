@@ -59,8 +59,9 @@ export interface PgApi {
  * at `T0` of the test harness.
  */
 export async function startPgApi(
-  options: { streamIntervals?: StreamSetup['intervals'] } = {},
+  options: { streamIntervals?: StreamSetup['intervals']; siteOrigin?: string } = {},
 ): Promise<PgApi> {
+  const site = options.siteOrigin ?? SITE;
   const database = await migratedDatabase();
   await query(database.url, "ALTER ROLE vmgs_api LOGIN PASSWORD 'api-pass'");
   const apiPool = createPool(database.urlFor('vmgs_api', 'api-pass'), { max: 6 });
@@ -80,7 +81,7 @@ export async function startPgApi(
   let stream = null as StreamHandle | null;
   const app = await buildApp({
     service,
-    siteOrigin: SITE,
+    siteOrigin: site,
     routes: (instance) => {
       registerApiRoutes(instance, {
         pool: apiPool,
@@ -102,7 +103,7 @@ export async function startPgApi(
     method: 'POST',
     url: '/api/v1/auth/login',
     remoteAddress: '203.0.113.7',
-    headers: { origin: SITE, 'x-vmgs-csrf': '1' },
+    headers: { origin: site, 'x-vmgs-csrf': '1' },
     payload: { ...OWNER },
   });
   const cookie = login.cookies.find((each) => each.name === SESSION_COOKIE)?.value;
@@ -132,7 +133,7 @@ export async function startPgApi(
         url: options.url,
         remoteAddress: '203.0.113.7',
         headers: {
-          origin: SITE,
+          origin: site,
           'x-vmgs-csrf': '1',
           cookie: `${SESSION_COOKIE}=${cookie}`,
         },

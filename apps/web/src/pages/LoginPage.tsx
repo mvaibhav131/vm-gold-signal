@@ -20,6 +20,7 @@ import { useApi } from '../api/context';
 import { emptyLoginForm, toLoginRequest, validateLoginForm } from '../auth/loginForm';
 import { safeRedirectTarget } from '../auth/redirect';
 import { ME_KEY } from '../auth/RequireAuth';
+import { forgetPrivateData } from '../auth/sessionLoss';
 import { usePageTitle } from '../hooks';
 import { ThemeToggle } from '../layout/ThemeToggle';
 
@@ -42,6 +43,7 @@ export function LoginPage() {
   const login = useMutation({
     mutationFn: (values: typeof emptyLoginForm) => api.login(toLoginRequest(values)),
     onSuccess: async () => {
+      forgetPrivateData(queryClient);
       await queryClient.invalidateQueries({ queryKey: ME_KEY });
       void navigate(safeRedirectTarget(location.state), { replace: true });
     },

@@ -6,6 +6,8 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "playwright test",
+    "test:live": "playwright test --config playwright.live.config.ts",
+    "test:live:fresh": "playwright test --config playwright.live-fresh.config.ts",
     "install:browsers": "playwright install chromium"
   },
   "devDependencies": {

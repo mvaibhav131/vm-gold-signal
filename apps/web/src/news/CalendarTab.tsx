@@ -80,7 +80,10 @@ function NotMeasured({ reason }: { reason: string }) {
   );
 }
 
-function PastTable({ events }: { events: readonly CalendarEvent[] }) {
+/** An event whose time has passed and that has no figure yet: it may still be published, up to this long after its time. */
+export const FIGURE_WAIT_MS = 3 * 60 * 60_000;
+
+function PastTable({ events, nowMs }: { events: readonly CalendarEvent[]; nowMs: number }) {
   return (
     <ScrollBox label="Released events, scrolls sideways">
       <Table verticalSpacing={6} horizontalSpacing="xs" fz="sm" miw={980} data-testid="news-past">
@@ -112,7 +115,9 @@ function PastTable({ events }: { events: readonly CalendarEvent[] }) {
               <Table.Td ta="right">
                 {event.actual === null ? (
                   <Text span size="xs" c="dimmed">
-                    Not delivered yet
+                    {nowMs - Date.parse(event.scheduledAt) <= FIGURE_WAIT_MS
+                      ? 'Not delivered yet'
+                      : 'No figure'}
                   </Text>
                 ) : (
                   <b>{formatEventValue(event.actual, event.unit)}</b>
@@ -217,7 +222,7 @@ export function CalendarView({
             No event{filtered} in the last two weeks.
           </Text>
         ) : (
-          <PastTable events={past} />
+          <PastTable events={past} nowMs={nowMs} />
         )}
         <Text size="xs" c="dimmed">
           The surprise is the actual value minus the forecast, in standard deviations of the past

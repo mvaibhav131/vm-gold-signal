@@ -703,6 +703,16 @@ describe('the strategies tab', () => {
     });
   });
 
+  it('says that no strategy is registered yet, and not nothing, when the list is empty', async () => {
+    await open('/system?tab=strategies', {
+      override: () => ({ getStrategies: () => Promise.resolve([]) }),
+    });
+    expect(await screen.findByTestId('strategies-empty')).toHaveTextContent(
+      'No strategy is registered yet.',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('loads the list again after a change, so that the screen shows what the API holds', async () => {
     const getStrategies = vi.fn<ApiClient['getStrategies']>();
     const { user } = await open('/system?tab=strategies', {

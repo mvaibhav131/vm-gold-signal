@@ -125,7 +125,9 @@ function ChartBody() {
         aria-label={
           last
             ? `XAUUSD ${tf} candlestick chart. Last close ${formatPrice(last.c)}. ${String(data?.candles.length ?? 0)} candles.`
-            : 'XAUUSD candlestick chart, loading'
+            : data
+              ? `XAUUSD ${tf} candlestick chart, no candles yet`
+              : 'XAUUSD candlestick chart, loading'
         }
       >
         {data ? (
@@ -147,6 +149,12 @@ function ChartBody() {
           <Skeleton height="100%" radius="md" />
         )}
       </div>
+
+      {data?.candles.length === 0 && (
+        <Text size="sm" c="dimmed" data-testid="chart-empty">
+          No {tf} candles have been recorded yet. The chart fills as the worker records the market.
+        </Text>
+      )}
 
       {/* The same information as text: readable without the picture, and what the tests check. */}
       {data && (

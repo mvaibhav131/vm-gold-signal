@@ -26,6 +26,7 @@ sudo deploy/scripts/deploy.sh --first       # B31, on the VM: build, migrate, st
 pnpm web:dev        # the UI preview on simulated data, http://localhost:5173 (login: owner / preview); the Dashboard has a "Preview state" picker, or open /login?scenario=stale (ids: two-open, open-buy, tp1-hit, wait, warming-up, stale, disconnected, market-closed, review-pending, paused, news-unknown, system-warning); the Signals screen lists 43 simulated signals over three months and the Analytics screen shows them next to a simulated 12-month backtest (switch at the top, or /analytics?scope=BACKTEST_OOS); the News screen shows the calendar, 14 headlines and 5 market moves (/news?tab=headlines); the System screen has the health, the storage, the strategies, the alert settings, the time zone and the security (/system?tab=alerts; in the preview a changed password is shown on the login page, and the code of the 2-step login is 123456)
 pnpm e2e:install    # once: downloads Chromium for the e2e tests
 pnpm e2e            # builds the web app and runs the Playwright scenarios (DOM and axe checks, no screenshots)
+pnpm e2e:live       # U5b: builds the web app with --mode live and runs the scenarios against the whole API on a real Postgres (Docker) with a simulated worker, in a seeded world and then a fresh one (e2e/live/)
 pnpm web:budget     # after a build: the initial route must stay under 400 KB gzip
 ```
 

@@ -148,23 +148,29 @@ export function StrategiesTab() {
         </Text>
       )}
       <QueryBoundary query={strategies} what="the strategies">
-        {(items) => (
-          <Stack gap="md">
-            {items.map((strategy) => (
-              <StrategyCard
-                key={strategy.key}
-                strategy={strategy}
-                onEnabled={(enabled) => {
-                  if (enabled) update.mutate({ key: strategy.key, patch: { enabled: true } });
-                  else setDisabling(strategy);
-                }}
-                onAlerts={(alerts) => {
-                  update.mutate({ key: strategy.key, patch: { alerts } });
-                }}
-              />
-            ))}
-          </Stack>
-        )}
+        {(items) =>
+          items.length === 0 ? (
+            <Text size="sm" c="dimmed" data-testid="strategies-empty">
+              No strategy is registered yet. The worker registers each one when it starts.
+            </Text>
+          ) : (
+            <Stack gap="md">
+              {items.map((strategy) => (
+                <StrategyCard
+                  key={strategy.key}
+                  strategy={strategy}
+                  onEnabled={(enabled) => {
+                    if (enabled) update.mutate({ key: strategy.key, patch: { enabled: true } });
+                    else setDisabling(strategy);
+                  }}
+                  onAlerts={(alerts) => {
+                    update.mutate({ key: strategy.key, patch: { alerts } });
+                  }}
+                />
+              ))}
+            </Stack>
+          )
+        }
       </QueryBoundary>
       <ConfirmDialog
         opened={disabling !== null}
