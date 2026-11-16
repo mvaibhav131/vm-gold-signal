@@ -1,6 +1,6 @@
 import { STRATEGY_KEYS } from '@vmgs/core';
 import { sseEventSchema, type SseEvent } from '@vmgs/contracts';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../api/client';
 import {
@@ -532,6 +532,13 @@ describe('counters and recent signals', () => {
 });
 
 describe('analytics endpoints', () => {
+  // The preview history and the 12 months of the backtest are built from the month in which the preview starts, and the
+  // numbers below are those of October 2026: the clock is fixed, or the months move on with the calendar.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-23T10:00:00Z'));
+  });
+
   it('the forward overview is the summary of the whole history list, and an open signal only adds to "generated"', async () => {
     for (const scenario of ['two-open', 'wait', 'review-pending']) {
       const api = client({ scenario });
