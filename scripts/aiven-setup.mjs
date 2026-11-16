@@ -12,8 +12,9 @@
 //   pnpm aiven test      queues a test message; the running worker sends it to Telegram within seconds
 //   pnpm aiven site <address>   once the host has given the website its address (myname.b4a.run): writes it into the
 //                        settings of the website
-//   pnpm aiven render    writes .local/render-site-vars.txt, the settings of the website for Render (port 10000; Render tells
-//                        the website its own address, so no second deploy is needed); needs only a finished setup
+//   pnpm aiven render    writes .local/render-vars.txt (ONE Render service that is the website and the worker, VMGS_ROLE=both) and
+//                        .local/render-site-vars.txt (the website alone), port 10000; Render tells the container its own
+//                        address, so no second deploy is needed; needs only a finished setup
 //   pnpm aiven here      runs the worker on THIS PC in Docker (against the same Aiven database and Telegram bot), for when the
 //                        host of the container is not there; `here stop` stops it, `here logs` shows its log. Never at the
 //                        same time as the worker of a host.
@@ -46,6 +47,7 @@ const cfgFile = join(dir, 'aiven.cfg');
 const varsFile = join(dir, 'back4app-vars.txt');
 const siteVarsFile = join(dir, 'back4app-site-vars.txt');
 const renderVarsFile = join(dir, 'render-site-vars.txt');
+const renderBothVarsFile = join(dir, 'render-vars.txt');
 const defaultCa = join(dir, 'aiven-ca.pem');
 
 class Failure extends Error {}
@@ -315,10 +317,35 @@ function writeSiteVars(config, host) {
 
 /** The same settings for Render: its own port (10000), and the name of the website comes from Render itself. */
 function writeRenderVars(config) {
-  writeSecretFile(
-    renderVarsFile,
-    siteVarsText(config, readCa(config.AIVEN_CA_FILE), { host: null, port: 10000 }),
-  );
+  const caText = readCa(config.AIVEN_CA_FILE);
+  writeSecretFile(renderVarsFile, siteVarsText(config, caText, { host: null, port: 10000 }));
+  writeSecretFile(renderBothVarsFile, bothVarsText(config, caText));
+}
+
+/** One Render service that is the website and the worker (VMGS_ROLE=both): Render's free plan allows one service all month. */
+function bothVarsText(config, caText) {
+  const lines = [
+    '# The settings of ONE Render web service that is the website AND the worker (VMGS_ROLE=both).',
+    '# Paste each line into its environment variables. Render tells the container its own address: no PUBLIC_HOST line.',
+    '# This file holds passwords: never commit it, never send it to anyone.',
+    'VMGS_ROLE=both',
+    'NODE_ENV=production',
+    'LOG_LEVEL=info',
+    'PORT=10000',
+    'API_TRUSTED_PROXY_HOPS=2',
+    'FEED_PROVIDER=biquote',
+    'FEED_SYMBOLS=XAUUSD,DXY,XAGUSD',
+    // one value for both programs of the container: at most 5 + 5 of the 20 connections of the free Aiven database
+    'DATABASE_POOL_MAX=5',
+    `DATABASE_URL_WORKER=${roleUrl(config, 'vmgs_worker', config.DB_PASSWORD_WORKER)}`,
+    `DATABASE_URL_API=${roleUrl(config, 'vmgs_api', config.DB_PASSWORD_API)}`,
+    `DATABASE_CA_PEM=${oneLine(caText)}`,
+    `APP_ENCRYPTION_KEY=${config.APP_ENCRYPTION_KEY}`,
+  ];
+  if (config.TELEGRAM_BOT_TOKEN) lines.push(`TELEGRAM_BOT_TOKEN=${config.TELEGRAM_BOT_TOKEN}`);
+  if (config.HEALTHCHECKS_PING_URL)
+    lines.push(`HEALTHCHECKS_PING_URL=${config.HEALTHCHECKS_PING_URL}`);
+  return `${lines.join('\n')}\n`;
 }
 
 async function setup() {
@@ -555,20 +582,26 @@ async function site(argument) {
   say('Then open  https://' + host + '  and log in. No login yet?  pnpm aiven owner');
 }
 
-/** Writes the settings of the website for Render from what `pnpm aiven setup` saved: no need to run the setup again. */
+/** Writes the settings for Render from what `pnpm aiven setup` saved: no need to run the setup again. */
 function render() {
   const config = requireConfig();
   if (!config.APP_ENCRYPTION_KEY) {
     throw new Failure('The saved settings have no key of the login. Run  pnpm aiven setup  again.');
   }
   writeRenderVars(config);
-  say(`The settings of the website for Render are in:  ${renderVarsFile}`);
   say(
-    'Paste its lines as the environment variables of a Render web service (deploy/README.md, section 10).',
+    `The settings of ONE Render service, the website and the worker together:  ${renderBothVarsFile}`,
   );
-  say('It holds passwords: do not commit it and do not send it to anyone, not even to me.');
+  say(`(Only the website, with the worker somewhere else:  ${renderVarsFile})`);
+  say(
+    'Paste its lines as the environment variables of the Render web service (deploy/README.md, section 10).',
+  );
+  say('They hold passwords: do not commit them and do not send them to anyone, not even to me.');
   say('Render tells the website its own address: you do not need  pnpm aiven site  there.');
   say('When the service is live:  pnpm aiven owner  (your login).');
+  say(
+    'If a worker runs anywhere else (a host, or  pnpm aiven here ), stop it first: two workers must never run together.',
+  );
 }
 
 /** The owner commands of the website (the login), run from this PC against the database. */

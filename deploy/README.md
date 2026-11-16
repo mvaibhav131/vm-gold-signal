@@ -517,6 +517,40 @@ it asks for a card, and the address of its proxy (see the note on `X-Forwarded-F
 6. Forgot the password: `pnpm aiven admin owner:password owner`. "Too many failed attempts" when it was not you:
    `pnpm aiven admin throttle:reset`.
 
+### The worker on Render too (one service for both)
+
+Render's free plan gives **750 instance hours a month per workspace**: one service can run all month (744 hours), a second
+cannot. So the worker goes into the same service as the website: `VMGS_ROLE=both` (`entry.sh` starts the worker, the api and
+Caddy in one container, and any of them stopping stops the container so that Render starts it again). The catch: a free web
+service **sleeps after 15 minutes without an inbound request**, and a sleeping worker records nothing. A free UptimeRobot
+monitor that asks the service for a page every 5 minutes keeps it awake.
+
+Measured on a PC, with Docker limited to the free size of Render (0.1 CPU, 512 MB), the image built the way Render builds it, a
+Postgres with the same three months of HistData (21,505 candles) as the real Aiven, the real Biquote feed, three runs:
+Caddy answers `/` at once, the api listens after about 90 s (104 s in the first run), the worker is warmed up about 25 s later,
+and `/api/v1/health/ready` is 200 at 90 to 104 s. After that the pages answer in 12 to 40 ms, and the container uses 1 to 2 % of
+its CPU at rest. Memory peaked at 210 MiB (it was 255 of 256 MiB in a 256 MB container, so this needs the 512 MB of Render).
+The database connections were 6 for the api and 2 for the worker at a pool of 6, hence `DATABASE_POOL_MAX=5` in the file.
+The container's network was about 8 KB/s in and 5 KB/s out (about 0.4 GB a day out). `docker stop` took 1.3 s, exit code 0.
+
+**Not verified on Render itself**: that Render does not count a service that writes to a database all day as "uncommonly
+high service-initiated traffic" (its docs allow it to suspend such a service); that it accepts a monitor keeping the service
+awake; how often it restarts a free service (each restart is about two minutes without recording, then the engine says
+"recovering from a data gap" for about an hour); and that its 0.1 CPU behaves like the limit of Docker.
+
+1. On your PC: `pnpm aiven render`. It also writes `.local\render-vars.txt`: the lines of the website **and** the worker
+   (`VMGS_ROLE=both`, `DATABASE_URL_WORKER`, `DATABASE_URL_API`, `TELEGRAM_BOT_TOKEN`, `HEALTHCHECKS_PING_URL`, ...). Holds
+   passwords: never commit it, never send it to anyone.
+2. **Stop every other worker first**: `pnpm aiven here stop`, and the one on Back4app if it comes back. Two workers write the
+   same ticks and take turns on the one Telegram bot.
+3. In the Render service (the one of the website): **Environment**: replace the variables by the lines of `render-vars.txt`
+   (Render deploys the service again with them). **Settings**: **Auto-Deploy** off, so that a push to GitHub does not restart the worker
+   (deploy by hand with **Manual Deploy** when you mean to).
+4. `pnpm aiven status`: ALIVE after about three minutes. Telegram: `pnpm aiven test`.
+5. Keep it awake: `uptimerobot.com` (free, no card), **Add New Monitor**, type **HTTP(s)**, URL
+   `https://<your service>.onrender.com/api/v1/health/ready`, interval **5 minutes**, your e-mail as the alert contact. That page
+   answers 503 when the worker has not written its heartbeat, so the monitor also tells you when the recording stopped.
+
 ### The same by hand
 
 Steps (nothing here was run against Aiven itself):
