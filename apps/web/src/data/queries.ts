@@ -9,8 +9,10 @@ import type {
   SignalHistoryQuery,
 } from '@vmgs/contracts';
 import type { StatsScope, StrategyKey } from '@vmgs/core';
+import { useMemo } from 'react';
 
 import { useApi } from '../api/context';
+import { dayChangeOf, type DayChange } from '../format/dayChange';
 
 /** One place for every query key, so the stream bridge and the screens address the same cache entries. */
 export const KEYS = {
@@ -59,6 +61,26 @@ export function useSnapshot() {
     queryFn: () => api.getSnapshot(),
     refetchInterval: 5000,
   });
+}
+
+/**
+ * The change of the price since the trading day opened, from the 15 minute candles of the last 30 hours (the candle in
+ * hand and the quote give the price). Null until there are candles.
+ */
+export function useDayChange(price: number | null): DayChange | null {
+  const api = useApi();
+  const query = useQuery({
+    queryKey: [...KEYS.candles, 'day'],
+    queryFn: () => api.getCandles({ tf: '15m', limit: 120 }),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
+  const candles = query.data?.candles;
+  const fetchedAt = query.dataUpdatedAt;
+  return useMemo(
+    () => (price === null || !candles ? null : dayChangeOf(candles, price, fetchedAt)),
+    [candles, price, fetchedAt],
+  );
 }
 
 export function useStrategies() {

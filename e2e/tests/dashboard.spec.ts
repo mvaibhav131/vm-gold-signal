@@ -216,6 +216,51 @@ test.describe('other states of the signal column', () => {
 });
 
 test.describe('the chart', () => {
+  test('zooms with the buttons and the wheel, shows the numbers of a candle and the last candle is live', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'the phone opens the chart on demand (see E15)');
+    const errors = collectErrors(page);
+    await logIn(page, { scenario: 'two-open' });
+    const chart = page.getByTestId('price-chart');
+    await expect(chart.locator('canvas').first()).toBeVisible();
+
+    // The first view shows the newest 120 candles of the 5 minute chart, not all 600 that were loaded.
+    const bars = async () => Number(await chart.getAttribute('data-visible-bars'));
+    await expect.poll(bars).toBeGreaterThan(100);
+    const first = await bars();
+    expect(first).toBeLessThan(160);
+
+    const tools = page.getByTestId('chart-tools');
+    await tools.getByRole('button', { name: /zoom out/i }).click();
+    await expect.poll(bars).toBeGreaterThan(first * 1.3);
+    await tools.getByRole('button', { name: /zoom in/i }).click();
+    await tools.getByRole('button', { name: /zoom in/i }).click();
+    await expect.poll(bars).toBeLessThan(first * 0.8);
+    await tools.getByRole('button', { name: 'Reset the view' }).click();
+    await expect.poll(async () => Math.abs((await bars()) - first)).toBeLessThan(4);
+
+    // The mouse wheel zooms too.
+    const rect = (await chart.boundingBox()) ?? { x: 0, y: 0, width: 600, height: 400 };
+    await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+    await page.mouse.wheel(0, -600);
+    await expect.poll(bars).toBeLessThan(first);
+
+    // The numbers of the newest candle are written above the chart, and the forming candle moves with every quote (with the
+    // pointer off the chart: on a candle they show that candle).
+    await page.mouse.move(5, 5);
+    const numbers = page.getByTestId('chart-numbers');
+    await expect(numbers).toHaveText(
+      /^O \d{4}\.\d{3} {2}H \d{4}\.\d{3} {2}L \d{4}\.\d{3} {2}C \d{4}\.\d{3}/,
+    );
+    const before = await numbers.textContent();
+    await expect(numbers).not.toHaveText(before ?? '', { timeout: 15_000 });
+    expect(errors).toEqual([]);
+  });
+});
+
+test.describe('the chart (basics)', () => {
   test('draws on a canvas, shows its overlays and levels as text and logs no error', async ({
     page,
     isMobile,

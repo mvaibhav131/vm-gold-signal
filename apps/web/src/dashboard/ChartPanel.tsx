@@ -16,14 +16,28 @@ import type { Timeframe } from '@vmgs/core';
 import { Suspense, lazy, useMemo, useState } from 'react';
 
 import { useApi } from '../api/context';
-import { KEYS, useDisplayTz, useOpenSignals, useQuote } from '../data/queries';
+import { KEYS, useDisplayTz, useOpenSignals, useQuote, useSnapshot } from '../data/queries';
 import { formatPrice, midOf } from '../format/format';
 import { signalLabel } from '../format/signal';
-import type { ChartSignal } from './chart/PriceChart';
+import { candleRefetchDelayMs, serverClockOffsetMs } from './chart/forming';
+import type { ChartSignal, LiveTick } from './chart/PriceChart';
 
 const PriceChart = lazy(() => import('./chart/PriceChart'));
 
 const TIMEFRAMES: readonly Timeframe[] = ['1m', '5m', '15m', '1h', '4h'];
+
+/** How many closed candles the chart holds: room to scroll and zoom out far (the API allows 2000). */
+const CANDLE_LIMIT = 600;
+
+/** How many of the newest candles the first view shows, and "Reset" goes back to. */
+const INITIAL_BARS: Readonly<Record<Timeframe, number>> = {
+  '1m': 120,
+  '5m': 120,
+  '15m': 96,
+  '1h': 72,
+  '4h': 60,
+  '1d': 60,
+};
 
 const OVERLAY_CHOICES = [
   { value: 'ema20', label: 'EMA 20' },
@@ -48,6 +62,7 @@ function ChartBody() {
   const timeZone = useDisplayTz();
   const scheme = useComputedColorScheme('dark');
   const quote = useQuote();
+  const snapshot = useSnapshot();
   const open = useOpenSignals();
   const [tf, setTf] = useState<Timeframe>('5m');
   const [shown, setShown] = useState<string[]>(DEFAULT_SHOWN);
@@ -55,7 +70,7 @@ function ChartBody() {
   const query = useMemo<CandlesQuery>(
     () => ({
       tf,
-      limit: 200,
+      limit: CANDLE_LIMIT,
       overlays: shown.filter((name) => OVERLAY_NAMES.has(name)).join(','),
       objects: shown.filter((name) => !OVERLAY_NAMES.has(name) && name !== 'levels').join(','),
     }),
@@ -64,8 +79,9 @@ function ChartBody() {
   const candles = useQuery({
     queryKey: [...KEYS.candles, query],
     queryFn: () => api.getCandles(query),
-    // A closed candle appears at most once a minute; the live price comes from the quote stream.
-    refetchInterval: 15_000,
+    // A candle is stored a moment after it closes: ask again just after the next close (the candle that is forming now is
+    // drawn from the quote stream meanwhile).
+    refetchInterval: () => candleRefetchDelayMs(tf, Date.now()),
     placeholderData: (previous) => previous,
   });
 
@@ -88,6 +104,17 @@ function ChartBody() {
   const showLevels = shown.includes('levels');
   const livePrice = quote ? midOf(quote.bid, quote.ask) : null;
 
+  // The newest quote builds the candle that is forming (only while the feed is live: a stale price is not a candle).
+  const tick = useMemo<LiveTick | null>(
+    () =>
+      quote?.feedState === 'LIVE'
+        ? { price: midOf(quote.bid, quote.ask), ageMs: quote.ageMs }
+        : null,
+    [quote],
+  );
+  // The quotes carry no time of their own: this PC's clock is corrected by the server's (from the snapshot).
+  const clockOffsetMs = serverClockOffsetMs(snapshot.data, snapshot.dataUpdatedAt);
+
   return (
     <Stack gap="sm" data-testid="chart-panel">
       <Group justify="space-between" align="center" wrap="wrap" gap="sm">
@@ -105,7 +132,7 @@ function ChartBody() {
           />
         </Group>
         <Text size="xs" c="dimmed">
-          Mid price, closed candles
+          Mid price. The last candle is live.
         </Text>
       </Group>
 
@@ -141,6 +168,9 @@ function ChartBody() {
               objects={data.objects}
               signals={signals}
               livePrice={livePrice}
+              tick={tick}
+              clockOffsetMs={clockOffsetMs}
+              initialBars={INITIAL_BARS[tf]}
               scheme={scheme}
               timeZone={timeZone}
             />

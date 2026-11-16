@@ -3,10 +3,12 @@ import { bucketStart, type Side, type Timeframe } from '@vmgs/core';
 import {
   CandlestickSeries,
   ColorType,
+  CrosshairMode,
   LineSeries,
   LineStyle,
   createChart,
   createSeriesMarkers,
+  type CandlestickData,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
@@ -16,10 +18,11 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 import { formatPrice } from '../../format/format';
 import { crosshairLabel, tickLabel } from './chartTime';
+import { formingStep, type FormingCandle } from './forming';
 import { ZonePrimitive } from './ZonePrimitive';
 
 /** An open signal drawn on the chart: its levels as lines and its entry as an arrow. A finished one also has its exit. */
@@ -42,10 +45,22 @@ export interface PriceChartProps {
   readonly levels: readonly Level[];
   readonly objects: readonly ChartObject[];
   readonly signals: readonly ChartSignal[];
-  /** The live mid price from the quote stream. */
+  /** The live mid price from the quote stream, as a line (used when there is no `tick`). */
   readonly livePrice: number | null;
+  /** The newest live quote: it builds the candle that is still forming. Null while the feed is not live. */
+  readonly tick?: LiveTick | null;
+  /** The server clock minus this PC's clock: the quotes are placed in their candle by the server's time. */
+  readonly clockOffsetMs?: number;
+  /** How many of the newest candles the first view shows (and "Reset" goes back to); without it the view fits all. */
+  readonly initialBars?: number;
   readonly scheme: 'dark' | 'light';
   readonly timeZone: string;
+}
+
+/** A live quote: the mid price and how old it was when it reached this page. */
+export interface LiveTick {
+  readonly price: number;
+  readonly ageMs: number;
 }
 
 const PALETTE = {
@@ -96,14 +111,78 @@ interface Handle {
   priceLines: IPriceLine[];
   liveLine: IPriceLine | null;
   fitted: boolean;
+  /** The pointer is on the chart: the line of numbers shows the bar under it, not the newest one. */
+  hovering: boolean;
+  /** The candle that is forming now, from the quotes. */
+  forming: FormingCandle | null;
+  /** The forming candles newer than the newest closed one, until the stored candle arrives and replaces them. */
+  pending: Map<number, FormingCandle>;
+  /** The newest bar on the chart, for the line of numbers when the pointer is not on a bar. */
+  newest: CandlestickData | null;
 }
 
 const sec = (iso: string): UTCTimestamp => Math.floor(Date.parse(iso) / 1000) as UTCTimestamp;
+const barOf = (c: FormingCandle): CandlestickData<UTCTimestamp> => ({
+  time: Math.floor(c.startMs / 1000) as UTCTimestamp,
+  open: c.o,
+  high: c.h,
+  low: c.l,
+  close: c.c,
+});
+
+/** Empty space to the right of the newest bar, in bars. */
+const RIGHT_PAD = 6;
+/** One press of "+" or "-" changes the number of bars on the screen by this factor. */
+const ZOOM_STEP = 1.5;
+const MIN_BARS = 8;
+
+const signed = (value: number, text: string) => (value > 0 ? `+${text}` : text);
+
+/** "O 4017.285  H 4018.1  L 4016.9  C 4017.7  +0.415 (+0.01%)": the numbers of one bar. */
+function barText(bar: CandlestickData | null): string {
+  if (bar === null) return '';
+  const change = bar.close - bar.open;
+  const pct = bar.open === 0 ? 0 : (change / bar.open) * 100;
+  return (
+    `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  ` +
+    `C ${formatPrice(bar.close)}  ${signed(change, formatPrice(change))} (${signed(pct, pct.toFixed(2))}%)`
+  );
+}
+
+/** Shows the newest `bars` bars (and a little empty space after them). */
+function showLast(h: Handle, bars: number) {
+  const count = h.series.data().length;
+  if (count === 0) return;
+  h.chart.timeScale().setVisibleLogicalRange({ from: count - bars, to: count - 1 + RIGHT_PAD });
+}
+
+/** Zooms around the newest side, like every trading chart: `factor` above 1 shows more bars. */
+function zoomBy(h: Handle, factor: number) {
+  const range = h.chart.timeScale().getVisibleLogicalRange();
+  if (range === null) return;
+  const count = h.series.data().length;
+  const width = Math.min(Math.max((range.to - range.from) * factor, MIN_BARS), count + 40);
+  h.chart.timeScale().setVisibleLogicalRange({ from: range.to - width, to: range.to });
+}
 
 /** The candlestick chart. Prices are mid prices; every number comes from the API. */
 export default function PriceChart(props: PriceChartProps) {
-  const { tf, candles, overlays, levels, objects, signals, livePrice, scheme, timeZone } = props;
+  const {
+    tf,
+    candles,
+    overlays,
+    levels,
+    objects,
+    signals,
+    livePrice,
+    tick = null,
+    clockOffsetMs = 0,
+    initialBars,
+    scheme,
+    timeZone,
+  } = props;
   const box = useRef<HTMLDivElement>(null);
+  const numbers = useRef<HTMLDivElement>(null);
   const handle = useRef<Handle | null>(null);
 
   useEffect(() => {
@@ -117,11 +196,29 @@ export default function PriceChart(props: PriceChartProps) {
         textColor: palette.text,
       },
       grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
-      rightPriceScale: { borderColor: palette.border },
+      crosshair: { mode: CrosshairMode.Normal },
+      rightPriceScale: { borderColor: palette.border, scaleMargins: { top: 0.08, bottom: 0.08 } },
+      // Wheel, drag and pinch work on the chart; a vertical swipe on a phone scrolls the page, not the chart. A double click
+      // on an axis gives back its automatic range; dragging an axis stretches it.
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: false,
+      },
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+        axisDoubleClickReset: { time: true, price: true },
+      },
+      kineticScroll: { mouse: false, touch: true },
       timeScale: {
         borderColor: palette.border,
         timeVisible: true,
         secondsVisible: false,
+        rightOffset: RIGHT_PAD,
+        minBarSpacing: 1,
         tickMarkFormatter: (time: Time, type: TickMarkType) => tickLabel(time, type, timeZone),
       },
       localization: {
@@ -138,7 +235,7 @@ export default function PriceChart(props: PriceChartProps) {
       priceLineVisible: false,
       priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
     });
-    handle.current = {
+    const state: Handle = {
       chart,
       series,
       markers: createSeriesMarkers(series, []),
@@ -148,7 +245,22 @@ export default function PriceChart(props: PriceChartProps) {
       priceLines: [],
       liveLine: null,
       fitted: false,
+      hovering: false,
+      forming: null,
+      pending: new Map(),
+      newest: null,
     };
+    handle.current = state;
+    // The numbers of the bar under the pointer, or of the newest bar.
+    chart.subscribeCrosshairMove((param) => {
+      state.hovering = param.time !== undefined;
+      const item = param.seriesData.get(series);
+      const bar = item !== undefined && 'open' in item ? item : state.newest;
+      if (numbers.current) numbers.current.textContent = barText(bar);
+    });
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range) element.dataset.visibleBars = String(Math.round(range.to - range.from));
+    });
     return () => {
       chart.remove();
       handle.current = null;
@@ -162,38 +274,72 @@ export default function PriceChart(props: PriceChartProps) {
     h.series.setData(
       candles.map((c) => ({ time: sec(c.t), open: c.o, high: c.h, low: c.l, close: c.c })),
     );
+    // A candle that finished a moment ago may not be stored yet: the picture of it stays until the stored one arrives.
+    const lastClosed = candles.at(-1);
+    const newestClosed = lastClosed ? Date.parse(lastClosed.t) : 0;
+    for (const [startMs, bar] of [...h.pending].sort((a, b) => a[0] - b[0])) {
+      if (startMs <= newestClosed) h.pending.delete(startMs);
+      else h.series.update(barOf(bar));
+    }
+    const all = h.series.data();
+    const newest = all[all.length - 1];
+    h.newest = newest !== undefined && 'open' in newest ? newest : null;
+    if (numbers.current) numbers.current.textContent = barText(h.newest);
     if (!h.fitted) {
-      h.chart.timeScale().fitContent();
+      if (initialBars === undefined) h.chart.timeScale().fitContent();
+      else showLast(h, initialBars);
       h.fitted = true;
     }
-  }, [candles, scheme, timeZone]);
+  }, [candles, initialBars, scheme, timeZone]);
 
-  // Overlays (EMA, supertrend): one line series each.
+  // The candle that is forming follows the quotes: one bar updated, nothing else redrawn.
+  useEffect(() => {
+    const h = handle.current;
+    if (!h || tick === null) return;
+    const lastClosed = candles.at(-1);
+    const closed = lastClosed ? { startMs: Date.parse(lastClosed.t), c: lastClosed.c } : null;
+    const atMs = Date.now() + clockOffsetMs - tick.ageMs;
+    const next = formingStep(h.forming, tf, atMs, tick.price, closed);
+    h.forming = next;
+    // The stored candle is already there (or newer): the picture is not needed.
+    if (closed !== null && next.startMs <= closed.startMs) return;
+    const bar = barOf(next);
+    h.pending.set(next.startMs, next);
+    h.series.update(bar);
+    h.newest = bar;
+    if (numbers.current && !h.hovering) numbers.current.textContent = barText(bar);
+  }, [tick, candles, tf, clockOffsetMs, scheme, timeZone]);
+
+  // Overlays (EMA, supertrend): one line series each, kept and given new data (no flicker).
   useEffect(() => {
     const h = handle.current;
     if (!h) return;
     for (const [name, line] of h.overlaySeries) {
+      if (name in overlays) continue;
       h.chart.removeSeries(line);
       h.overlaySeries.delete(name);
     }
     for (const [name, values] of Object.entries(overlays)) {
       const style = OVERLAY_STYLE[name];
       if (!style) continue;
-      const line = h.chart.addSeries(LineSeries, {
-        color: style.color,
-        lineWidth: style.width,
-        lineStyle: style.style,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      });
+      let line = h.overlaySeries.get(name);
+      if (!line) {
+        line = h.chart.addSeries(LineSeries, {
+          color: style.color,
+          lineWidth: style.width,
+          lineStyle: style.style,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        h.overlaySeries.set(name, line);
+      }
       line.setData(
         candles.flatMap((c, i) => {
           const value = values[i];
           return value === null || value === undefined ? [] : [{ time: sec(c.t), value }];
         }),
       );
-      h.overlaySeries.set(name, line);
     }
   }, [overlays, candles, scheme, timeZone]);
 
@@ -352,10 +498,17 @@ export default function PriceChart(props: PriceChartProps) {
     );
   }, [signals, tf, candles, scheme, timeZone]);
 
-  // The live price follows the quote stream without redrawing anything else.
+  // The live price: with a forming candle the chart's own last-price label and line follow it; without one a line does.
   useEffect(() => {
     const h = handle.current;
-    if (!h || livePrice === null) return;
+    if (!h) return;
+    if (livePrice === null || tick !== null) {
+      if (h.liveLine) {
+        h.series.removePriceLine(h.liveLine);
+        h.liveLine = null;
+      }
+      return;
+    }
     if (h.liveLine) {
       h.liveLine.applyOptions({ price: livePrice });
     } else {
@@ -368,7 +521,67 @@ export default function PriceChart(props: PriceChartProps) {
         title: 'live',
       });
     }
-  }, [livePrice, scheme, timeZone]);
+  }, [livePrice, tick, scheme, timeZone]);
 
-  return <div ref={box} className="chart-canvas" data-testid="price-chart" />;
+  const zoomIn = useCallback(() => {
+    if (handle.current) zoomBy(handle.current, 1 / ZOOM_STEP);
+  }, []);
+  const zoomOut = useCallback(() => {
+    if (handle.current) zoomBy(handle.current, ZOOM_STEP);
+  }, []);
+  const goLive = useCallback(() => {
+    handle.current?.chart.timeScale().scrollToRealTime();
+  }, []);
+  const resetView = useCallback(() => {
+    const h = handle.current;
+    if (!h) return;
+    h.chart.priceScale('right').applyOptions({ autoScale: true });
+    if (initialBars === undefined) h.chart.timeScale().fitContent();
+    else showLast(h, initialBars);
+  }, [initialBars]);
+
+  return (
+    <div className="chart-wrap">
+      <div ref={numbers} className="chart-numbers" data-testid="chart-numbers" />
+      <div className="chart-tools" role="toolbar" aria-label="Chart view" data-testid="chart-tools">
+        <button
+          type="button"
+          className="chart-tool"
+          aria-label="Show more candles (zoom out)"
+          title="Zoom out"
+          onClick={zoomOut}
+        >
+          &minus;
+        </button>
+        <button
+          type="button"
+          className="chart-tool"
+          aria-label="Show fewer candles (zoom in)"
+          title="Zoom in"
+          onClick={zoomIn}
+        >
+          +
+        </button>
+        <button
+          type="button"
+          className="chart-tool"
+          aria-label="Now: go to the newest candle"
+          title="Newest candle"
+          onClick={goLive}
+        >
+          Now
+        </button>
+        <button
+          type="button"
+          className="chart-tool"
+          aria-label="Reset the view"
+          title="Reset the view"
+          onClick={resetView}
+        >
+          Reset
+        </button>
+      </div>
+      <div ref={box} className="chart-canvas" data-testid="price-chart" />
+    </div>
+  );
 }

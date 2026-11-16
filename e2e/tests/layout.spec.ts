@@ -25,6 +25,37 @@ async function checkStatusBarRows(page: Page) {
   return box(bar);
 }
 
+/** One line: the price, its change, the spread, the chips and the account controls all sit side by side. */
+async function checkStatusBarOneLine(page: Page) {
+  const bar = page.getByRole('region', { name: 'Market status' });
+  const barBox = await box(bar);
+  const items = [
+    page.getByTestId('status-price'),
+    page.getByTestId('status-change'),
+    page.getByTestId('status-spread'),
+    page.getByTestId('status-freshness'),
+    page.getByTestId('status-session'),
+    page.getByTestId('status-regime'),
+    page.getByTestId('status-engine'),
+    page.getByTestId('status-mode'),
+    page.getByTestId('status-strategy'),
+    bar.getByTestId('theme-toggle'),
+    bar.getByRole('button', { name: 'Log out' }),
+  ];
+  const centres: number[] = [];
+  let right = 0;
+  for (const item of items) {
+    const rect = await box(item);
+    centres.push(rect.y + rect.height / 2);
+    // nothing is cut off at the right edge of the bar
+    right = Math.max(right, rect.x + rect.width);
+  }
+  const spread = Math.max(...centres) - Math.min(...centres);
+  expect(spread, 'every item of the bar is on one line').toBeLessThan(26);
+  expect(right).toBeLessThanOrEqual(barBox.x + barBox.width + 0.5);
+  return barBox;
+}
+
 test.describe('desktop layout', () => {
   test.skip(({ isMobile }) => isMobile, 'desktop only');
 
@@ -44,21 +75,20 @@ test.describe('desktop layout', () => {
     }
   });
 
-  test('the status bar is two tidy rows and Log out stays with the chips', async ({ page }) => {
+  test('the status bar is one line on a 1440 window and on a wider one', async ({ page }) => {
     await logIn(page);
-    const bar = await checkStatusBarRows(page);
-    expect(bar.height).toBeLessThan(135);
+    expect((await checkStatusBarOneLine(page)).height).toBeLessThan(90);
+    await page.setViewportSize({ width: 1920, height: 900 });
+    expect((await checkStatusBarOneLine(page)).height).toBeLessThan(90);
   });
 
-  test('stays tidy on a 1362 x 768 window and on a 1100 x 800 window', async ({ page }) => {
+  test('stays tidy on a 1362 x 768 window and on a 1100 x 800 window (two rows when one line is too short)', async ({
+    page,
+  }) => {
     await logIn(page);
-    for (const size of [
-      { width: 1362, height: 768 },
-      { width: 1100, height: 800 },
-    ]) {
-      await page.setViewportSize(size);
-      const bar = await checkStatusBarRows(page);
-      expect(bar.height).toBeLessThan(135);
+    for (const width of [1362, 1100]) {
+      await page.setViewportSize({ width, height: 800 });
+      expect((await checkStatusBarRows(page)).height).toBeLessThan(150);
       const overflow = await page.evaluate(
         () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
       );
