@@ -14,6 +14,9 @@
 //                        settings of the website
 //   pnpm aiven render    writes .local/render-site-vars.txt, the settings of the website for Render (port 10000; Render tells
 //                        the website its own address, so no second deploy is needed); needs only a finished setup
+//   pnpm aiven here      runs the worker on THIS PC in Docker (against the same Aiven database and Telegram bot), for when the
+//                        host of the container is not there; `here stop` stops it, `here logs` shows its log. Never at the
+//                        same time as the worker of a host.
 //   pnpm aiven owner [name]     makes the login of the dashboard (asks for the password twice)
 //   pnpm aiven admin <command>  the other owner commands: owner:password <name> (forgotten password), owner:totp-off <name>,
 //                        owner:status, sessions:revoke-all, throttle:reset
@@ -37,7 +40,8 @@ import process from 'node:process';
 import { fileURLToPath, URL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const dir = join(root, '.local');
+// VMGS_AIVEN_DIR moves every file of this script to another folder (the tests use it, so that they never touch the real ones)
+const dir = process.env.VMGS_AIVEN_DIR ? resolve(process.env.VMGS_AIVEN_DIR) : join(root, '.local');
 const cfgFile = join(dir, 'aiven.cfg');
 const varsFile = join(dir, 'back4app-vars.txt');
 const siteVarsFile = join(dir, 'back4app-site-vars.txt');
@@ -434,6 +438,89 @@ function workerEnv(config) {
   };
 }
 
+/** Runs docker in this repository; `quiet` keeps its output off the screen. */
+function docker(args, { quiet = false } = {}) {
+  return spawnSync('docker', args, { cwd: root, stdio: quiet ? 'ignore' : 'inherit' });
+}
+
+const hereName = 'vmgs-aiven-worker';
+const hereImage = 'vmgs-aiven-worker:local';
+
+/**
+ * The worker on THIS PC, in Docker, against the same Aiven database and the same Telegram bot: for the days when the
+ * container host is not there (an account that is locked, a deploy that failed). It records only while the PC is on and
+ * Docker Desktop is running. Never run it at the same time as the worker of a host: two workers write the same ticks and
+ * fight over one Telegram bot.
+ */
+function here(action) {
+  requireConfig();
+  if (!existsSync(varsFile)) {
+    throw new Failure('The settings of the worker are missing. Run  pnpm aiven setup  first.');
+  }
+  const running = spawnSync('docker', ['info'], { stdio: 'ignore' });
+  if (running.error !== undefined || running.status !== 0) {
+    throw new Failure(
+      'Docker is not running. Start Docker Desktop, wait until it says the engine is running, and try again.',
+    );
+  }
+  if (action === 'stop') {
+    docker(['rm', '-f', hereName], { quiet: true });
+    say('The worker on this PC is stopped. (A worker of a host, if there is one, is not touched.)');
+    return;
+  }
+  if (action === 'logs') {
+    docker(['logs', '--tail', '40', '--follow', hereName]);
+    return;
+  }
+  if (action !== undefined && action !== 'start') {
+    throw new Failure('say: pnpm aiven here | pnpm aiven here stop | pnpm aiven here logs');
+  }
+  say('Building the image of the worker (a few minutes the first time, seconds after) ...');
+  if (
+    docker(['build', '--provenance=false', '--sbom=false', '--tag', hereImage, '.']).status !== 0
+  ) {
+    throw new Failure('The build failed (the message is above).');
+  }
+  docker(['rm', '-f', hereName], { quiet: true });
+  const result = docker([
+    'run',
+    '--detach',
+    '--name',
+    hereName,
+    '--restart',
+    'unless-stopped',
+    '--memory',
+    '384m',
+    '--memory-swap',
+    '384m',
+    '--cpus',
+    '1',
+    '--read-only',
+    '--tmpfs',
+    '/tmp:size=64m,mode=1777',
+    '--cap-drop',
+    'ALL',
+    '--security-opt',
+    'no-new-privileges:true',
+    '--env-file',
+    varsFile,
+    hereImage,
+  ]);
+  if (result.status !== 0)
+    throw new Failure('The worker could not be started (the message is above).');
+  say();
+  say(
+    'The worker runs on this PC. It needs about a minute and a half before it records (it warms up its engine).',
+  );
+  say(
+    '  Is it alive?   pnpm aiven status        Its log: pnpm aiven here logs        Stop it: pnpm aiven here stop',
+  );
+  say(
+    'It records only while this PC is on and Docker Desktop is running (Docker Desktop: Settings, "Start when you sign in").',
+  );
+  say('Do NOT run it at the same time as a worker on a host: stop one of them first.');
+}
+
 function telegram(command) {
   const config = requireConfig();
   if (!config.TELEGRAM_BOT_TOKEN) {
@@ -544,6 +631,9 @@ async function main() {
       break;
     case 'render':
       render();
+      break;
+    case 'here':
+      here(rest[0]);
       break;
     case 'owner':
       ownerCommand(['owner:create', rest[0] ?? 'owner']);

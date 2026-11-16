@@ -374,7 +374,7 @@ minutes without a record, and the ticks of the last 14 days are not carried over
 4. On the new VM, restore the backup (section 5), then `smoke.sh --public` and `pnpm e2e:stack` from your PC.
 5. When the new VM has recorded for a day and the System page is green, delete the old VM and its disk.
 
-## 10. Free for good (not run on the real services yet): the database on Aiven, the worker on a free container
+## 10. Free for good: the database on Aiven (run for real), the worker on a free container (run for real, then locked out)
 
 The idea of this section is that **only the worker has to run all the time**. The state lives in a free managed Postgres,
 the worker is a container with no state of its own (so moving it to another host never touches the data again), and the
@@ -467,6 +467,30 @@ start stops by itself within seconds (so that the host restarts it). Not run: th
 whether a second free container exists, whether it sleeps). **If its proxy is not on a private address, all visitors count
 as one**: the limit of failed logins is then shared, which can lock you out for a while (`throttle:reset`) and never lets a
 stranger in.
+
+### The worker on this PC, when the host is not there
+
+What the real runs showed (Back4app, Nov 2026): the worker ran there and Telegram delivered, but (1) Back4app **redeploys on every
+push to GitHub**, and the worker is off for the minutes of that deploy (a gap of about six minutes in the recording; switch it
+off in the app's Settings, "Build & deploy", and redeploy only when you mean to), and (2) the account was later **locked**
+("Your account is locked. Please contact us."), after which nothing of it runs. The data is safe in Aiven; only the recording
+stops. Until a new host is chosen, the same worker can run on your PC, in Docker, against the same database and the same bot:
+
+```text
+pnpm aiven here          # builds the image of the root Dockerfile and starts the worker (it restarts itself with Docker)
+pnpm aiven status        # ALIVE after about a minute and a half
+pnpm aiven here logs     # its log (Ctrl+C leaves it running)
+pnpm aiven here stop     # removes it
+```
+
+It uses `.local\back4app-vars.txt` (so `pnpm aiven setup` must have been done), 384 MB and one CPU, a read-only file system,
+no extra rights. It records **only while the PC is on and Docker Desktop is running** (Docker Desktop, Settings, "Start Docker
+Desktop when you sign in"; and the PC must not sleep). **Never run it at the same time as a worker on a host**: two workers
+write the same ticks and take turns on the one Telegram bot. Stop one of them first. On a PC (a Postgres made to behave like
+Aiven, over TLS with the CA in the settings): the image built, the worker was heard from within 10 s of the start with no error
+in its log, a second `pnpm aiven here` replaced it (one container), and `here stop` removed it. Not run on the real Aiven by the
+test. The minutes in which no worker ran have no ticks and stay a gap; they can be filled only from the HistData files
+(`pnpm aiven import`), and only when a file that covers them exists.
 
 ### The website on Render (a permanent free address)
 
