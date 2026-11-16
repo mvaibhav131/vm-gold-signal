@@ -468,6 +468,31 @@ whether a second free container exists, whether it sleeps). **If its proxy is no
 as one**: the limit of failed logins is then shared, which can lock you out for a while (`throttle:reset`) and never lets a
 stranger in.
 
+### The website on Render (a permanent free address)
+
+What the first real deploy on Back4app showed: its free plan gives a public address that is **temporary (60 minutes)**, with
+"Upgrade for a Permanent URL". The worker needs no address and keeps running there; the website does need one. Render's free
+web service has a permanent `onrender.com` address, managed TLS and builds the `Dockerfile` of the repository (its docs say so).
+It **sleeps after 15 minutes without a visit** and wakes in about a minute: fine for a dashboard that is looked at now and then,
+because all the state is in Aiven. Its pages were read for this, nothing was run on Render: its free size (memory, CPU), whether
+it asks for a card, and the address of its proxy (see the note on `X-Forwarded-For` above) are not verified.
+
+1. On your PC: `pnpm aiven render`. It writes `.local\render-site-vars.txt` (the settings of the website: `PORT=10000`, no
+   `PUBLIC_HOST`: Render tells the container its own name in `RENDER_EXTERNAL_HOSTNAME`, and `entry.sh` uses it, so there is
+   no second deploy). **The file holds passwords: do not commit it and do not send it to anyone.**
+2. Sign up at `render.com` (with GitHub). If it asks for a card, stop there and use the dashboard on your PC instead.
+3. Dashboard: **New**, **Web Service**, **Git Provider**, the repository `vm-gold-signal`. Fields: **Name** `vmgs-site` (the
+   address is `https://vmgs-site.onrender.com` if the name is free; otherwise Render adds letters), **Region** the one nearest
+   to Aiven (Bangalore: Singapore, if it is offered), **Branch** `main`, **Language** `Docker` (the `Dockerfile` of the root is
+   the default), **Instance type** `Free`.
+4. **Advanced**: **Environment Variables**: one per line of `render-site-vars.txt` (`NAME` and `value`; the long
+   `DATABASE_CA_PEM` is one value). **Health Check Path**: `/`.
+5. **Create Web Service.** The first build takes several minutes. When it is live, its address is at the top of the page.
+   Then, on your PC: `pnpm aiven owner` (your login: the password twice, at least 12 characters), and open the address.
+   The first visit after a sleep shows a loading page for about a minute.
+6. Forgot the password: `pnpm aiven admin owner:password owner`. "Too many failed attempts" when it was not you:
+   `pnpm aiven admin throttle:reset`.
+
 ### The same by hand
 
 Steps (nothing here was run against Aiven itself):

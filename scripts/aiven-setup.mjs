@@ -12,6 +12,8 @@
 //   pnpm aiven test      queues a test message; the running worker sends it to Telegram within seconds
 //   pnpm aiven site <address>   once the host has given the website its address (myname.b4a.run): writes it into the
 //                        settings of the website
+//   pnpm aiven render    writes .local/render-site-vars.txt, the settings of the website for Render (port 10000; Render tells
+//                        the website its own address, so no second deploy is needed); needs only a finished setup
 //   pnpm aiven owner [name]     makes the login of the dashboard (asks for the password twice)
 //   pnpm aiven admin <command>  the other owner commands: owner:password <name> (forgotten password), owner:totp-off <name>,
 //                        owner:status, sessions:revoke-all, throttle:reset
@@ -39,6 +41,7 @@ const dir = join(root, '.local');
 const cfgFile = join(dir, 'aiven.cfg');
 const varsFile = join(dir, 'back4app-vars.txt');
 const siteVarsFile = join(dir, 'back4app-site-vars.txt');
+const renderVarsFile = join(dir, 'render-site-vars.txt');
 const defaultCa = join(dir, 'aiven-ca.pem');
 
 class Failure extends Error {}
@@ -268,7 +271,7 @@ function parseSiteHost(text) {
   return host.toLowerCase();
 }
 
-function siteVarsText(config, caText, host) {
+function siteVarsText(config, caText, { host, port }) {
   const lines = [
     '# The settings of the WEBSITE container (the api and the dashboard). Paste each line into the host of that container.',
     '# It is a second container made from the same repository; VMGS_ROLE=site is what makes it the website.',
@@ -276,8 +279,9 @@ function siteVarsText(config, caText, host) {
     'VMGS_ROLE=site',
     'NODE_ENV=production',
     'LOG_LEVEL=info',
-    `PUBLIC_HOST=${host}`,
-    'PORT=8080',
+    // Render tells the container its own name (RENDER_EXTERNAL_HOSTNAME): no PUBLIC_HOST line there
+    ...(host === null ? [] : [`PUBLIC_HOST=${host}`]),
+    `PORT=${String(port)}`,
     // this Caddy and the proxy of the host: see deploy/Caddyfile.site
     'API_TRUSTED_PROXY_HOPS=2',
     'DATABASE_POOL_MAX=4',
@@ -297,8 +301,20 @@ function apiEnv(config) {
 }
 
 function writeSiteVars(config, host) {
-  writeSecretFile(siteVarsFile, siteVarsText(config, readCa(config.AIVEN_CA_FILE), host));
+  writeSecretFile(
+    siteVarsFile,
+    siteVarsText(config, readCa(config.AIVEN_CA_FILE), { host, port: 8080 }),
+  );
   saveConfig({ ...config, SITE_HOST: host });
+  writeRenderVars(config);
+}
+
+/** The same settings for Render: its own port (10000), and the name of the website comes from Render itself. */
+function writeRenderVars(config) {
+  writeSecretFile(
+    renderVarsFile,
+    siteVarsText(config, readCa(config.AIVEN_CA_FILE), { host: null, port: 10000 }),
+  );
 }
 
 async function setup() {
@@ -452,6 +468,22 @@ async function site(argument) {
   say('Then open  https://' + host + '  and log in. No login yet?  pnpm aiven owner');
 }
 
+/** Writes the settings of the website for Render from what `pnpm aiven setup` saved: no need to run the setup again. */
+function render() {
+  const config = requireConfig();
+  if (!config.APP_ENCRYPTION_KEY) {
+    throw new Failure('The saved settings have no key of the login. Run  pnpm aiven setup  again.');
+  }
+  writeRenderVars(config);
+  say(`The settings of the website for Render are in:  ${renderVarsFile}`);
+  say(
+    'Paste its lines as the environment variables of a Render web service (deploy/README.md, section 10).',
+  );
+  say('It holds passwords: do not commit it and do not send it to anyone, not even to me.');
+  say('Render tells the website its own address: you do not need  pnpm aiven site  there.');
+  say('When the service is live:  pnpm aiven owner  (your login).');
+}
+
 /** The owner commands of the website (the login), run from this PC against the database. */
 function ownerCommand(args) {
   const config = requireConfig();
@@ -509,6 +541,9 @@ async function main() {
       break;
     case 'site':
       await site(rest[0]);
+      break;
+    case 'render':
+      render();
       break;
     case 'owner':
       ownerCommand(['owner:create', rest[0] ?? 'owner']);

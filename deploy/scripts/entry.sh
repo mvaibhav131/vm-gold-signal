@@ -11,6 +11,15 @@ role="${VMGS_ROLE:-worker}"
 pids=()
 stopping=0
 
+# A host that tells the container its own public name (Render: RENDER_EXTERNAL_HOSTNAME, for a web service) needs no
+# PUBLIC_HOST in the settings: the website is told where it lives by the host itself, so the first deploy is the only one.
+# A PUBLIC_HOST that is set (a custom domain) wins; the placeholder of `pnpm aiven setup` does not.
+if [[ "$role" != worker && -n "${RENDER_EXTERNAL_HOSTNAME:-}" ]]; then
+  if [[ -z "${PUBLIC_HOST:-}" || "$PUBLIC_HOST" == pending.invalid || "$PUBLIC_HOST" == localhost ]]; then
+    export PUBLIC_HOST="$RENDER_EXTERNAL_HOSTNAME"
+  fi
+fi
+
 stop_all() {
   local pid
   for pid in "${pids[@]}"; do kill -TERM "$pid" 2>/dev/null || true; done
