@@ -16,8 +16,9 @@ The way that was run for real in November 2026: **no card, no time limit, nothin
 
 - **Aiven** keeps all the state (a free PostgreSQL). The worker and the website have none of their own.
 - **Render** runs one free web service from the `Dockerfile` of this repository. In it the worker, the api and Caddy
-  (the website) run together (`VMGS_ROLE=both`, see `deploy/scripts/entry.sh`). If any of them stops, the container stops
-  and Render starts it again.
+  (the website) run together (`VMGS_ROLE=both`, see `deploy/scripts/entry.sh`). Caddy serves the web app, passes `/api` to
+  the api and sets the security headers; it has no certificate part (`deploy/Caddyfile.site`), because Render does the
+  https. If any of the three stops, the container stops and Render starts it again.
 - **UptimeRobot** asks the service for a page every 5 minutes. Render puts a free service to sleep after 15 minutes
   without a request, and a sleeping worker records nothing.
 - **Your PC** can run the same worker in Docker (`pnpm aiven here`) on the days when Render is not running it.
