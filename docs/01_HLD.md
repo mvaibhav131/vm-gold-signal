@@ -27,20 +27,21 @@ Non-goals for V1: automatic order execution, multiple users, paid data or servic
 
 | Component | Choice | Cost | Real risk | Mitigation |
 |---|---|---|---|---|
-| Compute | Oracle Always Free Ampere A1 (2 OCPU, 12 GB) | 0 | Signup needs a card for verification. "Out of capacity" at creation. Idle instances may be reclaimed (7 days with CPU p95, network and memory all under 20%). | Keep memory use above 20% naturally (Postgres cache). Retry creation. Fallback: owner's own always-on PC. |
-| Domain / TLS | DuckDNS subdomain + Caddy automatic certificates | 0 | Third-party free DNS. | Hostname is config. Can move to any domain later. |
-| Frontend hosting | Served by Caddy from the same VM | 0 | Same failure domain as API (acceptable, UI is useless without API). | None needed. |
+| Compute | Render free web service (0.1 CPU, 512 MB): the worker, the api and the website in one container (`VMGS_ROLE=both`). Or any VM with Docker (the compose stack). | 0 | A free service sleeps after 15 minutes without a request, Render restarts it at any time, one free service fits the 750 hours a month, and Render may suspend a service with unusually high outbound traffic (not verified). | UptimeRobot asks for a page every 5 minutes; the worker also runs on the owner's PC in Docker (`pnpm aiven here`); a VM is the other way. |
+| Database | Aiven free PostgreSQL (1 GB disk, 1 GB RAM, 20 connections), TLS with its CA verified | 0 | May power off when idle and may change region; 1 GB of disk; no fixed IP. | The worker writes every second; ticks are kept 14 days (about 290 MB); a pool of 5 connections per program. |
+| Domain / TLS | The `onrender.com` address with TLS from Render; on a VM DuckDNS + Caddy automatic certificates | 0 | Third-party free DNS. | Hostname is config. Can move to any domain later. |
+| Frontend hosting | Served by Caddy from the same container (or VM) as the API | 0 | Same failure domain as API (acceptable, UI is useless without API). | None needed. |
 | Market data | Biquote (SignalR stream, REST) | 0 | No SLA. Can change or stop without notice. Prices are indicative (broker CFD feed). | Provider interface, own tick recorder, stale-feed gate, divergence check later. |
 | Economic calendar | Biquote calendar | 0 | Same as above. Only about 90 days window. | Archive into own DB daily. As built (B25a): every reading is stored in `macro_events`, and the surprise uses the provider history joined with that archive. |
 | Headline news | RSS feeds (BBC, Al Jazeera, CNBC, Federal Reserve) and the Biquote news endpoint | 0 | Minutes of delay, no direct social-media posts, each feed's terms apply (headline and link only). | Source list is configurable; a feed can be disabled or replaced. As built (B25b): the list is in code (`DEFAULT_FEEDS`) and `news_sources.enabled` is the owner's switch; Biquote's items are stored without their publisher. |
 | Alerts | Telegram Bot API, Web Push | 0 | Telegram limits about 1 message per second per chat (fine). Web Push on iPhone needs the installed PWA. | Outbox with retry and expiry. |
-| Backups | pg_dump encrypted with age, stored in OCI Object Storage (20 GB free) | 0 | Same cloud account. | Periodic manual download to the owner's PC. |
-| CI | GitHub Actions free tier (2,000 minutes a month for private repositories) | 0 | Minute quota. | Lean pipeline, no scheduled jobs. |
-| Uptime alert | Healthchecks.io Hobbyist plan (free, 20 checks); the worker pings it every minute | 0 | Third-party service. | Alerts the owner when pings stop (VM or worker down). |
+| Backups | VM way: `pg_dump` encrypted with age, stored in an S3-compatible bucket. Free way: none of its own yet. | 0 | The candles can be imported again from the HistData files; the ticks of the last 14 days exist only in the database. | Periodic manual download to the owner's PC (VM way). |
+| CI | GitHub Actions (free; the repository is public, so the minutes are not limited) | 0 | Third-party service. | Lean pipeline, no scheduled jobs. |
+| Uptime alert | Healthchecks.io Hobbyist plan (free, 20 checks); the worker pings it every minute. UptimeRobot (free, every 5 minutes) asks Render's service for `/api/v1/health/ready`. | 0 | Third-party services. | Healthchecks.io alerts the owner when the pings stop; UptimeRobot also keeps the Render service awake and mails when the worker is not heard from. |
 | WhatsApp | Not used. Adapter exists, disabled. | would cost | Template messages are billed per message. | Off by default. |
 | LLM / RAG | Not in V1. | 0 | n/a | Optional later phase, advisory only. |
 
-Honest summary: no software line item costs money. The real risks are the Oracle signup/capacity/reclaim behaviour and a free feed without an SLA.
+Honest summary: no software line item costs money. The real risks are the limits of the free tiers (Render sleeps and restarts a free service, Aiven's 1 GB of disk) and a free feed without an SLA. How the free way was set up and measured: `deploy/FREE_HOSTING.md`.
 
 ## 4. Architecture
 
@@ -48,7 +49,7 @@ Honest summary: no software line item costs money. The real risks are the Oracle
 flowchart LR
   FEED[Biquote SignalR stream + REST] --> W
   CAL[Biquote calendar] --> W
-  subgraph VM[Oracle A1 VM - Docker Compose]
+  subgraph VM[Your server - Docker Compose, or one Render container with Aiven's database]
     CADDY[Caddy: TLS, static UI, reverse proxy] --> API[api: Fastify REST + SSE + auth]
     W[worker: feed, candles, signals, outcomes, notifier, maintenance]
     DB[(PostgreSQL)]
@@ -160,7 +161,7 @@ Estimated volume: about 2.4 ticks per second while the market is open is roughly
 
 Safety rules: retention jobs never delete from `signals`, `signal_events` or `signal_outcomes` (these tables reject DELETE and TRUNCATE by trigger, and UPDATE too, with one exception: the trigger of `signals` lets the worker replace the `feature_snapshot` of a signal older than 365 days by a marker with `pruned = true`, once, and changes nothing else; the right is a column privilege on that one column). A size guard compares database size and disk usage with soft limits (database 10 GB, disk 70%) every hour. At 80% of either it shortens tick retention one step (14, 7, 3, 1 days), writes a `maintenance_runs` row and sends one Telegram warning a day; it restores one step when the use is under 60%. The System page shows sizes per table and last maintenance run.
 
-Backups: nightly `pg_dump` excluding tick partitions, encrypted with age (to the owner's offline key and to the VM's drill key), uploaded to OCI Object Storage. Keep 7 daily, 4 weekly, 3 monthly. A monthly restore drill restores the newest backup into a scratch database and compares it with the manifest of the backup (details in `06` section 4).
+Backups: nightly `pg_dump` excluding tick partitions, encrypted with age (to the owner's offline key and to the VM's drill key), uploaded to an S3-compatible bucket. Keep 7 daily, 4 weekly, 3 monthly. A monthly restore drill restores the newest backup into a scratch database and compares it with the manifest of the backup (details in `06` section 4).
 
 ## 8. Security
 
@@ -247,8 +248,9 @@ packages/
 tools/
   research/       HistData importer, backtester, experiment registry CLI
   cli/            create-owner, rotate-secrets, db tools
-deploy/           Dockerfile, docker-compose.yml, Caddyfile, scripts (deploy, backup, restore drill, failure drills,
-                  VM setup), systemd timers, env.example, README.md (the runbook)
+deploy/           Dockerfile, docker-compose.yml, Caddyfile, Caddyfile.site, scripts (deploy, backup, restore drill, failure
+                  drills, VM setup, entry), systemd timers, env.example, README.md (the runbook of the server way),
+                  FREE_HOSTING.md (Aiven + Render)
 e2e/              Playwright tests
 docs/             this documentation
 ```
@@ -271,7 +273,7 @@ Gate for every phase: typecheck, lint, all tests green, no TODO that hides a mis
 
 ## 12. Deployment and operations
 
-- Single `docker compose up -d` on the VM: `caddy`, `api`, `worker`, `db`. Images are built on the VM itself (native arm64) from the tagged release.
+- Single `docker compose up -d` on the VM: `caddy`, `api`, `worker`, `db`. Images are built on the VM itself from the tagged release. The free way runs the worker, the api and Caddy in one Render container against Aiven's database (`deploy/FREE_HOSTING.md`).
 - Zero-downtime is not a goal. Deploys take seconds, the worker rebuilds state from the DB on start.
 - Health endpoints: `/health/live`, `/health/ready` (DB, migrations, worker heartbeat), `/api/v1/system/health` (rich, authenticated).
 - Logs are structured JSON (Pino) with rotation by Docker. Latency metrics (feed lag, candle-to-signal, DB commit, notify dispatch) are kept in memory and exposed on the System page as p50/p95.

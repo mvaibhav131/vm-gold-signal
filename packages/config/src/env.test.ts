@@ -372,7 +372,7 @@ describe('backupEnvSchema', () => {
   const backup = {
     DATABASE_URL_BACKUP: 'postgres://vmgs_backup:pw@db:5432/vmgs',
     BACKUP_AGE_RECIPIENT: `age1${'q'.repeat(58)}`,
-    BACKUP_RCLONE_REMOTE: 'oci:vmgs-backups/db',
+    BACKUP_RCLONE_REMOTE: 'backup:vmgs-backups/db',
   };
 
   it('accepts an age public key and an rclone remote', () => {

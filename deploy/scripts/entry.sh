@@ -2,7 +2,7 @@
 # What a container of the image of the root Dockerfile runs, chosen by VMGS_ROLE:
 #   worker (the default)  the worker alone: prices, the engine, Telegram
 #   site                  the api and the website (Caddy) in one container, for a host that gives the container its TLS
-#   both                  the two in one container (only if it has the memory for both: see deploy/README.md, section 10)
+#   both                  the two in one container: the free web service of Render (512 MB; the two peak at about 210 MB)
 # Every process that stops takes the container down with it, so that the host restarts it: a container whose api died but
 # whose Caddy still answers would look alive. SIGTERM stops everything and exits 0.
 set -uo pipefail
@@ -26,20 +26,8 @@ stop_all() {
 }
 
 start_worker() {
-  if [[ "$role" == both ]]; then
-    # the port belongs to the website; the health page of the worker is for a container that only records
-    (cd /app/apps/worker && exec env -u PORT node --import tsx src/main.ts) &
-  elif [[ -n "${PORT:-}" ]]; then
-    # The host looks at PORT a few seconds after the start, and the worker needs about 15 s on a quarter of a CPU before
-    # it listens. A small program answers on PORT at once and passes the questions to the health page of the worker, which
-    # listens one port higher (deploy/scripts/early-health.mjs).
-    inner=$((PORT + 1))
-    node /opt/vmgs/bin/early-health.mjs "$PORT" "$inner" &
-    pids+=("$!")
-    (cd /app/apps/worker && exec env PORT="$inner" node --import tsx src/main.ts) &
-  else
-    (cd /app/apps/worker && exec node --import tsx src/main.ts) &
-  fi
+  # the port belongs to the website; the health page of the worker is for a container that only records
+  (cd /app/apps/worker && exec env -u PORT node --import tsx src/main.ts) &
   pids+=("$!")
 }
 
@@ -52,11 +40,9 @@ start_site() {
 
 case "$role" in
   worker)
-    if [[ -z "${PORT:-}" ]]; then
-      cd /app/apps/worker || exit 1
-      exec node --import tsx src/main.ts
-    fi
-    start_worker
+    # PORT, when it is set, is the port of the health page of the worker
+    cd /app/apps/worker || exit 1
+    exec node --import tsx src/main.ts
     ;;
   site) start_site ;;
   both)

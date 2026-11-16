@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
-# One-time preparation of a fresh Ubuntu 24.04 VM (Oracle A1 Flex, aarch64, or a Google Cloud e2-micro, x86_64), run as
-# root from the checkout:
+# One-time preparation of a fresh Ubuntu 24.04 VM (x86_64 or arm64) at any provider, run as root from the checkout:
 #   sudo bash /opt/vmgs/deploy/scripts/vm-setup.sh [--no-ssh-hardening]
 # It is safe to run again. What it does (06_Phases_and_Setup section 4, "VM hardening"):
 #   - security updates now and automatically (no automatic reboot: reboot on a weekend when the System page asks)
-#   - 2 GB of swap on a VM with less than 3 GB of memory (the e2-micro has 1 GB)
+#   - 2 GB of swap on a VM with less than 3 GB of memory
 #   - UTC time kept by chrony
 #   - Docker from Docker's own apt repository, with log rotation
 #   - SSH by key only, no root login (only when your user already has a key: it never locks you out)
 #   - /opt/vmgs/secrets (mode 700) and the drill key of the restore drill
 #   - the systemd timers: nightly backup, monthly restore drill, DuckDNS update
-# The cloud firewall (the VCN security list on Oracle, the VPC firewall rules on Google Cloud) is the perimeter: open 22
+# The firewall of the cloud provider (security list, firewall rules) is the perimeter: open 22
 # only to your own address, and 80 and 443. The stack publishes no other port (the database has none); the last step
 # lists what listens.
 set -euo pipefail

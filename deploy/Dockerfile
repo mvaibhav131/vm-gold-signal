@@ -82,11 +82,11 @@ RUN mkdir -p /etc/caddy
 COPY --from=web /usr/bin/caddy /usr/bin/caddy
 COPY --from=web /srv/web /srv/web
 COPY deploy/Caddyfile.site /etc/caddy/Caddyfile.site
-COPY deploy/scripts/entry.sh deploy/scripts/early-health.mjs /opt/vmgs/bin/
+COPY deploy/scripts/entry.sh /opt/vmgs/bin/
 # The permissions are set by a command, not by `COPY --chmod`: the builder of some hosts (kaniko) ignores that flag, and
 # a script made on Windows has no executable bit in git. The entry point also starts the script through bash, so it does
 # not need the bit at all.
-RUN chmod 755 /opt/vmgs/bin/entry.sh && chmod 644 /opt/vmgs/bin/early-health.mjs /etc/caddy/Caddyfile.site
+RUN chmod 755 /opt/vmgs/bin/entry.sh && chmod 644 /etc/caddy/Caddyfile.site
 # the root of the container may be read-only: Caddy writes only under /tmp
 ENV XDG_CONFIG_HOME=/tmp/caddy-config XDG_DATA_HOME=/tmp/caddy-data
 # The port that the container listens on by default: the health page of the worker, or the website (PORT in the

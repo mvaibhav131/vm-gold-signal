@@ -1,28 +1,27 @@
-// Sets up the free database on Aiven for this system, and makes the lists of settings for the two containers: the worker
-// and the website. Plain Node: the same in PowerShell, cmd and Git Bash. Nothing is sent anywhere but to YOUR Aiven database.
+// Sets up the free database on Aiven for this system, and makes the lists of settings for the places where the worker and
+// the website run. Plain Node: the same in PowerShell, cmd and Git Bash. Nothing is sent anywhere but to YOUR Aiven database.
 //
 //   pnpm aiven setup     asks for the Service URI of your Aiven database (hidden while you paste it) and the place of its
 //                        ca.pem; makes the passwords and the key of the login; sets up the tables and the roles; imports the
 //                        newest history if you have the HistData zips; asks for the Telegram token and the Healthchecks link
-//                        (Enter skips); writes .local/back4app-vars.txt (the worker) and .local/back4app-site-vars.txt (the
-//                        website): the settings to paste into the host of each container
+//                        (Enter skips); writes the three settings files below
+//   pnpm aiven render    writes the settings files again from what the setup saved (no need to run the setup again):
+//                          .local/render-vars.txt       ONE Render service that is the website and the worker (VMGS_ROLE=both)
+//                          .local/render-site-vars.txt  the website alone, when the worker runs somewhere else
+//                          .local/worker-vars.txt       the worker alone (pnpm aiven here uses it)
+//                        Render tells the container its own address, so no second deploy is needed
 //   pnpm aiven import    imports the newest three HistData zips (data/histdata) into the database again
 //   pnpm aiven status    asks the database whether the worker is running: "ALIVE" or not
 //   pnpm aiven link      makes the code that links your Telegram chat to the bot: send the bot  /link <code>
 //   pnpm aiven test      queues a test message; the running worker sends it to Telegram within seconds
-//   pnpm aiven site <address>   once the host has given the website its address (myname.b4a.run): writes it into the
-//                        settings of the website
-//   pnpm aiven render    writes .local/render-vars.txt (ONE Render service that is the website and the worker, VMGS_ROLE=both) and
-//                        .local/render-site-vars.txt (the website alone), port 10000; Render tells the container its own
-//                        address, so no second deploy is needed; needs only a finished setup
-//   pnpm aiven here      runs the worker on THIS PC in Docker (against the same Aiven database and Telegram bot), for when the
-//                        host of the container is not there; `here stop` stops it, `here logs` shows its log. Never at the
-//                        same time as the worker of a host.
+//   pnpm aiven here      runs the worker on THIS PC in Docker (against the same Aiven database and Telegram bot), for when
+//                        the worker of the host is not running; `here stop` stops it, `here logs` shows its log. Never at
+//                        the same time as the worker of a host.
 //   pnpm aiven owner [name]     makes the login of the dashboard (asks for the password twice)
 //   pnpm aiven admin <command>  the other owner commands: owner:password <name> (forgotten password), owner:totp-off <name>,
 //                        owner:status, sessions:revoke-all, throttle:reset
 //
-// The settings are kept in .local/aiven.cfg and the two .local/back4app-*.txt files: they hold passwords, are never
+// The settings are kept in .local/aiven.cfg and the three .local/*-vars.txt files: they hold passwords, are never
 // committed (.local/ is ignored) and must never be sent to anyone.
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -44,10 +43,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 // VMGS_AIVEN_DIR moves every file of this script to another folder (the tests use it, so that they never touch the real ones)
 const dir = process.env.VMGS_AIVEN_DIR ? resolve(process.env.VMGS_AIVEN_DIR) : join(root, '.local');
 const cfgFile = join(dir, 'aiven.cfg');
-const varsFile = join(dir, 'back4app-vars.txt');
-const siteVarsFile = join(dir, 'back4app-site-vars.txt');
-const renderVarsFile = join(dir, 'render-site-vars.txt');
-const renderBothVarsFile = join(dir, 'render-vars.txt');
+const workerVarsFile = join(dir, 'worker-vars.txt');
+const renderSiteVarsFile = join(dir, 'render-site-vars.txt');
+const renderVarsFile = join(dir, 'render-vars.txt');
 const defaultCa = join(dir, 'aiven-ca.pem');
 
 class Failure extends Error {}
@@ -238,10 +236,10 @@ function importHistory(config, caText) {
   return true;
 }
 
-function varsText(config, caText) {
+function workerVarsText(config, caText) {
   const lines = [
-    '# The settings of the WORKER container. Paste each line into the host of the container.',
-    '# (Back4app: your app > Settings > Environment variables.) Each line is NAME=value: the name before the first =.',
+    '# The settings of the WORKER alone: pnpm aiven here uses this file; any host that runs a Docker image takes its lines',
+    '# as environment variables. Each line is NAME=value: the name before the first =.',
     '# This file holds passwords: never commit it, never send it to anyone.',
     'VMGS_ROLE=worker',
     'NODE_ENV=production',
@@ -261,33 +259,15 @@ function varsText(config, caText) {
   return `${lines.join('\n')}\n`;
 }
 
-/** The host name (no https://, no path) of the website, from what the host shows: its address or only its name. */
-function parseSiteHost(text) {
-  const cleaned = text.trim().replace(/^https?:\/\//i, '');
-  const host = cleaned.split(/[/?#]/)[0] ?? '';
-  if (
-    !/^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$/.test(
-      host,
-    )
-  ) {
-    throw new Failure(
-      `"${text}" is not a website address. Give the address that the host shows for the container, for example myname.b4a.run (with or without https://).`,
-    );
-  }
-  return host.toLowerCase();
-}
-
-function siteVarsText(config, caText, { host, port }) {
+function siteVarsText(config, caText) {
   const lines = [
-    '# The settings of the WEBSITE container (the api and the dashboard). Paste each line into the host of that container.',
-    '# It is a second container made from the same repository; VMGS_ROLE=site is what makes it the website.',
+    '# The settings of the WEBSITE alone (the api and the dashboard) on Render, when the worker runs somewhere else.',
+    '# Paste each line into the environment variables of the Render service. Render tells the container its own address.',
     '# This file holds passwords: never commit it, never send it to anyone.',
     'VMGS_ROLE=site',
     'NODE_ENV=production',
     'LOG_LEVEL=info',
-    // Render tells the container its own name (RENDER_EXTERNAL_HOSTNAME): no PUBLIC_HOST line there
-    ...(host === null ? [] : [`PUBLIC_HOST=${host}`]),
-    `PORT=${String(port)}`,
+    'PORT=10000',
     // this Caddy and the proxy of the host: see deploy/Caddyfile.site
     'API_TRUSTED_PROXY_HOPS=2',
     'DATABASE_POOL_MAX=4',
@@ -306,20 +286,12 @@ function apiEnv(config) {
   };
 }
 
-function writeSiteVars(config, host) {
-  writeSecretFile(
-    siteVarsFile,
-    siteVarsText(config, readCa(config.AIVEN_CA_FILE), { host, port: 8080 }),
-  );
-  saveConfig({ ...config, SITE_HOST: host });
-  writeRenderVars(config);
-}
-
-/** The same settings for Render: its own port (10000), and the name of the website comes from Render itself. */
-function writeRenderVars(config) {
+/** The three settings files, from what `pnpm aiven setup` saved. */
+function writeVarsFiles(config) {
   const caText = readCa(config.AIVEN_CA_FILE);
-  writeSecretFile(renderVarsFile, siteVarsText(config, caText, { host: null, port: 10000 }));
-  writeSecretFile(renderBothVarsFile, bothVarsText(config, caText));
+  writeSecretFile(workerVarsFile, workerVarsText(config, caText));
+  writeSecretFile(renderSiteVarsFile, siteVarsText(config, caText));
+  writeSecretFile(renderVarsFile, bothVarsText(config, caText));
 }
 
 /** One Render service that is the website and the worker (VMGS_ROLE=both): Render's free plan allows one service all month. */
@@ -388,7 +360,6 @@ async function setup() {
       // the key of the login of the website (the second step of the login is encrypted with it): kept, never changed
       // by a second run, or the second step of the login would become unreadable
       APP_ENCRYPTION_KEY: same && saved.APP_ENCRYPTION_KEY ? saved.APP_ENCRYPTION_KEY : hex(32),
-      SITE_HOST: same ? saved.SITE_HOST : undefined,
       TELEGRAM_BOT_TOKEN: same ? saved.TELEGRAM_BOT_TOKEN : undefined,
       HEALTHCHECKS_PING_URL: same ? saved.HEALTHCHECKS_PING_URL : undefined,
     };
@@ -426,21 +397,18 @@ async function setup() {
     if (ping !== '') config.HEALTHCHECKS_PING_URL = ping;
 
     saveConfig(config);
-    writeSecretFile(varsFile, varsText(config, caText));
-    // the website's settings, with a name that is replaced once the host has given the address (pnpm aiven site)
-    writeSiteVars(config, config.SITE_HOST ?? 'pending.invalid');
+    writeVarsFiles(config);
     say();
     say('All done. The database is ready.');
-    say(`The settings for the WORKER container are in:  ${varsFile}`);
-    say(`The settings for the WEBSITE container are in: ${siteVarsFile}`);
     say(
-      'Open them (Windows: notepad .local\\back4app-vars.txt) and paste their lines into the host of each container.',
+      `The settings of ONE Render service (the website and the worker) are in:  ${renderVarsFile}`,
+    );
+    say(
+      'Open it (Windows: notepad .local\\render-vars.txt) and paste its lines into Render (deploy/README.md, section 3).',
     );
     say('They hold passwords: do not commit them and do not send them to anyone, not even to me.');
-    say('When the worker runs, check it from here with:  pnpm aiven status');
-    say(
-      'When the website container has its address:  pnpm aiven site <the address>  and then  pnpm aiven owner  (your login).',
-    );
+    say('When the service runs, check the worker from here with:  pnpm aiven status');
+    say('Then  pnpm aiven owner  (your login for the dashboard).');
   } finally {
     prompt.close();
   }
@@ -475,15 +443,12 @@ const hereImage = 'vmgs-aiven-worker:local';
 
 /**
  * The worker on THIS PC, in Docker, against the same Aiven database and the same Telegram bot: for the days when the
- * container host is not there (an account that is locked, a deploy that failed). It records only while the PC is on and
+ * worker of the host is not running (a failed deploy, a service that is down). It records only while the PC is on and
  * Docker Desktop is running. Never run it at the same time as the worker of a host: two workers write the same ticks and
  * fight over one Telegram bot.
  */
 function here(action) {
-  requireConfig();
-  if (!existsSync(varsFile)) {
-    throw new Failure('The settings of the worker are missing. Run  pnpm aiven setup  first.');
-  }
+  writeVarsFiles(requireConfig());
   const running = spawnSync('docker', ['info'], { stdio: 'ignore' });
   if (running.error !== undefined || running.status !== 0) {
     throw new Failure(
@@ -530,7 +495,7 @@ function here(action) {
     '--security-opt',
     'no-new-privileges:true',
     '--env-file',
-    varsFile,
+    workerVarsFile,
     hereImage,
   ]);
   if (result.status !== 0)
@@ -558,49 +523,26 @@ function telegram(command) {
   process.exitCode = pnpm(['cli', command], workerEnv(config));
 }
 
-async function site(argument) {
-  const config = requireConfig();
-  let text = argument;
-  if (text === undefined) {
-    const prompt = await makePrompter();
-    try {
-      text = await prompt.ask(
-        'Address of the website container, as the host shows it (for example myname.b4a.run): ',
-      );
-    } finally {
-      prompt.close();
-    }
-  }
-  const host = parseSiteHost(text);
-  writeSiteVars(config, host);
-  say(`The settings of the website are written for ${host}:  ${siteVarsFile}`);
-  say(
-    'Paste the line  PUBLIC_HOST=' +
-      host +
-      '  into the website container (replace the old value) and deploy it again.',
-  );
-  say('Then open  https://' + host + '  and log in. No login yet?  pnpm aiven owner');
-}
-
-/** Writes the settings for Render from what `pnpm aiven setup` saved: no need to run the setup again. */
+/** Writes the settings files again from what `pnpm aiven setup` saved: no need to run the setup again. */
 function render() {
   const config = requireConfig();
   if (!config.APP_ENCRYPTION_KEY) {
     throw new Failure('The saved settings have no key of the login. Run  pnpm aiven setup  again.');
   }
-  writeRenderVars(config);
+  writeVarsFiles(config);
   say(
-    `The settings of ONE Render service, the website and the worker together:  ${renderBothVarsFile}`,
+    `The settings of ONE Render service, the website and the worker together:  ${renderVarsFile}`,
   );
-  say(`(Only the website, with the worker somewhere else:  ${renderVarsFile})`);
+  say(`The website alone (the worker somewhere else):  ${renderSiteVarsFile}`);
+  say(`The worker alone (pnpm aiven here uses it):  ${workerVarsFile}`);
   say(
-    'Paste its lines as the environment variables of the Render web service (deploy/README.md, section 10).',
+    'Paste the lines of the first file as the environment variables of the Render web service (deploy/README.md, section 3).',
   );
   say('They hold passwords: do not commit them and do not send them to anyone, not even to me.');
-  say('Render tells the website its own address: you do not need  pnpm aiven site  there.');
-  say('When the service is live:  pnpm aiven owner  (your login).');
+  say('Render tells the container its own address: no PUBLIC_HOST is needed.');
+  say('When the service is live:  pnpm aiven status  and  pnpm aiven owner  (your login).');
   say(
-    'If a worker runs anywhere else (a host, or  pnpm aiven here ), stop it first: two workers must never run together.',
+    'If a worker runs anywhere else (for example  pnpm aiven here ), stop it first: two workers must never run together.',
   );
 }
 
@@ -625,8 +567,10 @@ function status() {
   if (code === 0) {
     say('ALIVE: the worker is running and recording.');
   } else {
-    say('NOT ALIVE: no fresh heartbeat. The worker container is not running yet, or it stopped.');
-    say('Look at its log in the host of the container (the last lines tell why).');
+    say('NOT ALIVE: no fresh heartbeat. The worker is not running yet, or it stopped.');
+    say(
+      'Look at its log: Render, your service, Logs (or  pnpm aiven here logs  for the worker on this PC).',
+    );
     process.exitCode = 1;
   }
 }
@@ -658,9 +602,6 @@ async function main() {
       break;
     case 'test':
       telegram('telegram:test');
-      break;
-    case 'site':
-      await site(rest[0]);
       break;
     case 'render':
       render();

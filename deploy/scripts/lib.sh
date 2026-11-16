@@ -22,30 +22,6 @@ env_value() {
 # The web side (B31b: the api and caddy) is on when COMPOSE_PROFILES of the .env names `web`.
 web_on() { [[ ",$(env_value COMPOSE_PROFILES)," == *,web,* ]]; }
 
-# Loads the images that `pnpm ship:images` made on a PC (a tar, gzipped or not) and prints their version, the tag of
-# vmgs-app. It refuses images of another processor than this machine's: they would load and then not start.
-load_images() {
-  local file="$1" out version arch want
-  [[ -r "$file" ]] || { echo "load_images: cannot read $file" >&2; return 1; }
-  # gzip files start with the bytes 1f 8b, whatever their name
-  if [[ "$(head -c 2 "$file" | od -An -tx1 | tr -d ' \n')" == 1f8b ]]; then
-    out="$(gunzip -c "$file" | docker load)" || { echo "load_images: docker load failed" >&2; return 1; }
-  else
-    out="$(docker load -i "$file")" || { echo "load_images: docker load failed" >&2; return 1; }
-  fi
-  printf '%s\n' "$out" >&2
-  version="$(printf '%s\n' "$out" | sed -n 's/^Loaded image: vmgs-app://p' | head -n 1)"
-  [[ -n "$version" ]] || { echo "load_images: no vmgs-app image in $file" >&2; return 1; }
-  arch="$(docker image inspect -f '{{.Architecture}}' "vmgs-app:$version")"
-  case "$(uname -m)" in
-    x86_64) want=amd64 ;;
-    aarch64) want=arm64 ;;
-    *) want="$(uname -m)" ;;
-  esac
-  [[ "$arch" == "$want" ]] || { echo "load_images: these images are $arch and this machine is $want (ship them again with --arch $want)" >&2; return 1; }
-  printf '%s' "$version"
-}
-
 # Gold does not trade from Friday evening to Sunday evening: no ticks is then the right answer. The edges are
 # wide on purpose (the exact hour moves with the summer time of New York).
 market_open() {

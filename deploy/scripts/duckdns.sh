@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tells DuckDNS the current address of the VM (vmgs-duckdns.timer runs it every 5 minutes), so that the name keeps
-# pointing here if Oracle ever changes the address. The token reaches curl through a config on stdin: it is in no
+# pointing here if the provider ever changes the address. The token reaches curl through a config on stdin: it is in no
 # process list and in no log.
 set -euo pipefail
 

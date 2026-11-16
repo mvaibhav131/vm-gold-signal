@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # Deploy (06_Phases_and_Setup section 4). Run on the VM over SSH, as root:
-#   sudo /opt/vmgs/deploy/scripts/deploy.sh [--ref TAG_OR_BRANCH] [--first] [--skip-backup] [--images FILE]
+#   sudo /opt/vmgs/deploy/scripts/deploy.sh [--ref TAG_OR_BRANCH] [--first] [--skip-backup]
 # 1. a database backup (skipped on the first deploy, when there is nothing to save)
 # 2. the release: git fetch and checkout of the ref (without --ref the checkout stays as it is)
-# 3. the images: built here (the A1 builds linux/arm64 natively), or with --images FILE the ones that `pnpm ship:images`
-#    built on your PC (a VM of 1 GB cannot build: the whole stack is the app image, and with COMPOSE_PROFILES=web the
-#    one of caddy with the web app inside)
+# 3. the images, built here (the whole stack is the app image, and with COMPOSE_PROFILES=web the one of caddy with the web
+#    app inside)
 # 4. the environment check (with the web side also the one of the api)
 # 5. the migrations (forward only; the backup of step 1 is the way back)
 # 6. docker compose up -d
@@ -21,15 +20,13 @@ ENV_FILE="${VMGS_ENV_FILE:-$ROOT/.env}"
 source "$HERE/lib.sh"
 
 ref=""
-images=""
 skip_backup=false
 while (($#)); do
   case "$1" in
     --ref) ref="${2:?--ref needs a tag or branch}"; shift 2 ;;
-    --images) images="${2:?--images needs the file that pnpm ship:images made}"; shift 2 ;;
     --first) skip_backup=true; shift ;;
     --skip-backup) skip_backup=true; shift ;;
-    *) echo "usage: deploy.sh [--ref TAG_OR_BRANCH] [--first] [--skip-backup] [--images FILE]" >&2; exit 2 ;;
+    *) echo "usage: deploy.sh [--ref TAG_OR_BRANCH] [--first] [--skip-backup]" >&2; exit 2 ;;
   esac
 done
 
@@ -51,24 +48,14 @@ fi
 VMGS_VERSION="$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo local)"
 web=false
 if web_on; then web=true; fi
-if [[ -n "$images" ]]; then
-  say "loading the images made on your PC ($images)"
-  VMGS_VERSION="$(load_images "$images")"
-  if $web && ! docker image inspect "vmgs-web:$VMGS_VERSION" >/dev/null 2>&1; then
-    echo "deploy.sh: $images has no vmgs-web:$VMGS_VERSION image, and COMPOSE_PROFILES has web" >&2
-    exit 1
-  fi
-fi
 export VMGS_VERSION
 say "deploying $VMGS_VERSION (previous: $previous)"
 
-if [[ -z "$images" ]]; then
-  say "building the image (one image for the worker, the api, the migrations and the backup jobs)"
-  compose build worker
-  if $web; then
-    say "building the web image (caddy with the web app inside)"
-    compose --profile web build caddy
-  fi
+say "building the image (one image for the worker, the api, the migrations and the backup jobs)"
+compose build worker
+if $web; then
+  say "building the web image (caddy with the web app inside)"
+  compose --profile web build caddy
 fi
 
 say "checking the environment"

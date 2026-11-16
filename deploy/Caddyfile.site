@@ -1,4 +1,4 @@
-# The website of a container that is behind the TLS of its host (Back4app and the like: the host terminates https and
+# The website of a container that is behind the TLS of its host (Render and the like: the host terminates https and
 # forwards plain http to PORT). It is deploy/Caddyfile without the certificate part: no name, no HTTPS of its own, the api
 # on the same container. The headers and the routes are the same as on the VM.
 #
