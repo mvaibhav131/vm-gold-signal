@@ -415,8 +415,14 @@ superuser, `max_connections` 20, 1 GB and 1 CPU; the real feed; the worker and t
    and says what to fix; running it again is harmless. **Those files hold passwords: do not commit them and do not send them
    to anyone.**
 3. **The worker on Back4app Containers**: sign up, connect your GitHub account, make a new container app from the repository,
-   branch `main`, root directory `/` (the `Dockerfile` at the root builds the image), and paste the lines of
-   `back4app-vars.txt` as the environment variables. Choose the free size (0.25 CPU, 256 MB).
+   branch `main`, root directory `/` (the `Dockerfile` at the root builds the image), **Port `8080`** (it asks for it; the
+   image also says `EXPOSE 8080`), and paste the lines of `back4app-vars.txt` as the environment variables. Choose the free
+   size (0.25 CPU, 256 MB). What the first real deploy showed: Back4app builds with its own builder (kaniko), which ignores
+   `COPY --chmod` (a script then had no executable bit: "Permission denied"; now set by `RUN chmod` and started through bash),
+   it asks for a port, and it looks at that port about 10 s after the start with a timeout of 1 s, while the worker needs
+   about 15 s on a quarter of a CPU before its own health page listens. So `deploy/scripts/early-health.mjs` answers on `PORT`
+   at once (`200 starting`) and passes the questions to the health page of the worker, one port higher, as soon as it is up
+   (measured on a PC at 256 MB and 0.25 CPU: first answer after about 1 s, `ok` after 16 s, memory peak 123 MB).
 4. When the deploy finishes: `pnpm aiven status` must say **ALIVE**. The `worker` check of Healthchecks turns green. Pause the
    checks `backup` and `drill` there (this mode has no backup job of its own: Aiven keeps backups), or they will tell you
    every day that no backup came.

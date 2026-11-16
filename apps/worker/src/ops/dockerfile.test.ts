@@ -18,8 +18,11 @@ describe('the Dockerfile at the root of the repository', () => {
     expect(stages.at(-1)?.[1]).toBe('all');
     // the compose stack builds `app` and `web`: they stay
     expect(stages.map((stage) => stage[1])).toEqual(expect.arrayContaining(['app', 'web', 'all']));
-    // the entry point of that stage is the script that reads VMGS_ROLE, and its default is the worker
-    expect(text).toContain('ENTRYPOINT ["/sbin/tini", "--", "/opt/vmgs/bin/entry.sh"]');
+    // the entry point is the script that reads VMGS_ROLE (started through bash, so that it does not need an executable
+    // bit: a builder that ignores `COPY --chmod` and a script made on Windows would otherwise give "Permission denied"),
+    // and its default is the worker
+    expect(text).toContain('ENTRYPOINT ["/sbin/tini", "--", "bash", "/opt/vmgs/bin/entry.sh"]');
+    expect(text).toContain('RUN chmod 755 /opt/vmgs/bin/entry.sh');
     expect(await read('../../../../deploy/scripts/entry.sh')).toContain(
       'role="${VMGS_ROLE:-worker}"',
     );

@@ -17,9 +17,17 @@ stop_all() {
 }
 
 start_worker() {
-  # in `both` the port belongs to the website; the health page of the worker is for a container that only records
   if [[ "$role" == both ]]; then
+    # the port belongs to the website; the health page of the worker is for a container that only records
     (cd /app/apps/worker && exec env -u PORT node --import tsx src/main.ts) &
+  elif [[ -n "${PORT:-}" ]]; then
+    # The host looks at PORT a few seconds after the start, and the worker needs about 15 s on a quarter of a CPU before
+    # it listens. A small program answers on PORT at once and passes the questions to the health page of the worker, which
+    # listens one port higher (deploy/scripts/early-health.mjs).
+    inner=$((PORT + 1))
+    node /opt/vmgs/bin/early-health.mjs "$PORT" "$inner" &
+    pids+=("$!")
+    (cd /app/apps/worker && exec env PORT="$inner" node --import tsx src/main.ts) &
   else
     (cd /app/apps/worker && exec node --import tsx src/main.ts) &
   fi
@@ -35,8 +43,11 @@ start_site() {
 
 case "$role" in
   worker)
-    cd /app/apps/worker || exit 1
-    exec node --import tsx src/main.ts
+    if [[ -z "${PORT:-}" ]]; then
+      cd /app/apps/worker || exit 1
+      exec node --import tsx src/main.ts
+    fi
+    start_worker
     ;;
   site) start_site ;;
   both)
