@@ -48,6 +48,10 @@ describe('loadMigrations', () => {
       [5, 'backup_role'],
       [6, 'api_reads_migrations'],
     ]);
+    // 0005 grants a predefined role, which a managed database's admin may not do: it has a fallback file
+    expect(migrations.filter((m) => m.fallbackSql !== undefined).map((m) => m.version)).toEqual([
+      5,
+    ]);
     for (const migration of migrations) {
       expect(migration.sql.trim().length).toBeGreaterThan(100);
       expect(migration.checksum).toMatch(/^[0-9a-f]{64}$/);
@@ -99,4 +103,28 @@ describe('loadMigrations', () => {
       expect(error).toMatchObject({ code: 'GAP_OR_DUPLICATE' });
     }
   });
+
+  it('attaches NNNN_name.fallback.sql to its migration, as one migration, and leaves the checksum alone', async () => {
+    const plain = await loadMigrations(await migrationDir({ '0001_a.sql': 'SELECT 1;' }));
+    const migrations = await loadMigrations(
+      await migrationDir({ '0001_a.sql': 'SELECT 1;', '0001_a.fallback.sql': 'SELECT 2;' }),
+    );
+    expect(migrations).toHaveLength(1);
+    expect(migrations[0]?.fallbackSql).toBe('SELECT 2;');
+    expect(migrations[0]?.checksum).toBe(plain[0]?.checksum);
+    expect(plain[0]?.fallbackSql).toBeUndefined();
+  });
+
+  it.each([
+    { '0001_a.sql': 'SELECT 1;', '0002_b.fallback.sql': 'SELECT 2;' },
+    { '0001_a.sql': 'SELECT 1;', '0001_x.fallback.sql': 'SELECT 2;' },
+    { '0001_a.fallback.sql': 'SELECT 2;' },
+  ])(
+    'rejects a fallback that has no migration of the same number and name beside it',
+    async (files) => {
+      const error = await loadMigrations(await migrationDir(files)).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(MigrationError);
+      expect(error).toMatchObject({ code: 'ORPHAN_FALLBACK' });
+    },
+  );
 });

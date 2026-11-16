@@ -8,6 +8,11 @@ export interface TestDatabase {
   url: string;
   /** Connection string of one of the application roles (after `enableLogin`). */
   urlFor(role: string, password: string): string;
+  /**
+   * Makes the database belong to a new login role that is not a superuser and has only CREATEROLE and CREATEDB, like
+   * the admin of a managed Postgres, and returns its connection string. `drop` removes the role again.
+   */
+  managedAdminUrl(): Promise<string>;
   drop(): Promise<void>;
 }
 
@@ -27,6 +32,7 @@ export async function createTestDatabase(adminUrl: string): Promise<TestDatabase
   } finally {
     await admin.end();
   }
+  let managedRole: string | null = null;
 
   return {
     name,
@@ -37,11 +43,32 @@ export async function createTestDatabase(adminUrl: string): Promise<TestDatabase
       next.password = password;
       return next.toString();
     },
+    async managedAdminUrl() {
+      const role = `${name}_admin`;
+      const password = 'managed-admin-pass';
+      await query(adminUrl, `CREATE ROLE ${role} LOGIN PASSWORD '${password}' CREATEROLE CREATEDB`);
+      managedRole = role;
+      await query(adminUrl, `ALTER DATABASE ${name} OWNER TO ${role}`);
+      // The application roles are shared by every database of the test cluster, and may exist already. On a managed
+      // database the admin creates them itself and so may give them a password; here it is given that right.
+      for (const app of ['vmgs_worker', 'vmgs_api', 'vmgs_backup']) {
+        await query(
+          adminUrl,
+          `DO $$ BEGIN CREATE ROLE ${app} NOLOGIN; EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+        );
+        await query(adminUrl, `GRANT ${app} TO ${role} WITH ADMIN OPTION`);
+      }
+      const next = withDatabase(adminUrl, name);
+      next.username = role;
+      next.password = password;
+      return next.toString();
+    },
     async drop() {
       const client = new pg.Client({ connectionString: adminUrl });
       await client.connect();
       try {
         await client.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+        if (managedRole !== null) await client.query(`DROP ROLE IF EXISTS ${managedRole}`);
       } finally {
         await client.end();
       }

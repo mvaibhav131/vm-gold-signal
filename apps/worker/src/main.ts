@@ -31,6 +31,7 @@ import { PostgresMarketReader } from './news/postgresMarketReader';
 import { PostgresNewsStore } from './news/postgresStore';
 import { NewsFeedWatcher } from './news/watcher';
 import { isFresh, workerHeartbeatAgeMs } from './ops/alive';
+import { startHealthServer } from './ops/healthServer';
 import { HealthPinger } from './ops/pinger';
 import { PostgresRecorderStore } from './postgresStore';
 import { calendarContextOf } from './engine/context';
@@ -62,7 +63,10 @@ async function main(): Promise<void> {
     throw new Error('the record-only worker runtime currently requires FEED_PROVIDER=biquote');
   }
 
-  const pool = createPool(env.DATABASE_URL_WORKER, { max: 8 });
+  const pool = createPool(env.DATABASE_URL_WORKER, {
+    max: env.DATABASE_POOL_MAX ?? 8,
+    ca: env.DATABASE_CA_PEM,
+  });
   let resolveStop: (reason: StopReason) => void = () => undefined;
   const stopRequested = new Promise<StopReason>((resolve) => {
     resolveStop = resolve;
@@ -72,6 +76,16 @@ async function main(): Promise<void> {
   };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
+
+  // For a host that wants to see the container answer on a port (a "web service" host). It listens from the first
+  // second, so that the host sees the worker while the engine warms up.
+  const healthPage =
+    env.PORT === undefined
+      ? null
+      : await startHealthServer({
+          port: env.PORT,
+          heartbeatAgeMs: () => workerHeartbeatAgeMs(pool, Date.now()),
+        });
 
   const provider = new BiquoteProvider({
     symbols: env.FEED_SYMBOLS,
@@ -375,6 +389,7 @@ async function main(): Promise<void> {
       telegram: bot !== null,
       webpush: VAPID_PUBLIC_KEY !== undefined,
       heartbeatCheck: pinger !== null,
+      healthPort: healthPage?.port ?? null,
       calendar: calendarProvider.name,
       headlineFeeds: DEFAULT_FEEDS.map((source) => source.key),
       engineCandles: loop.counts,
@@ -411,6 +426,7 @@ async function main(): Promise<void> {
   } finally {
     process.off('SIGINT', onSignal);
     process.off('SIGTERM', onSignal);
+    await healthPage?.close();
     await pool.end();
   }
 }

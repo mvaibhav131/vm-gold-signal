@@ -26,6 +26,8 @@
     "web:budget": "node scripts/bundle-budget.mjs",
     "web:build:live": "pnpm --filter @vmgs/web exec vite build --mode live --outDir dist-live --emptyOutDir",
     "local": "node scripts/local-live.mjs",
+    "aiven": "node scripts/aiven-setup.mjs",
+    "ship:images": "node scripts/ship-images.mjs",
     "e2e:stack": "pnpm --filter @vmgs/e2e test:stack",
     "e2e:live": "pnpm web:build:live && pnpm --filter @vmgs/e2e test:live && pnpm --filter @vmgs/e2e test:live:fresh",
     "e2e": "pnpm web:build && pnpm --filter @vmgs/e2e test",

@@ -10,12 +10,39 @@ export interface MigrateResult {
   applied: number[];
   /** The newest version in the database after this run. */
   current: number;
+  /** Versions that ran their fallback file because the admin lacked a right (only present when there are some). */
+  fallbacks?: number[];
 }
 
 interface AppliedRow {
   version: number;
   name: string;
   checksum: string;
+}
+
+/** Insufficient privilege: what a database admin without the right to do something gets back. */
+function isPermissionDenied(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === '42501';
+}
+
+/** One file in one transaction, recorded with the checksum of the migration file; a failure rolls everything back. */
+async function applyInTransaction(
+  client: pg.Client,
+  sql: string,
+  file: MigrationFile,
+): Promise<void> {
+  await client.query('BEGIN');
+  try {
+    await client.query(sql);
+    await client.query(
+      'INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)',
+      [file.version, file.name, file.checksum],
+    );
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  }
 }
 
 function checkApplied(applied: readonly AppliedRow[], files: readonly MigrationFile[]): void {
@@ -68,23 +95,25 @@ export async function migrate(
     checkApplied(rows, files);
 
     const applied: number[] = [];
+    const fallbacks: number[] = [];
     for (const file of files.slice(rows.length)) {
-      await client.query('BEGIN');
       try {
-        await client.query(file.sql);
-        await client.query(
-          'INSERT INTO schema_migrations (version, name, checksum) VALUES ($1, $2, $3)',
-          [file.version, file.name, file.checksum],
-        );
-        await client.query('COMMIT');
+        await applyInTransaction(client, file.sql, file);
       } catch (error) {
-        await client.query('ROLLBACK');
-        throw error;
+        // A managed database gives its admin fewer rights than a superuser (for example no ADMIN OPTION on a
+        // predefined role). The fallback of the file does the same work with rights that the admin has.
+        if (file.fallbackSql === undefined || !isPermissionDenied(error)) throw error;
+        await applyInTransaction(client, file.fallbackSql, file);
+        fallbacks.push(file.version);
       }
       applied.push(file.version);
     }
 
-    return { applied, current: files.length };
+    return {
+      applied,
+      current: files.length,
+      ...(fallbacks.length > 0 ? { fallbacks } : {}),
+    };
   } finally {
     await client
       .query('SELECT pg_advisory_unlock($1::bigint)', [ADVISORY_LOCK_KEY])

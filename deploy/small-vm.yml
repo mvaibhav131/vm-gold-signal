@@ -1,0 +1,45 @@
+# For a small VM of 1 GB of memory and a quarter of a CPU (Google Cloud e2-micro, the Always Free machine). The compose
+# file is sized for the 12 GB A1 VM (shared_buffers=1GB, a cache that the database fills as it reads); on 1 GB that
+# would end in the kernel killing a process. Turn it on with this line in /opt/vmgs/.env (compose.sh reads it, so that
+# deploy.sh, the timers and you over SSH all see the same stack):
+#   VMGS_COMPOSE_FILES=deploy/small-vm.yml
+# What it changes: the database asks for a tenth of the memory (a small cache, few connections); the Node processes
+# are told how large their heap may grow, so that they collect garbage before they take the memory of the database;
+# and the worker gets more time to start (on a quarter of a CPU the warm-up of the engine took 232 s with three
+# months of history, against 10 s on a PC; the health check must not count that time against it).
+# Measured on a PC with a mini VM of 768 MB and 0.25 CPU (deploy/README.md, "Google Cloud e2-micro").
+services:
+  db:
+    command:
+      - postgres
+      - -c
+      - shared_buffers=96MB
+      - -c
+      - effective_cache_size=384MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=48MB
+      - -c
+      - max_connections=25
+      - -c
+      - wal_compression=on
+      - -c
+      - max_wal_size=512MB
+      - -c
+      - checkpoint_timeout=15min
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
+    shm_size: 128mb
+  worker:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=192
+    healthcheck:
+      start_period: 420s
+  api:
+    environment:
+      NODE_OPTIONS: --max-old-space-size=160

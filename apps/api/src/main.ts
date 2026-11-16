@@ -21,7 +21,10 @@ function log(level: Level, message: string, details: Record<string, unknown> = {
 async function main(): Promise<void> {
   const env = parseEnv(apiEnvSchema, process.env);
   // one connection always listens to the worker (the stream); the rest serve the requests, the stream's looks and the auth
-  const pool = createPool(env.DATABASE_URL_API, { max: 10 });
+  const pool = createPool(env.DATABASE_URL_API, {
+    max: env.DATABASE_POOL_MAX ?? 10,
+    ca: env.DATABASE_CA_PEM,
+  });
   const store = new PostgresAuthStore(pool);
   const service = new AuthService({
     store,

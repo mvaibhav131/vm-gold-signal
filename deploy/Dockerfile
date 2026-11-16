@@ -1,6 +1,11 @@
 # Two images come out of this file, both built on the VM itself from the tagged release (the A1 builds linux/arm64
 # natively). Build context: the repository root (`deploy/scripts/compose.sh build`).
 #
+# This file is at /Dockerfile and at /deploy/Dockerfile, the same text: a host that builds from a repository looks for
+# ./Dockerfile (a plain `docker build .` builds the last stage, `all`: the worker, or the api and the website, by VMGS_ROLE),
+# and the compose file and the scripts use deploy/Dockerfile with `--target app` and `--target web`. A test keeps the two
+# files identical: change both.
+#
 #   target `app`  one image for everything that runs this repository's code: the worker, the migrations, the backup,
 #                 the restore drill and the api (compose runs the api with the `web` profile). The code runs with tsx,
 #                 as it does in development: what runs in production is what the tests ran.
@@ -67,3 +72,19 @@ USER node
 WORKDIR /app/apps/worker
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "--import", "tsx", "src/main.ts"]
+
+# The image for a host that builds from the repository and gives the container its TLS (a plain `docker build .`): the
+# stage `app` plus the web app and Caddy. VMGS_ROLE picks what the container runs: the worker (the default), `site` (the api
+# and the website) or `both` (deploy/scripts/entry.sh). The compose stack does not use this stage.
+FROM app AS all
+USER root
+RUN mkdir -p /etc/caddy
+COPY --from=web /usr/bin/caddy /usr/bin/caddy
+COPY --from=web /srv/web /srv/web
+COPY --chmod=644 deploy/Caddyfile.site /etc/caddy/Caddyfile.site
+COPY --chmod=755 deploy/scripts/entry.sh /opt/vmgs/bin/entry.sh
+# the root of the container may be read-only: Caddy writes only under /tmp
+ENV XDG_CONFIG_HOME=/tmp/caddy-config XDG_DATA_HOME=/tmp/caddy-data
+USER node
+ENTRYPOINT ["/sbin/tini", "--", "/opt/vmgs/bin/entry.sh"]
+CMD []

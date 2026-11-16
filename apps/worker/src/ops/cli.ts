@@ -107,6 +107,11 @@ export async function runOps(
           ? `schema at version ${String(result.current)}, nothing to apply`
           : `applied ${result.applied.join(', ')}; schema at version ${String(result.current)}`,
       );
+      if (result.fallbacks !== undefined) {
+        io.print(
+          `migration ${result.fallbacks.join(', ')} ran its fallback file: this database does not let its admin grant a predefined role`,
+        );
+      }
       io.print(
         result.roles.length === 0
           ? 'no role password set'
@@ -131,7 +136,11 @@ export async function runOps(
         io.print('max-age-seconds must be a positive number');
         return 2;
       }
-      const pool = createPool(parseEnv(workerEnvSchema, env).DATABASE_URL_WORKER, { max: 1 });
+      const workerEnv = parseEnv(workerEnvSchema, env);
+      const pool = createPool(workerEnv.DATABASE_URL_WORKER, {
+        max: 1,
+        ca: workerEnv.DATABASE_CA_PEM,
+      });
       try {
         const age = await workerHeartbeatAgeMs(pool, io.now());
         if (!isFresh(age, maxAgeMs)) {

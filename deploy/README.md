@@ -3,22 +3,25 @@
 Everything that puts VM Gold Signal on a server and keeps it there. The decisions are in
 [`docs/06_Phases_and_Setup.md`](../docs/06_Phases_and_Setup.md) section 4; this file is the runbook.
 
-| File                                            | What it is                                                                                                                                                                                                                             |
-| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Dockerfile`                                    | Two images from one file: `app` (the worker, the api, the migrations and the backup jobs; Node 24, `pg_dump` 17, `age`, `rclone`) and `web` (Caddy with the built web app inside). Built on the VM, so the A1 builds `arm64` natively. |
-| `docker-compose.yml`                            | `db`, `migrate`, `worker` (always); `backup`, `drill`, `owner` (profile `ops`); `api`, `caddy` (profile `web`). Only `caddy` publishes ports.                                                                                          |
-| `Caddyfile`                                     | TLS, security headers, the web app, the proxy to the api (B31b).                                                                                                                                                                       |
-| `env.example`                                   | Every variable of the VM's `.env`, with how to make each one.                                                                                                                                                                          |
-| `scripts/vm-setup.sh`                           | One-time preparation of the VM: updates, time, Docker, SSH, secrets directory, timers.                                                                                                                                                 |
-| `scripts/deploy.sh`                             | Backup, checkout, build, environment check, migrations, `up -d`, smoke test.                                                                                                                                                           |
-| `scripts/smoke.sh`                              | What must be true after a deploy (also `--telegram`, `--public`).                                                                                                                                                                      |
-| `scripts/backup.sh`, `scripts/restore-drill.sh` | Run inside the image by the systemd timers (`systemd/`).                                                                                                                                                                               |
-| `scripts/drill.sh`                              | The failure drills: crash the worker, stop the database, block the feed.                                                                                                                                                               |
-| `scripts/duckdns.sh`                            | The DuckDNS address update (timer every 5 minutes).                                                                                                                                                                                    |
-| `scripts/compose.sh`                            | The one way to call `docker compose` for this stack.                                                                                                                                                                                   |
-| `drills/`                                       | Compose files for the drills and for trying the backup without the bucket.                                                                                                                                                             |
+| File                                            | What it is                                                                                                                                                                                                                                                                                                            |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Dockerfile`                                    | Two images from one file: `app` (the worker, the api, the migrations and the backup jobs; Node 24, `pg_dump` 17, `age`, `rclone`) and `web` (Caddy with the built web app inside). Built on the VM, so the A1 builds `arm64` natively; or on your PC with `pnpm ship:images` for a VM too small to build (section 8). |
+| `docker-compose.yml`                            | `db`, `migrate`, `worker` (always); `backup`, `drill`, `owner` (profile `ops`); `api`, `caddy` (profile `web`). Only `caddy` publishes ports.                                                                                                                                                                         |
+| `small-vm.yml`                                  | The compose changes for a VM of 1 GB (Google Cloud e2-micro): a small database cache, heap limits, more time for the worker to start (section 8).                                                                                                                                                                     |
+| `Caddyfile`                                     | TLS, security headers, the web app, the proxy to the api (B31b).                                                                                                                                                                                                                                                      |
+| `env.example`                                   | Every variable of the VM's `.env`, with how to make each one.                                                                                                                                                                                                                                                         |
+| `scripts/vm-setup.sh`                           | One-time preparation of the VM: updates, time, Docker, SSH, secrets directory, timers.                                                                                                                                                                                                                                |
+| `scripts/deploy.sh`                             | Backup, checkout, build (or `--images FILE`: the images made on your PC), environment check, migrations, `up -d`, smoke test.                                                                                                                                                                                         |
+| `scripts/smoke.sh`                              | What must be true after a deploy (also `--telegram`, `--public`).                                                                                                                                                                                                                                                     |
+| `scripts/backup.sh`, `scripts/restore-drill.sh` | Run inside the image by the systemd timers (`systemd/`).                                                                                                                                                                                                                                                              |
+| `scripts/drill.sh`                              | The failure drills: crash the worker, stop the database, block the feed.                                                                                                                                                                                                                                              |
+| `scripts/duckdns.sh`                            | The DuckDNS address update (timer every 5 minutes).                                                                                                                                                                                                                                                                   |
+| `scripts/compose.sh`                            | The one way to call `docker compose` for this stack.                                                                                                                                                                                                                                                                  |
+| `drills/`                                       | Compose files for the drills and for trying the backup without the bucket.                                                                                                                                                                                                                                            |
 
 ## 1. What you create (once, all free)
+
+(On Google Cloud instead of Oracle: section 8 replaces items 1 and 4, and the bucket is a Cloud Storage one.)
 
 1. **Oracle Cloud VM**: Ampere A1 Flex, 2 OCPU, 12 GB, Ubuntu 24.04 (aarch64), a public IP, your SSH public key. In the
    VCN security list: ingress 22 only from your own address, 80 and 443 from everywhere, nothing else.
@@ -114,6 +117,8 @@ sudo journalctl -u vmgs-backup.service -n 50                  # how the last bac
 
 A new release: as your normal user `cd /opt/vmgs && git pull` (or `git fetch --tags && git checkout v0.2.0`), then
 `sudo /opt/vmgs/deploy/scripts/deploy.sh`. It backs up first, builds, checks the environment, migrates and starts.
+On a VM that cannot build (section 8) the release is `pnpm ship:images` on your PC, `scp` of the file, and
+`deploy.sh --images FILE` on the VM.
 (`deploy.sh --ref TAG` does the fetch itself, but as root, which has no deploy key: it works only if the deploy key is
 also in `/root/.ssh`.) Rolling back: check out the previous tag the same way and run `deploy.sh` again; if a migration
 ran in between, the older code refuses the newer database, so restore the backup that the deploy took first
@@ -237,3 +242,258 @@ For U5c, in the same way (project `vmgs-u5ctest`): the web image built with the 
 Only the VM can check: the `arm64` build, `vm-setup.sh` (it was not run on Ubuntu), the Oracle bucket and its S3
 settings, Healthchecks.io delivery, DuckDNS, and the certificate. The first run of each on the VM is the test: the
 steps of section 2 stop at the first thing that does not work.
+
+## 8. Google Cloud e2-micro (a small VM, almost free)
+
+Oracle's free VM is the plan of sections 1 to 6. If its sign-up does not work for you, the Always Free machine of Google
+Cloud can carry the same stack: **record data and forward-test, yes; a stack to trust for live alerts, not yet** (the
+numbers are below). The steps are those of section 2, with these differences.
+
+### What it costs
+
+Taken from Google's pages of November 2026; look again before you sign up, they change.
+
+|                   |                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Free, no end date | One non-preemptible `e2-micro` per month in `us-west1`, `us-central1` or `us-east1`; 30 GB of **standard** persistent disk; 1 GB of outbound data a month (Google may change it with 30 days' notice). Cloud Storage: 5 GB of regional storage in those same three regions.                                                                     |
+| **Not free**      | The **public IPv4 address** of the VM: $0.005 an hour (the free tier covers one hour a month), so about **$3.6 a month** plus tax. The stack needs it to reach the feed. This is the only charge of a right setup.                                                                                                                              |
+| Free for 90 days  | The sign-up gives $300 of credit for 90 days, which pays the address too. A card is needed (a hold of up to $1 that is released).                                                                                                                                                                                                               |
+| **At day 90**     | You must press **Activate** (upgrade to a paid account) in the console before the 90 days end. If you do not, the account is closed, the VM is stopped and, after 30 more days, deleted. After the upgrade the Always Free part stays free and the remaining credit can still be used until day 90. Put a reminder in your calendar for day 80. |
+
+What else can cost money, and the setting that prevents it:
+
+- **A bigger machine, another region, a second VM, a Spot VM**: only one `e2-micro` in one of the three regions is free.
+- **The disk**: choose "Standard persistent disk", 30 GB. The console proposes Balanced, which is charged.
+- **The network tier**: keep Premium (the default). The free outbound GB does not apply to the Standard tier.
+- **A reserved static IP**: do not make one. An address that is reserved and not used is charged at a higher rate. The
+  ephemeral address changes only when you stop and start the VM, and the DuckDNS timer follows it within 5 minutes.
+- **Outbound data above 1 GB a month**: incoming data (the feed) is free. An open dashboard sends the price every second,
+  so a tab left open all day for weeks may add up. Look at Billing, Reports, grouped by SKU, after the first week.
+- **Snapshots, Marketplace images, "Ubuntu Pro" images**: not needed. Use the plain Ubuntu 24.04 LTS image.
+- **A budget** (Billing, Budgets and alerts: $5, alerts at 50, 90 and 100 percent, to your email) tells you early. A budget
+  sends mails; it does not stop anything by itself.
+
+### Steps
+
+1. Sign up at `console.cloud.google.com/freetrial`, set the budget above, and put day 80 in your calendar.
+2. Compute Engine, Create instance: region `us-central1` (or `us-west1`, `us-east1`), machine type **e2-micro**,
+   boot disk **Ubuntu 24.04 LTS, x86/64**, type **Standard persistent disk**, **30 GB**, provisioning model Standard,
+   firewall: tick "Allow HTTP traffic" and "Allow HTTPS traffic", your SSH public key in the metadata (or use the SSH
+   button of the console). In the VPC firewall rules narrow `default-allow-ssh` to your own address.
+3. In DuckDNS, put the external IP of the VM (section 1, item 2).
+4. The backup bucket (instead of the Oracle one): Cloud Storage, a bucket in `us-central1` (or the region of the VM),
+   class Standard, "Enforce public access prevention" on. Then Settings, Interoperability, "Create a key for a service
+   account" (give that service account the role Storage Object Admin on this bucket only). `secrets/rclone.conf`:
+
+   ```ini
+   [gcs]
+   type = s3
+   provider = GCS
+   access_key_id = YOUR_HMAC_ACCESS_KEY
+   secret_access_key = YOUR_HMAC_SECRET
+   endpoint = https://storage.googleapis.com
+   ```
+
+   and `BACKUP_RCLONE_REMOTE=gcs:your-bucket-name/db` in the `.env`. This was not tried against Google's storage: the
+   first backup by hand (section 2) is the test. **A bucket is deleted with its account.** If you will move on to another
+   cloud (section 9), keep the backups in a bucket outside this cloud instead (Backblaze B2 and Cloudflare R2 have a free
+   tier and an S3 interface: `provider = Other` and their endpoint in `rclone.conf`; their current terms were not
+   checked), or download the newest file to your own PC before the account ends (section 3).
+
+5. In the `.env` of the VM add `VMGS_COMPOSE_FILES=deploy/small-vm.yml` (see `deploy/small-vm.yml`). Without it the
+   database is sized for 12 GB.
+6. `vm-setup.sh` makes 2 GB of swap on a VM with less than 3 GB of memory (the warm-up of the engine peaks the memory).
+7. **The images are built on your PC, never on the VM** (a quarter of a CPU and 1 GB cannot build them). On your PC, with
+   the release committed and pushed:
+
+   ```bash
+   pnpm ship:images                  # builds linux/amd64 images and writes .local/vmgs-images-<release>-amd64.tar.gz (about 140 MB)
+   scp .local/vmgs-images-....tar.gz YOUR_USER@VM_IP:~/
+   ```
+
+   On the VM: `sudo /opt/vmgs/deploy/scripts/deploy.sh --first --images ~/vmgs-images-....tar.gz`. It loads the images,
+   refuses ones of another processor than the VM's, and goes on as in section 2. The database image is pulled by the VM
+   from Docker Hub. Every later release is the same two commands, `deploy.sh --images` without `--first`.
+
+   After a good deploy the release is written to `/opt/vmgs/.version`, and `compose.sh` uses it: so the timers, the
+   owner commands and `smoke.sh` find the images that were loaded, and never try to build one.
+
+### What to expect
+
+Measured on a PC with a "mini VM" of 768 MB of memory (1 GB less about 256 MB for the system) and 0.25 CPU in all, no swap,
+the real feed, the stack with `deploy/small-vm.yml`:
+
+| What                                 | Result                                                                                                                |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| Cold start, four services            | about 2 minutes to healthy; no out-of-memory kill                                                                     |
+| 16 minutes, working normally         | 0.11 to 0.16 CPU of the 0.25, 580 to 650 MB of memory (with the cache of the system), no incident, ticks 3 to 5 s old |
+| Restart of the worker (warm-up)      | **232 s** with three months of history (10 s with no limit); memory peak 707 of 768 MB; a gap of about 3 minutes      |
+| History import while the worker runs | the worker fell behind: a `CLOCK_SKEW` incident (ticks up to 8 s late)                                                |
+| Backup (`pg_dump`, no tick data)     | 8 s, no incident                                                                                                      |
+| Browser check (`pnpm e2e:stack`)     | 6 of 6 passed, in 71 s (25 s with no limit)                                                                           |
+
+So: it runs, with about 40 percent of the CPU in reserve. Every restart or release costs a gap of 2 to 4 minutes in the
+record (the system writes it down as an incident, it does not hide it). Do not import history while the worker runs; on
+a new VM the engine needs about a day of live data before it can think. A real e2-micro may burst for about 30 seconds,
+so the warm-up there should be faster than 232 s; what the test did not cover: the CPU of the system itself (updates,
+agents), the speed of a standard persistent disk, Telegram and the daily rollups, and the 1 GB of outbound data.
+
+## 9. Free for about two years: the relay of free offers
+
+No cloud gives an always-on VM with a public IPv4 address for nothing any more (Oracle's Always Free is the one
+exception). Google, AWS and Azure each give a free start to a **new** customer, and the stack is built to move: the
+images are made on your PC (`pnpm ship:images`), the data is in the backups, and the address is DuckDNS. So use the
+offers one after the other. Taken from their pages of November 2026; look again before each step.
+
+| Stage | Offer                                                                                                                                          | Free for                           | Use                                                                                                                                                                                                                                                                               |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | Google Cloud Free Trial: $300 of credit (card needed; a hold of up to $1)                                                                      | 90 days                            | A bigger VM than the e2-micro (for example `e2-medium`, 2 vCPU and 4 GB: no `small-vm.yml` needed). Do **not** press Activate: let it end and move.                                                                                                                               |
+| 2     | AWS Free plan: $100 on sign-up and up to $100 more for activities; a payment method is not always asked for. Not for anyone who had an account | 6 months, or until the credit ends | `t3.small` (2 GB) or `t3.micro`; at list prices (an estimate) the micro with a 30 GB disk and the address is about $14 a month, the small about $21. The account is suspended at the end and kept for 90 days.                                                                    |
+| 3     | Azure free account: 750 hours each of `B2ats v2` (x86, 2 vCPU, 1 GiB) and `B2pts v2` (Arm), 2 disks of 64 GB, $200 of credit for 30 days       | 12 months                          | `B2ats v2` (the images are `amd64`, as for the e2-micro) with `deploy/small-vm.yml`. The public IPv4 address is not in the free list: $0.005 an hour (about $3.65 a month). A card (not prepaid) and a move to pay-as-you-go within 30 days are needed to keep the free services. |
+| 4     | Your choice                                                                                                                                    | as long as you like                | The Google e2-micro (Always Free, plus about $3.65 a month for the address), a small paid VPS, your own PC (`pnpm local up`), or Oracle if its sign-up works later.                                                                                                               |
+
+Two rules make it work:
+
+- **Make each account only when its stage starts.** The free clock runs from the sign-up, not from the first VM. One
+  account per cloud, in your own name: the offers are for new customers, and a second account would break their terms.
+- **Keep the backups outside the cloud you are leaving** (section 8, step 4), and keep your offline age key.
+
+### Moving to the next VM
+
+This puts the checked parts together (sections 2, 5 and 8); the whole move was not run on two real VMs. Expect 20 to 40
+minutes without a record, and the ticks of the last 14 days are not carried over (the backups skip them: section 5).
+
+1. On the old VM: the last backup by hand, `sudo /opt/vmgs/deploy/scripts/compose.sh --profile ops run --rm backup`, and
+   check that its file is in the bucket (`rclone lsf`).
+2. On the new VM: make it (section 8 steps 2 and 6; section 1 for the keys), copy the old `.env` as it is (**the same
+   `APP_ENCRYPTION_KEY` and passwords**: a new key makes the second login step unreadable), put your offline age private
+   key in `/opt/vmgs/secrets/drill.key`, and `deploy.sh --first --images FILE`.
+3. **Stop the old worker** (`compose.sh stop worker`; two workers on one Telegram bot token fight over its messages) and
+   turn its DuckDNS timer off (`sudo systemctl disable --now vmgs-duckdns.timer`), or the two VMs take the name from each
+   other.
+4. On the new VM, restore the backup (section 5), then `smoke.sh --public` and `pnpm e2e:stack` from your PC.
+5. When the new VM has recorded for a day and the System page is green, delete the old VM and its disk.
+
+## 10. Free for good (not run on the real services yet): the database on Aiven, the worker on a free container
+
+The idea of this section is that **only the worker has to run all the time**. The state lives in a free managed Postgres,
+the worker is a container with no state of its own (so moving it to another host never touches the data again), and the
+dashboard is only needed when you want to look. Alerts go to Telegram from the worker. What was read on the pages of
+November 2026 and what was run on a PC (a Postgres made to behave like Aiven: TLS only, an admin that is not a
+superuser, `max_connections` 20, 1 GB and 1 CPU; the real feed; the worker and the API in 256 MB and a quarter of a CPU):
+
+| What                                       | Result                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Aiven free PostgreSQL                      | No card, no time limit, 1 CPU, 1 GB RAM, 1 GB disk, backups, pgvector, `max_connections` 20 (3 to 6 reserved), no pooling, no static IP, one per organisation. Aiven may power it off when there is no activity (the worker writes every second) and may change its cloud or region.                                                                                                                                                                                                                  |
+| Migrations as a non-superuser admin        | **Found and fixed:** `0005` grants `pg_read_all_data`, which such an admin cannot. `0005_backup_role.fallback.sql` runs instead, only after that refusal; the command says so ("migration 5 ran its fallback file").                                                                                                                                                                                                                                                                                  |
+| TLS                                        | Without the CA of Aiven a URL with `?sslmode=require` fails ("unable to verify the first certificate"); with `NODE_EXTRA_CA_CERTS=/path/ca.pem` it works with no change of code, and so does `DATABASE_CA_PEM` (the text of `ca.pem`, for a host that cannot mount a file: wrong CA, no CA and not-a-certificate were all refused, and the worker ran 28 s to its first heartbeat over TLS 1.3 with only that). `sslmode=verify-full&sslrootcert=` works. `sslmode=disable` is refused by the server. |
+| Worker in 256 MB and 0.25 CPU              | Heard from after 27 s; 0.02 CPU on average; memory peak 151 MiB; one connection in steady state; no out-of-memory kill.                                                                                                                                                                                                                                                                                                                                                                               |
+| API in 256 MB and 0.25 CPU                 | Ready; peak 114 MiB; the owner is made over TLS.                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Size                                       | 3 months of candles: 13 MB. Ticks: about 1.6 a second, 219 bytes a row with the indexes, so the 14 days that are kept are about 290 MB. It fits the 1 GB.                                                                                                                                                                                                                                                                                                                                             |
+| `pg_dump` as `vmgs_backup` (as the backup) | 400 KB, 245 entries, no tick data: the rights of the fallback are enough.                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| The database restarts (a maintenance)      | The worker stops and the platform has to start it again; it was heard from again 30 s after the restart. **The host must restart a stopped container.**                                                                                                                                                                                                                                                                                                                                               |
+
+### The short way, for someone new
+
+**What runs where.** Two containers made from the same repository, and one database:
+
+- **Aiven** is the database. Its address (the "Service URI") is used by the two containers and by you, not by a browser.
+- **The worker container** (Back4app, below) takes the prices, records them, thinks, and sends the messages to Telegram. It
+  has no page for people; only a small health page on its `PORT` for the host's own checks.
+- **The website container** (a second app on the same host) is the dashboard: the API and the web app. The host gives it a
+  public `https://` address. That address is the website you open, on your phone too.
+
+1. **Aiven** (about 10 minutes): sign up (no card), make one free PostgreSQL service, wait until it says Running. On its
+   Overview page copy the **Service URI** (a line that starts with `postgres://`) and download the **CA certificate**
+   (`ca.pem`). Save the certificate as `.local\aiven-ca.pem` in this repository (make the folder `.local` if it is not
+   there).
+2. **On your PC**, in a terminal in this repository: `pnpm install` once, then `pnpm aiven setup`. It asks for the Service
+   URI (hidden while you paste), the place of the certificate (Enter if you used the name above), your Telegram token
+   (hidden; Enter to skip) and the Healthchecks link of the `worker` check (Enter to skip). It sets up the tables and the
+   roles, imports the history if the HistData zips are in `data/histdata`, and writes two files: `.local\back4app-vars.txt`
+   (the worker) and `.local\back4app-site-vars.txt` (the website), one `NAME=value` per line. It stops at the first problem
+   and says what to fix; running it again is harmless. **Those files hold passwords: do not commit them and do not send them
+   to anyone.**
+3. **The worker on Back4app Containers**: sign up, connect your GitHub account, make a new container app from the repository,
+   branch `main`, root directory `/` (the `Dockerfile` at the root builds the image), and paste the lines of
+   `back4app-vars.txt` as the environment variables. Choose the free size (0.25 CPU, 256 MB).
+4. When the deploy finishes: `pnpm aiven status` must say **ALIVE**. The `worker` check of Healthchecks turns green. Pause the
+   checks `backup` and `drill` there (this mode has no backup job of its own: Aiven keeps backups), or they will tell you
+   every day that no backup came.
+5. **The website on Back4app**: a second container app from the same repository, the same branch and root directory, and the
+   lines of `back4app-site-vars.txt` as its environment variables (the line `VMGS_ROLE=site` is what makes it the website).
+   The free size is enough (peak 150 MB of 256). When it is created, the host shows its address (for example
+   `myname.b4a.run`). Then, on your PC:
+
+   ```text
+   pnpm aiven site myname.b4a.run     # puts the address into the settings of the website
+   ```
+
+   Replace the line `PUBLIC_HOST=...` of the website container with the one it prints and deploy it again: the login accepts
+   only the address it was told (that is a safety rule, and the address is known only after the first deploy). Then:
+
+   ```text
+   pnpm aiven owner                   # your login: asks for the password twice (at least 12 characters)
+   ```
+
+   Open `https://myname.b4a.run` and log in. A forgotten password: `pnpm aiven admin owner:password owner`; "too many failed
+   attempts" when it was not you: `pnpm aiven admin throttle:reset`.
+
+6. Telegram: `pnpm aiven link`, send the bot `/link <the code it prints>`, then `pnpm aiven test`: a test message must
+   arrive in Telegram within seconds.
+
+If the host has only **one** free container: `VMGS_ROLE=both` runs the worker and the website in it. On a PC it ran in 256 MB
+and 0.25 CPU (6 of 6 browser checks passed) but the memory peak was 255 of 256 MB: too close to count on. In 512 MB it is
+comfortable; the two settings files are then merged into one (the worker's `DATABASE_URL_WORKER` is added to the website's
+lines, and `PORT` belongs to the website).
+
+If a host does not accept a container that only records (it wants a web page): the worker answers on `PORT` with `200 ok`
+while its heartbeat is fresh, `200 starting` during its first two minutes, and `503` when the heartbeat is stale. The website
+container answers `200` on `/api/v1/health/live`.
+
+What was run on a PC for this (a Postgres made to behave like Aiven, a proxy that does what the host does: TLS in front and
+`X-Forwarded-For`): the image of the root `Dockerfile` in both roles; `pnpm aiven setup`, `site`, `owner`, `admin`, `status`;
+the worker and the website each in 256 MB and a quarter of a CPU (peaks 117 MB and 143 MB); `pnpm e2e:stack` 6 of 6 against
+the website through the proxy (right after the start the engine is still warming up and the dashboard says so: two of six
+checks failed in the first two minutes and passed after four); seven wrong logins with seven different spoofed
+`X-Forwarded-For` counted as one visitor (the sixth got 429), and `throttle:reset` lifted it; a container whose api cannot
+start stops by itself within seconds (so that the host restarts it). Not run: the real Back4app (its address, the TLS proxy,
+whether a second free container exists, whether it sleeps). **If its proxy is not on a private address, all visitors count
+as one**: the limit of failed logins is then shared, which can lock you out for a while (`throttle:reset`) and never lets a
+stranger in.
+
+### The same by hand
+
+Steps (nothing here was run against Aiven itself):
+
+1. Sign up at Aiven (no card) and make one free PostgreSQL service. On its page copy the host, the port, the user
+   (`avnadmin`), the password, and download the CA certificate (`ca.pem`). The database is `defaultdb`.
+2. On your PC, in the repository after `pnpm install`: three passwords with
+   `node -e "console.log(require('crypto').randomBytes(24).toString('hex'))"` (one run for each), then the schema and the
+   roles (PowerShell):
+
+   ```powershell
+   $env:NODE_EXTRA_CA_CERTS = 'C:\path\to\ca.pem'
+   $env:DATABASE_URL_ADMIN = 'postgres://avnadmin:PASSWORD@HOST:PORT/defaultdb?sslmode=require'
+   $env:DB_PASSWORD_WORKER = '...'; $env:DB_PASSWORD_API = '...'; $env:DB_PASSWORD_BACKUP = '...'
+   pnpm cli db:migrate        # applied 1, 2, 3, 4, 5, 6 (and: migration 5 ran its fallback file: that is normal here)
+   ```
+
+3. The history, before the worker starts (`docs/06`, "HistData download and import"), with
+   `DATABASE_URL_WORKER=postgres://vmgs_worker:...@HOST:PORT/defaultdb?sslmode=require` in the environment:
+   `pnpm research histdata:import <the newest three zips>`.
+4. The worker, on any host that runs a Docker image and restarts it when it stops: the image of `deploy/Dockerfile`, target
+   `app` (its default command is the worker), with `NODE_ENV=production`, `PUBLIC_HOST` (any name), `DATABASE_URL_WORKER`,
+   `FEED_PROVIDER=biquote`, `FEED_SYMBOLS=XAUUSD,DXY,XAGUSD`, `PORT=8080`, `TELEGRAM_BOT_TOKEN`, `HEALTHCHECKS_PING_URL`, and the CA:
+   `DATABASE_CA_PEM` = the text of `ca.pem` (one line with `\n` for the line breaks is fine), with the URL left as Aiven
+   gives it (`?sslmode=require`). The connection is then verified against that CA; a wrong or missing CA stops the worker,
+   and a value that is not a certificate is refused at start. (Where a file can be mounted, `NODE_EXTRA_CA_CERTS` does the
+   same.) TLS verification is never switched off. 256 MB and 0.25 CPU are enough.
+5. Telegram (`telegram:link`) and Healthchecks.io as in section 2.
+
+Not built and not checked, so do not count on them yet: a real Aiven service (the rights of `avnadmin` and its CA are taken from its documentation, not
+tried); a real free container host (Back4app Containers lists a free container of 0.25 CPU and 256 MB with Docker, 100 GB of
+transfer and a US region; whether it sleeps, restarts a stopped container, builds from a private repository, and how many
+free containers you get, its pages do not say); the delay between the host and the database (keep them on one continent:
+every tick batch is a round trip); and the connection limit when the API runs beside the worker (the API has a pool of 10,
+the worker of 8, the service allows 14 to 17 for you: measured use was 1 and 1).

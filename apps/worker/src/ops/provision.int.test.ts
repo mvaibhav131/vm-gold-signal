@@ -99,3 +99,37 @@ describe('provision', () => {
     ).rejects.toThrow(/password authentication failed/);
   });
 });
+
+describe('provision on a managed database (the admin is not a superuser)', () => {
+  let managedDb: TestDatabase;
+
+  beforeAll(async () => {
+    managedDb = await emptyDatabase();
+  });
+
+  afterAll(async () => {
+    await managedDb.drop();
+  });
+
+  it('migrates with the fallback of 0005, tells so, and lets all three roles log in and do their work', async () => {
+    const admin = await managedDb.managedAdminUrl();
+    const result = await provision({ DATABASE_URL_ADMIN: admin, ...PASSWORDS });
+    const versions = (await loadMigrations()).map((m) => m.version);
+    expect(result).toEqual({
+      applied: versions,
+      current: versions.length,
+      fallbacks: [5],
+      roles: ['vmgs_worker', 'vmgs_api', 'vmgs_backup'],
+    });
+
+    const worker = managedDb.urlFor('vmgs_worker', PASSWORDS.DB_PASSWORD_WORKER);
+    const api = managedDb.urlFor('vmgs_api', PASSWORDS.DB_PASSWORD_API);
+    const backup = managedDb.urlFor('vmgs_backup', PASSWORDS.DB_PASSWORD_BACKUP);
+    expect(await failureOf(worker, 'SELECT count(*) FROM candles')).toBeNull();
+    expect((await failureOf(worker, 'SELECT count(*) FROM auth_owner'))?.code).toBe('42501');
+    expect(await failureOf(api, 'SELECT count(*) FROM auth_owner')).toBeNull();
+    expect(await failureOf(backup, 'SELECT count(*) FROM auth_owner')).toBeNull();
+    // the partition maintenance runs with the owner's rights, which a managed admin has
+    expect(await failureOf(worker, 'SELECT ensure_tick_partitions(2)')).toBeNull();
+  });
+});

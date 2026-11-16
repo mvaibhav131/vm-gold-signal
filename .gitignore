@@ -15,6 +15,7 @@ coverage/
 # the VM's own files next to the checkout (deploy/README.md)
 secrets/
 .deployed
+.version
 
 # test output
 playwright-report/

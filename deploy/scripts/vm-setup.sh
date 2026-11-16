@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# One-time preparation of a fresh Ubuntu 24.04 VM (Oracle A1 Flex, aarch64), run as root from the checkout:
+# One-time preparation of a fresh Ubuntu 24.04 VM (Oracle A1 Flex, aarch64, or a Google Cloud e2-micro, x86_64), run as
+# root from the checkout:
 #   sudo bash /opt/vmgs/deploy/scripts/vm-setup.sh [--no-ssh-hardening]
 # It is safe to run again. What it does (06_Phases_and_Setup section 4, "VM hardening"):
 #   - security updates now and automatically (no automatic reboot: reboot on a weekend when the System page asks)
+#   - 2 GB of swap on a VM with less than 3 GB of memory (the e2-micro has 1 GB)
 #   - UTC time kept by chrony
 #   - Docker from Docker's own apt repository, with log rotation
 #   - SSH by key only, no root login (only when your user already has a key: it never locks you out)
 #   - /opt/vmgs/secrets (mode 700) and the drill key of the restore drill
 #   - the systemd timers: nightly backup, monthly restore drill, DuckDNS update
-# The cloud firewall (the VCN security list) is the perimeter: open 22 only to your own address, and 80 and 443. The
-# stack publishes no other port (the database has none); the last step lists what listens.
+# The cloud firewall (the VCN security list on Oracle, the VPC firewall rules on Google Cloud) is the perimeter: open 22
+# only to your own address, and 80 and 443. The stack publishes no other port (the database has none); the last step
+# lists what listens.
 set -euo pipefail
 
 step() { printf '\n==> %s\n' "$*"; }
@@ -30,6 +33,24 @@ step "updates and tools"
 apt-get update -q
 apt-get -y -q upgrade
 apt-get -y -q install ca-certificates curl git gnupg chrony unattended-upgrades age
+
+step "swap: 2 GB on a VM with less than 3 GB of memory (the database and the worker peak together at a restart)"
+mem_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
+if [[ -n "$(swapon --show --noheadings)" ]]; then
+  echo "there is swap already: $(swapon --show --noheadings | awk '{print $1 " " $3}' | paste -sd, -)"
+elif ((mem_kb >= 3 * 1024 * 1024)); then
+  echo "not needed: $((mem_kb / 1024)) MB of memory"
+else
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile >/dev/null
+  swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+  # swap is the way out of a peak, not a place to live in
+  printf 'vm.swappiness=10\n' >/etc/sysctl.d/99-vmgs.conf
+  sysctl -q -p /etc/sysctl.d/99-vmgs.conf
+  echo "made /swapfile (2 GB), swappiness 10"
+fi
 
 step "time: UTC, kept by chrony"
 timedatectl set-timezone UTC

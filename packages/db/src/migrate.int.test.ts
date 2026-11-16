@@ -131,6 +131,103 @@ describe('migrate refuses to run on a database it cannot trust', () => {
   });
 });
 
+describe('migrate as the admin of a managed database (not a superuser)', () => {
+  it('applies every migration, with the fallback of 0005, and the backup role can still read everything pg_dump needs', async () => {
+    const database = await freshDatabase();
+    const managed = await database.managedAdminUrl();
+    const files = await loadMigrations();
+
+    const result = await migrate(managed);
+    expect(result).toEqual({
+      applied: files.map((f) => f.version),
+      current: files.length,
+      fallbacks: [5],
+    });
+    // recorded with the checksum of 0005 itself, so a database that took the other way is the same database
+    const recorded = await query<{ checksum: string }>(
+      database.url,
+      'SELECT checksum FROM schema_migrations WHERE version = 5',
+    );
+    expect(recorded[0]?.checksum).toBe(files.find((f) => f.version === 5)?.checksum);
+
+    // explicit grants, which a member of pg_read_all_data would not have: the tables, the sequences, the later ones
+    const grants = await query<{ relname: string; privilege_type: string }>(
+      database.url,
+      `SELECT c.relname, a.privilege_type
+       FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) a JOIN pg_roles r ON r.oid = a.grantee
+       WHERE r.rolname = 'vmgs_backup' AND c.relname IN ('auth_owner', 'ticks', 'signals_seq_seq')
+       ORDER BY c.relname, a.privilege_type`,
+    );
+    expect(grants).toEqual([
+      { relname: 'auth_owner', privilege_type: 'SELECT' },
+      { relname: 'signals_seq_seq', privilege_type: 'SELECT' },
+      { relname: 'ticks', privilege_type: 'SELECT' },
+    ]);
+    const defaults = await query<{ defaclobjtype: string }>(
+      database.url,
+      `SELECT d.defaclobjtype FROM pg_default_acl d
+       WHERE d.defaclnamespace = 'public'::regnamespace AND d.defaclacl::text LIKE '%vmgs_backup=r/%'
+       ORDER BY 1`,
+    );
+    expect(defaults.map((d) => d.defaclobjtype)).toEqual(['S', 'r']);
+  });
+
+  it('does nothing when it runs again, and says nothing about a fallback', async () => {
+    const database = await freshDatabase();
+    const managed = await database.managedAdminUrl();
+    await migrate(managed);
+    expect(await migrate(managed)).toEqual({
+      applied: [],
+      current: (await loadMigrations()).length,
+    });
+  });
+
+  it('still refuses a permission error of a migration that has no fallback', async () => {
+    const database = await freshDatabase();
+    const managed = await database.managedAdminUrl();
+    const broken = fake(1, 'needs_superuser', 'CREATE ROLE vmgs_needs_bypass BYPASSRLS;');
+    await expect(migrate(managed, { migrations: [broken] })).rejects.toMatchObject({
+      code: '42501',
+    });
+  });
+
+  it('runs the fallback only after the file itself was refused, and rolls both back when the fallback fails too', async () => {
+    const database = await freshDatabase();
+    const managed = await database.managedAdminUrl();
+    const both: MigrationFile = {
+      ...fake(
+        1,
+        'both',
+        'CREATE TABLE half (id integer); CREATE ROLE vmgs_needs_bypass2 BYPASSRLS;',
+      ),
+      fallbackSql: 'CREATE TABLE half2 (id integer); SELECT 1 / 0;',
+    };
+    await expect(migrate(managed, { migrations: [both] })).rejects.toMatchObject({ code: '22012' });
+    const tables = await query<{ tablename: string }>(
+      database.url,
+      "SELECT tablename FROM pg_tables WHERE schemaname = 'public'",
+    );
+    expect(tables.map((t) => t.tablename)).toEqual(['schema_migrations']);
+    expect(await query(database.url, 'SELECT version FROM schema_migrations')).toEqual([]);
+
+    // a fallback that works leaves only its own work behind
+    const works: MigrationFile = {
+      ...both,
+      fallbackSql: 'CREATE TABLE only_fallback (id integer);',
+    };
+    expect(await migrate(managed, { migrations: [works] })).toEqual({
+      applied: [1],
+      current: 1,
+      fallbacks: [1],
+    });
+    const after = await query<{ tablename: string }>(
+      database.url,
+      "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY 1",
+    );
+    expect(after.map((t) => t.tablename)).toEqual(['only_fallback', 'schema_migrations']);
+  });
+});
+
 describe('a failing migration', () => {
   it('rolls its own file back completely, keeps the earlier ones and can be fixed and run again', async () => {
     const database = await freshDatabase();

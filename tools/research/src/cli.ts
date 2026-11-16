@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   if (command !== 'histdata:import' && command !== 'spread:model') throw new Error(USAGE);
 
   const env = parseEnv(researchEnvSchema, process.env);
-  const pool = createPool(env.DATABASE_URL_WORKER, { max: 2 });
+  const pool = createPool(env.DATABASE_URL_WORKER, { max: 2, ca: env.DATABASE_CA_PEM });
   try {
     const store = new PostgresBootstrapStore(pool);
     if (command === 'spread:model') {

@@ -13,6 +13,7 @@
 !packages/
 !tools/research/package.json
 !deploy/scripts/
+!deploy/Caddyfile.site
 
 **/node_modules
 **/dist

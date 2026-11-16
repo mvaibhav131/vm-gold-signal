@@ -110,6 +110,20 @@ describe('apiEnvSchema', () => {
     expect(problems(apiEnvSchema, { ...api, NODE_TLS_REJECT_UNAUTHORIZED: '1' })).toEqual([]);
   });
 
+  it('takes the CA of a TLS database as PEM text, with real or written \\n line breaks, and nothing else', () => {
+    const pem = '-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----';
+    expect(problems(apiEnvSchema, { ...api, DATABASE_CA_PEM: pem })).toEqual([]);
+    expect(
+      problems(apiEnvSchema, { ...api, DATABASE_CA_PEM: pem.replaceAll('\n', '\\n') }),
+    ).toEqual([]);
+    expect(problems(apiEnvSchema, { ...api, DATABASE_CA_PEM: '/etc/ssl/ca.pem' })).toEqual([
+      'DATABASE_CA_PEM: must be the PEM text of a certificate (-----BEGIN CERTIFICATE-----)',
+    ]);
+    expect(
+      problems(workerEnvSchema, { ...worker, DATABASE_CA_PEM: '-----BEGIN PRIVATE KEY-----' }),
+    ).toHaveLength(1);
+  });
+
   it('rejects an unknown NODE_ENV or log level', () => {
     expect(problems(apiEnvSchema, { ...api, NODE_ENV: 'staging' })).toHaveLength(1);
     expect(problems(apiEnvSchema, { ...api, LOG_LEVEL: 'verbose' })).toHaveLength(1);
@@ -264,6 +278,26 @@ describe('workerEnvSchema', () => {
     expect(
       problems(workerEnvSchema, { ...worker, HEALTHCHECKS_PING_URL: 'http://hc-ping.com/abc' }),
     ).toHaveLength(1);
+  });
+
+  it('has no pool size unless DATABASE_POOL_MAX is set, and takes 1 to 20', () => {
+    expect(parseEnv(workerEnvSchema, worker).DATABASE_POOL_MAX).toBeUndefined();
+    expect(parseEnv(workerEnvSchema, { ...worker, DATABASE_POOL_MAX: '6' }).DATABASE_POOL_MAX).toBe(
+      6,
+    );
+    expect(parseEnv(apiEnvSchema, { ...api, DATABASE_POOL_MAX: '4' }).DATABASE_POOL_MAX).toBe(4);
+    for (const bad of ['0', '21', 'many', '2.5']) {
+      expect(problems(workerEnvSchema, { ...worker, DATABASE_POOL_MAX: bad })).toHaveLength(1);
+      expect(problems(apiEnvSchema, { ...api, DATABASE_POOL_MAX: bad })).toHaveLength(1);
+    }
+  });
+
+  it('has no health port unless PORT is set, and takes a real port number', () => {
+    expect(parseEnv(workerEnvSchema, worker).PORT).toBeUndefined();
+    expect(parseEnv(workerEnvSchema, { ...worker, PORT: '8080' }).PORT).toBe(8080);
+    for (const bad of ['0', '70000', 'http', '80.5']) {
+      expect(problems(workerEnvSchema, { ...worker, PORT: bad })).toHaveLength(1);
+    }
   });
 });
 

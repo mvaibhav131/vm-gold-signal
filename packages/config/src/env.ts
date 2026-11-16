@@ -46,6 +46,19 @@ const baseShape = {
     .string()
     .optional()
     .refine((value) => value !== '0', 'TLS verification must not be disabled'),
+  // The most connections that one process opens. The default is what each process was built for (the worker 8, the api
+  // 10); a database with a small limit (Aiven's free one allows 20 for everything) needs less, so that the worker and
+  // the api together never ask for more than the server gives.
+  DATABASE_POOL_MAX: z.coerce.number().pipe(z.int().min(1).max(20)).optional(),
+  // The CA of a database that is reached over TLS (a managed Postgres), as text, for a host that cannot mount a file
+  // for NODE_EXTRA_CA_CERTS. Line breaks may be written as \n so that it fits one line.
+  DATABASE_CA_PEM: z
+    .string()
+    .refine(
+      (value) => value.replaceAll('\\n', '\n').includes('-----BEGIN CERTIFICATE-----'),
+      'must be the PEM text of a certificate (-----BEGIN CERTIFICATE-----)',
+    )
+    .optional(),
 };
 
 /** An origin as a browser writes it in `Origin`: scheme, host and port, no path and no trailing slash. */
@@ -121,6 +134,8 @@ export const workerEnvSchema = z
     VAPID_PRIVATE_KEY: vapidPrivateKey.optional(),
     VAPID_SUBJECT: vapidSubject.optional(),
     HEALTHCHECKS_PING_URL: z.url({ protocol: /^https$/ }).optional(),
+    // The port of a small health page, for a host that runs a container only if it answers on PORT. Not set on the VM.
+    PORT: z.coerce.number().pipe(z.int().min(1).max(65535)).optional(),
   })
   .check((ctx) => {
     const vapid = [

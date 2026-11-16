@@ -14,7 +14,7 @@ async function main(): Promise<number> {
     return 2;
   }
   const env = parseEnv(apiCliEnvSchema, process.env);
-  const pool = createPool(env.DATABASE_URL_API, { max: 2 });
+  const pool = createPool(env.DATABASE_URL_API, { max: 2, ca: env.DATABASE_CA_PEM });
   try {
     return await runCli(args, {
       store: new PostgresAuthStore(pool),

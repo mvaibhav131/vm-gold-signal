@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   }
   if (command !== 'telegram:link' && command !== 'telegram:test') throw new Error(USAGE);
   const env = parseEnv(workerEnvSchema, process.env);
-  const pool = createPool(env.DATABASE_URL_WORKER, { max: 2 });
+  const pool = createPool(env.DATABASE_URL_WORKER, { max: 2, ca: env.DATABASE_CA_PEM });
   try {
     if (command === 'telegram:link') {
       if (env.TELEGRAM_BOT_TOKEN === undefined) throw new Error('set TELEGRAM_BOT_TOKEN in .env');
