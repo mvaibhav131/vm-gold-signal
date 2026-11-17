@@ -14,6 +14,7 @@ import type { MacroEventInput, NewsWindowSpec } from '../context/macro';
 import type { QualityWeights } from '../scoring/score';
 import type { BucketDims } from '../stats/evidence';
 import type { PatternBreakoutParams } from '../strategies/patternBreakout/types';
+import type { HourlyTrendParams } from '../strategies/hourlyTrend/types';
 import type { SqueezeRetestParams } from '../strategies/squeezeRetest/types';
 import type { SweepReversalParams } from '../strategies/sweepReversal/types';
 import type { TrendPullbackParams } from '../strategies/trendPullback/types';
@@ -53,6 +54,7 @@ export type StrategySpec = SpecBase &
     | { readonly strategyKey: 'squeeze_retest'; readonly params: SqueezeRetestParams }
     | { readonly strategyKey: 'trendline_retest'; readonly params: TrendlineRetestParams }
     | { readonly strategyKey: 'pattern_breakout'; readonly params: PatternBreakoutParams }
+    | { readonly strategyKey: 'hourly_trend'; readonly params: HourlyTrendParams }
   );
 
 /** A setup that a strategy found on the newest 5m candle, with the context the statistics key needs. */

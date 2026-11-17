@@ -66,6 +66,7 @@ const SETTINGS: AlertSettings = {
     squeeze_retest: 'on',
     trendline_retest: 'off',
     pattern_breakout: 'off',
+    hourly_trend: 'off',
   },
   newsAlerts: NEWS_ALERTS,
 };

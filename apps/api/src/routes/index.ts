@@ -35,6 +35,8 @@ export interface ApiDeps {
   readonly streamIntervals?: StreamSetup['intervals'];
   /** The public VAPID key (VAPID_PUBLIC_KEY) that browsers subscribe with; none when the owner has not set up Web Push. */
   readonly vapidPublicKey?: string | null;
+  /** The soft limit of the database in bytes (DB_SOFT_LIMIT_GB), for the storage gauge of the System page; 10 GB when none is given. */
+  readonly dbSoftLimitBytes?: number;
   /** Told once, when the stream is made (tests wait for its listener, and read its hub). */
   readonly onStream?: (stream: StreamHandle) => void;
 }
@@ -81,7 +83,11 @@ export function registerApiRoutes(app: FastifyInstance, deps: ApiDeps): void {
     now: deps.now,
   });
   registerNewsRoutes(app, { reader: news, now: deps.now });
-  registerSystemRoutes(app, { reader: system, now: deps.now });
+  registerSystemRoutes(app, {
+    reader: system,
+    now: deps.now,
+    ...(deps.dbSoftLimitBytes === undefined ? {} : { dbSoftLimitBytes: deps.dbSoftLimitBytes }),
+  });
   registerSettingsRoutes(app, { store: new PostgresSettingsStore(deps.pool), now: deps.now });
   registerNotificationRoutes(
     app,

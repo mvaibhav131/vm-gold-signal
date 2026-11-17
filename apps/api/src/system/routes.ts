@@ -16,6 +16,8 @@ const API_BASE = '/api/v1';
 export interface SystemDeps {
   readonly reader: SystemReader;
   readonly now: () => number;
+  /** The soft limit of the database in bytes (DB_SOFT_LIMIT_GB); the default of the core when none is given. */
+  readonly dbSoftLimitBytes?: number;
 }
 
 /**
@@ -44,7 +46,7 @@ export function registerSystemRoutes(app: FastifyInstance, deps: SystemDeps): vo
     method: 'GET',
     url: `${API_BASE}/system/storage`,
     response: systemStorageSchema,
-    handler: async () => storageOf(await deps.reader.storage()),
+    handler: async () => storageOf(await deps.reader.storage(), deps.dbSoftLimitBytes),
   });
 
   jsonRoute(app, {

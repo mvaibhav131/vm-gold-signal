@@ -160,6 +160,7 @@ describe('SizeGuard', () => {
     sizeOf: (days: number) => number,
     disk: { totalBytes: number; freeBytes: number } | null = null,
     days = 14,
+    dbLimitBytes?: number,
   ) {
     const store = new MemoryMaintenanceStore();
     store.sizeOf = sizeOf;
@@ -177,6 +178,7 @@ describe('SizeGuard', () => {
       disk: { usage: () => Promise.resolve(disk) },
       outbox,
       settings: () => Promise.resolve(defaultAlertSettings()),
+      ...(dbLimitBytes === undefined ? {} : { dbLimitBytes }),
       onQueued: () => {
         queued.count += 1;
       },
@@ -192,6 +194,23 @@ describe('SizeGuard', () => {
     expect(store.calls).toEqual([]);
     expect(outbox.entries()).toEqual([]);
     expect(result.details).toMatchObject({ state: 'OK', tickDays: { before: 14, after: 14 } });
+  });
+
+  it('measures against the limit of the host when one is set: 0.7 GB is nothing of 10 GB and a lot of a 0.8 GB plan', async () => {
+    const small = rig((days) => 0.05 * GB * days, null, 14, 0.8 * GB);
+    const result = await small.guard.run(NOW);
+    // 14 days is 0.7 GB: 87.5 percent of 0.8 GB. 7 days is 0.35 GB: no more steps are needed
+    expect(small.store.retentionDays).toBe(7);
+    expect(result.details).toMatchObject({
+      state: 'GETTING_FULL',
+      basis: 'DATABASE',
+      share: 0.875,
+      shareAfter: 0.438,
+      tickDays: { before: 14, after: 7 },
+    });
+    const standard = rig((days) => 0.05 * GB * days);
+    expect((await standard.guard.run(NOW)).details).toMatchObject({ state: 'OK' });
+    expect(standard.store.retentionDays).toBe(14);
   });
 
   it('shortens the days of ticks by a step, drops the old days at once, and tells the owner', async () => {

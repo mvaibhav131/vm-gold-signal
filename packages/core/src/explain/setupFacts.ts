@@ -1,4 +1,5 @@
 import type {
+  HourlyTrendFacts,
   PatternBreakoutFacts,
   PullbackFacts,
   SqueezeFacts,
@@ -15,7 +16,8 @@ export type SetupSource =
   | { readonly strategyKey: 'sweep_reversal'; readonly facts: SweepFacts }
   | { readonly strategyKey: 'squeeze_retest'; readonly facts: SqueezeFacts }
   | { readonly strategyKey: 'trendline_retest'; readonly facts: TrendlineRetestFacts }
-  | { readonly strategyKey: 'pattern_breakout'; readonly facts: PatternBreakoutFacts };
+  | { readonly strategyKey: 'pattern_breakout'; readonly facts: PatternBreakoutFacts }
+  | { readonly strategyKey: 'hourly_trend'; readonly facts: HourlyTrendFacts };
 
 /** The lines a strategy adds to the structure group and to the trigger group (its own rules, in numbers). */
 export interface SetupFactLines {
@@ -127,6 +129,25 @@ function patternLines(f: PatternBreakoutFacts): SetupFactLines {
 }
 
 /** The strategy's own facts as explanation lines. Real prices, never mirrored. */
+function hourlyTrendLines(f: HourlyTrendFacts): SetupFactLines {
+  const stack = f.trend === 'UP' ? 'above' : 'below';
+  return {
+    structure: [
+      {
+        label: 'Trend 1h',
+        value: `${f.trend === 'UP' ? 'up' : 'down'}: EMA 20 ${priceText(f.emaFast)} ${f.trend === 'UP' ? 'over' : 'under'} EMA 50 ${priceText(f.emaMid)}, close ${priceText(f.hourClose)} ${stack} EMA 200 ${priceText(f.emaSlow)}`,
+      },
+    ],
+    trigger: [
+      {
+        label: 'Slot decision',
+        value: `with the trend, stop ${fixedText(f.stopAtr1h, 1)} x ATR 1h (${priceText(f.atr1h)}) from the price`,
+      },
+    ],
+  };
+}
+
+/** The strategy's own facts as explanation lines. Real prices, never mirrored. */
 export function setupFacts(source: SetupSource): SetupFactLines {
   switch (source.strategyKey) {
     case 'trend_pullback':
@@ -139,5 +160,7 @@ export function setupFacts(source: SetupSource): SetupFactLines {
       return trendlineLines(source.facts);
     case 'pattern_breakout':
       return patternLines(source.facts);
+    case 'hourly_trend':
+      return hourlyTrendLines(source.facts);
   }
 }

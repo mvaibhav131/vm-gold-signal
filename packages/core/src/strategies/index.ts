@@ -1,3 +1,4 @@
+export * from './hourlyTrend';
 export * from './mirror';
 export * from './patternBreakout';
 export * from './squeezeRetest';

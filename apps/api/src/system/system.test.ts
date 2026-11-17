@@ -452,6 +452,12 @@ describe('storageOf', () => {
     expect(budgetPctOf(0)).toBe(0);
     expect(budgetPctOf(8_249_000_000)).toBe(82.5);
   });
+
+  it('measures the budget on the limit of the host when it is given', () => {
+    expect(budgetPctOf(820_000_000, 800_000_000)).toBe(102.5);
+    expect(storageOf(facts(), 800_000_000).budgetPct).toBe(102.5);
+    expect(storageOf(facts()).budgetPct).toBe(8.2);
+  });
 });
 
 describe('latencyOf', () => {

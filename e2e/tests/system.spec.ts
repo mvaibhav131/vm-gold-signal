@@ -171,15 +171,15 @@ test.describe('E12 system: health and the engine', () => {
 });
 
 test.describe('E12 system: strategies', () => {
-  test('lists the five strategies with the status that was earned, and the two switches', async ({
+  test('lists the six strategies with the status that was earned, and the two switches', async ({
     page,
   }) => {
     await openSystem(page, { tab: 'strategies' });
-    await expect(page.getByTestId(/^strategy-row-/)).toHaveCount(5);
+    await expect(page.getByTestId(/^strategy-row-/)).toHaveCount(6);
     for (const key of ['trend_pullback', 'sweep_reversal', 'squeeze_retest']) {
       await expect(page.getByTestId(`strategy-status-${key}`)).toHaveText('Forward testing');
     }
-    for (const key of ['trendline_retest', 'pattern_breakout']) {
+    for (const key of ['trendline_retest', 'pattern_breakout', 'hourly_trend']) {
       await expect(page.getByTestId(`strategy-status-${key}`)).toHaveText('Research');
     }
     await expect(page.getByTestId('strategy-last-pattern_breakout')).toHaveText(

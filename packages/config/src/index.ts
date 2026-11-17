@@ -2,6 +2,7 @@ export * from './canonical';
 export * from './engineSpec';
 export * from './env';
 export * from './gateParams';
+export * from './hourlyTrendParams';
 export * from './patternBreakoutParams';
 export * from './riskParams';
 export * from './settings';

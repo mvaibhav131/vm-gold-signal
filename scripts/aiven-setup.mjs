@@ -254,6 +254,8 @@ function workerVarsText(config, caText) {
     'PORT=8080',
     // the free Aiven database allows 20 connections for everything: the worker, the website and you
     'DATABASE_POOL_MAX=6',
+    // and 1 GB of data: the size guard keeps the database under 0.8 GB (it shortens the days of raw ticks before Aiven stops the writes)
+    'DB_SOFT_LIMIT_GB=0.8',
     `DATABASE_URL_WORKER=${roleUrl(config, 'vmgs_worker', config.DB_PASSWORD_WORKER)}`,
     `DATABASE_CA_PEM=${oneLine(caText)}`,
   ];
@@ -277,6 +279,8 @@ function siteVarsText(config, caText) {
     // this Caddy and the proxy of the host: see deploy/Caddyfile.site
     'API_TRUSTED_PROXY_HOPS=2',
     'DATABASE_POOL_MAX=4',
+    // the free Aiven database holds 1 GB: the gauge of the System page counts against 0.8 GB, the limit of the size guard
+    'DB_SOFT_LIMIT_GB=0.8',
     `DATABASE_URL_API=${roleUrl(config, 'vmgs_api', config.DB_PASSWORD_API)}`,
     `DATABASE_CA_PEM=${oneLine(caText)}`,
     `APP_ENCRYPTION_KEY=${config.APP_ENCRYPTION_KEY}`,
@@ -315,6 +319,8 @@ function bothVarsText(config, caText) {
     'FEED_SYMBOLS=XAUUSD,DXY,XAGUSD',
     // one value for both programs of the container: at most 5 + 5 of the 20 connections of the free Aiven database
     'DATABASE_POOL_MAX=5',
+    // the free Aiven database holds 1 GB: the size guard and the gauge of the System page count against 0.8 GB
+    'DB_SOFT_LIMIT_GB=0.8',
     `DATABASE_URL_WORKER=${roleUrl(config, 'vmgs_worker', config.DB_PASSWORD_WORKER)}`,
     `DATABASE_URL_API=${roleUrl(config, 'vmgs_api', config.DB_PASSWORD_API)}`,
     `DATABASE_CA_PEM=${oneLine(caText)}`,

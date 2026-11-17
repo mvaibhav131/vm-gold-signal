@@ -62,6 +62,9 @@ vi.mock('../strategies/patternBreakout/tracker', () => ({
     'evaluate',
   ]),
 }));
+vi.mock('../strategies/hourlyTrend/tracker', () => ({
+  HourlyTrendStrategy: spy.fake('hourly_trend', ['update', 'evaluate']),
+}));
 
 const KEYS: readonly StrategyKey[] = [
   'trend_pullback',
@@ -69,6 +72,7 @@ const KEYS: readonly StrategyKey[] = [
   'squeeze_retest',
   'trendline_retest',
   'pattern_breakout',
+  'hourly_trend',
 ];
 
 /** The runner reads the key and the parameters of a spec and nothing else. */
@@ -93,6 +97,7 @@ const ROUTES: Readonly<Record<StrategyKey, Readonly<Record<EngineTimeframe, stri
   squeeze_retest: { '5m': 'updateFive', '15m': 'updateQuarter', '1h': null },
   trendline_retest: { '5m': 'updateFive', '15m': 'updateQuarter', '1h': 'updateHour' },
   pattern_breakout: { '5m': 'updateFive', '15m': 'updateQuarter', '1h': null },
+  hourly_trend: { '5m': 'update', '15m': null, '1h': 'update' },
 };
 
 const callsOf = (strategy: string, method?: string): Call[] =>
@@ -131,7 +136,7 @@ describe('runnerOf: every strategy reads the timeframes it needs and ignores the
       return;
     }
     const args: unknown[] =
-      key === 'trend_pullback'
+      key === 'trend_pullback' || key === 'hourly_trend'
         ? [tf, CANDLE]
         : key === 'sweep_reversal' && tf === '5m'
           ? [CANDLE, LEVELS]
@@ -163,6 +168,7 @@ describe('runnerOf: what a strategy found', () => {
     ['trendline_retest', { y: 1 }, null, null],
     ['sweep_reversal', { levelId: 'L-7' }, 'L-7', null],
     ['pattern_breakout', { target: 4040.5 }, null, 4040.5],
+    ['hourly_trend', { trend: 'UP' }, null, null],
   ] as const)(
     '%s gives the setup with its facts as the source',
     (key, facts, sweptLevelId, structureTarget) => {

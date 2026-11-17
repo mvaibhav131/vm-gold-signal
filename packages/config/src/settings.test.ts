@@ -2,7 +2,7 @@ import { NEWS_TOPICS, NOTIFICATION_KINDS, STRATEGY_KEYS } from '@vmgs/core';
 import { engineStateSchema, settingsSchema } from '@vmgs/contracts';
 import { describe, expect, it } from 'vitest';
 
-import { defaultEngineState, defaultSettings } from './settings';
+import { defaultEngineState, defaultSettings, settingsWithDefaults } from './settings';
 
 describe('defaultSettings', () => {
   it('is a valid settings object', () => {
@@ -28,13 +28,14 @@ describe('defaultSettings', () => {
     ]);
   });
 
-  it('switches strategy alerts on for A, B and C and off for D and E', () => {
+  it('switches strategy alerts on for A, B, C and F and off for D and E', () => {
     expect(defaultSettings().strategyAlerts).toEqual({
       trend_pullback: 'on',
       sweep_reversal: 'on',
       squeeze_retest: 'on',
       trendline_retest: 'off',
       pattern_breakout: 'off',
+      hourly_trend: 'on',
     });
     expect(Object.keys(defaultSettings().strategyAlerts)).toEqual([...STRATEGY_KEYS]);
   });
@@ -50,6 +51,33 @@ describe('defaultSettings', () => {
     const a = defaultSettings();
     a.alerts.telegram.kinds.pop();
     expect(defaultSettings().alerts.telegram.kinds).toHaveLength(NOTIFICATION_KINDS.length);
+  });
+});
+
+describe('settingsWithDefaults', () => {
+  it('is the defaults when there is no row, and the stored row over them when there is', () => {
+    expect(settingsWithDefaults([])).toEqual(defaultSettings());
+    expect(settingsWithDefaults([{ key: 'locale', value: 'hinglish' }])).toEqual({
+      ...defaultSettings(),
+      locale: 'hinglish',
+    });
+  });
+
+  it('gives a strategy that is not in the stored switches its default, and keeps the stored ones', () => {
+    // the row of a database that was seeded when there were five strategies, one of them switched off by the owner
+    const { hourly_trend: _new, ...before } = defaultSettings().strategyAlerts;
+    const stored = settingsWithDefaults([
+      { key: 'strategyAlerts', value: { ...before, trend_pullback: 'off' } },
+    ]);
+    expect(settingsSchema.parse(stored).strategyAlerts).toEqual({
+      ...defaultSettings().strategyAlerts,
+      trend_pullback: 'off',
+    });
+  });
+
+  it('does not repair a switch that is not an object, so the schema still refuses it', () => {
+    const stored = settingsWithDefaults([{ key: 'strategyAlerts', value: 'on' }]);
+    expect(settingsSchema.safeParse(stored).success).toBe(false);
   });
 });
 

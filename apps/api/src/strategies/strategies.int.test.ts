@@ -139,6 +139,7 @@ describe('the strategies on Postgres', () => {
       squeeze_retest: 'on',
       trendline_retest: 'off',
       pattern_breakout: 'off',
+      hourly_trend: 'on',
     });
     const other = await api.send({
       method: 'PATCH',

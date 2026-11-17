@@ -13,8 +13,19 @@ import { advisoryModesOf, gateParamsOf, requiredTimeframes } from './gateParams'
 import { defaultStrategyConfig } from './strategy';
 
 describe('the gates of a strategy config, as the engine reads them', () => {
-  it.each(STRATEGY_KEYS)('%s: the default config gives exactly the defaults of core', (key) => {
-    expect(gateParamsOf(defaultStrategyConfig(key))).toEqual(GATE_DEFAULTS);
+  it.each(STRATEGY_KEYS.filter((key) => key !== 'hourly_trend'))(
+    '%s: the default config gives exactly the defaults of core',
+    (key) => {
+      expect(gateParamsOf(defaultStrategyConfig(key))).toEqual(GATE_DEFAULTS);
+    },
+  );
+
+  it('hourly_trend: the defaults of core with the wider stop of an hourly decision (in ATR 5m)', () => {
+    expect(gateParamsOf(defaultStrategyConfig('hourly_trend'))).toEqual({
+      ...GATE_DEFAULTS,
+      stopAtr: [3, 16],
+      tp1MaxAtr: 20,
+    });
   });
 
   it('follows the config: a changed limit is a changed gate', () => {

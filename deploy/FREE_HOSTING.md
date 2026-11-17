@@ -177,20 +177,21 @@ instead of `render-vars.txt`.
 
 The lines of `render-vars.txt`. Any host that runs the image of the root `Dockerfile` takes the same variables.
 
-| Variable                                      | Value and meaning                                                                                                                           |
-| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VMGS_ROLE`                                   | `worker` (the default), `site` (api and website) or `both`. `entry.sh` starts what the role says; a process that ends stops the container.  |
-| `PORT`                                        | The port of the website (`both`, `site`: Render uses 10000) or of the health page of the worker (`worker`).                                 |
-| `NODE_ENV`, `LOG_LEVEL`                       | `production`, `info`.                                                                                                                       |
-| `FEED_PROVIDER`, `FEED_SYMBOLS`               | `biquote`, `XAUUSD,DXY,XAGUSD`.                                                                                                             |
-| `DATABASE_URL_WORKER`, `DATABASE_URL_API`     | The Aiven URL with the role `vmgs_worker` or `vmgs_api` and its password, `?sslmode=require`.                                               |
-| `DATABASE_CA_PEM`                             | The text of `ca.pem` (one line; `\n` for the line breaks is fine). The connection is verified against it.                                   |
-| `DATABASE_POOL_MAX`                           | Connections per program (1 to 20). 5 for `both`: the api and the worker stay under the 20 of the free database, with room for you.          |
-| `APP_ENCRYPTION_KEY`                          | 32 random bytes in hex. The second step of the login is encrypted with it: it is made once and never changed (losing it: `owner:totp-off`). |
-| `API_TRUSTED_PROXY_HOPS`                      | `2`: Caddy and the proxy of the host (`deploy/Caddyfile.site`).                                                                             |
-| `TELEGRAM_BOT_TOKEN`, `HEALTHCHECKS_PING_URL` | Optional: without the token no Telegram message is sent; without the URL nothing is pinged.                                                 |
-| `TELEGRAM_ALERT_BOT_TOKEN`                    | Optional: a second bot for what is not a signal (section 2.8). Needs `TELEGRAM_BOT_TOKEN`; press Start in the alert bot once.               |
-| `PUBLIC_HOST`                                 | Only for a host that is not Render: the public name of the website. On Render it comes from `RENDER_EXTERNAL_HOSTNAME`.                     |
+| Variable                                      | Value and meaning                                                                                                                                |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `VMGS_ROLE`                                   | `worker` (the default), `site` (api and website) or `both`. `entry.sh` starts what the role says; a process that ends stops the container.       |
+| `PORT`                                        | The port of the website (`both`, `site`: Render uses 10000) or of the health page of the worker (`worker`).                                      |
+| `NODE_ENV`, `LOG_LEVEL`                       | `production`, `info`.                                                                                                                            |
+| `FEED_PROVIDER`, `FEED_SYMBOLS`               | `biquote`, `XAUUSD,DXY,XAGUSD`.                                                                                                                  |
+| `DATABASE_URL_WORKER`, `DATABASE_URL_API`     | The Aiven URL with the role `vmgs_worker` or `vmgs_api` and its password, `?sslmode=require`.                                                    |
+| `DATABASE_CA_PEM`                             | The text of `ca.pem` (one line; `\n` for the line breaks is fine). The connection is verified against it.                                        |
+| `DATABASE_POOL_MAX`                           | Connections per program (1 to 20). 5 for `both`: the api and the worker stay under the 20 of the free database, with room for you.               |
+| `DB_SOFT_LIMIT_GB`                            | The size the database should stay under, in GB (default 10). **0.8 for the free Aiven plan (1 GB).** The size guard and the System gauge use it. |
+| `APP_ENCRYPTION_KEY`                          | 32 random bytes in hex. The second step of the login is encrypted with it: it is made once and never changed (losing it: `owner:totp-off`).      |
+| `API_TRUSTED_PROXY_HOPS`                      | `2`: Caddy and the proxy of the host (`deploy/Caddyfile.site`).                                                                                  |
+| `TELEGRAM_BOT_TOKEN`, `HEALTHCHECKS_PING_URL` | Optional: without the token no Telegram message is sent; without the URL nothing is pinged.                                                      |
+| `TELEGRAM_ALERT_BOT_TOKEN`                    | Optional: a second bot for what is not a signal (section 2.8). Needs `TELEGRAM_BOT_TOKEN`; press Start in the alert bot once.                    |
+| `PUBLIC_HOST`                                 | Only for a host that is not Render: the public name of the website. On Render it comes from `RENDER_EXTERNAL_HOSTNAME`.                          |
 
 The Postgres side: three roles, one per program (`vmgs_worker`, `vmgs_api`, `vmgs_backup`), made by the migrations with the
 passwords of `pnpm aiven setup`.
@@ -238,7 +239,9 @@ ticks of the last 14 days exist only in the database.
   at Aiven that is the shared disk of Render (83 percent full): "STORAGE 119% of the 291 GB budget", and the days of ticks
   were cut from 14 to 1 for nothing. The disk is read only when the database is on the same machine (`db`, `localhost`); with a
   database at a host the guard compares the size of the database with its limit, and a shortened retention lengthens again,
-  one step an hour. The limit of the database is still 10 GB, but the free Aiven plan has 1 GB: it is a number to watch on the
-  System screen (Storage).
+  one step an hour. The limit of the database was 10 GB, but the free Aiven plan has 1 GB: it is now `DB_SOFT_LIMIT_GB` (0.8 on
+  Aiven, in the three settings files of `pnpm aiven`), for the size guard and for the gauge of the System screen (Storage).
+  It must be set on Render by hand (the same line as the others); without it the limit stays 10 GB. The ticks of 14 days
+  are about 290 MB, so at 0.8 GB the guard only acts when something else (the candles, the signals) has grown a lot.
 - **Alerts for every reconnect.** A reconnect of the feed takes about half a minute and each one was announced twice
   (down and back). A break is now told once it has lasted 3 minutes, or at once when a signal is open.

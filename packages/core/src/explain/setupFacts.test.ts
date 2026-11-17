@@ -154,6 +154,53 @@ describe('chart pattern lines', () => {
   });
 });
 
+describe('hourly trend lines', () => {
+  const facts = {
+    trend: 'UP',
+    hourOpen: Date.UTC(2026, 9, 23, 8, 0),
+    hourClose: 4020,
+    emaFast: 4012.5,
+    emaMid: 4005,
+    emaSlow: 3990,
+    atr1h: 8.4,
+    stopAtr1h: 2.5,
+  } as const;
+
+  it('names the 1h averages and the price, and the stop', () => {
+    expect(setupFacts({ strategyKey: 'hourly_trend', facts })).toEqual({
+      structure: [
+        {
+          label: 'Trend 1h',
+          value: 'up: EMA 20 4012.500 over EMA 50 4005.000, close 4020.000 above EMA 200 3990.000',
+        },
+      ],
+      trigger: [
+        {
+          label: 'Slot decision',
+          value: 'with the trend, stop 2.5 x ATR 1h (8.400) from the price',
+        },
+      ],
+    });
+  });
+
+  it('words a downtrend with the same real prices, the other way round', () => {
+    const lines = setupFacts({
+      strategyKey: 'hourly_trend',
+      facts: {
+        ...facts,
+        trend: 'DOWN',
+        hourClose: 3980,
+        emaFast: 3985,
+        emaMid: 3990,
+        emaSlow: 4000,
+      },
+    });
+    expect(lines.structure[0]?.value).toBe(
+      'down: EMA 20 3985.000 under EMA 50 3990.000, close 3980.000 below EMA 200 4000.000',
+    );
+  });
+});
+
 describe('names', () => {
   it('has a name for every strategy', () => {
     expect(Object.keys(STRATEGY_NAMES).sort()).toEqual([...STRATEGY_KEYS].sort());

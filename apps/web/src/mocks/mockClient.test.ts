@@ -115,13 +115,14 @@ describe('mock client data follows the contracts', () => {
     expect(snapshot.engine.status).toBe('RUNNING');
   });
 
-  it('lists the five strategies, alerts on for A, B and C only, none validated', async () => {
+  it('lists the six strategies, alerts on for A, B, C and F only, none validated', async () => {
     const strategies = await client().getStrategies();
     expect(strategies.map((s) => s.key)).toEqual([...STRATEGY_KEYS]);
     expect(strategies.filter((s) => s.alerts).map((s) => s.key)).toEqual([
       'trend_pullback',
       'sweep_reversal',
       'squeeze_retest',
+      'hourly_trend',
     ]);
     expect(strategies.some((s) => s.status === 'VALIDATED')).toBe(false);
   });
@@ -1011,6 +1012,7 @@ describe('settings and strategies', () => {
       ['squeeze_retest', '0.1.0', 'FORWARD_TESTING'],
       ['trendline_retest', '0.0.1', 'RESEARCH'],
       ['pattern_breakout', '0.0.1', 'RESEARCH'],
+      ['hourly_trend', '0.1.0', 'RESEARCH'],
     ]);
     const rows = (await api.getSignals({ limit: 200 })).items;
     for (const key of ['trend_pullback', 'sweep_reversal', 'squeeze_retest'] as const) {

@@ -587,7 +587,7 @@ describe('the strategies tab', () => {
   const switchOf = (kind: 'Enabled' | 'Alerts', key: (typeof STRATEGY_KEYS)[number]) =>
     within(rowOf(key)).getByRole('switch', { name: `${kind}: ${STRATEGY_LABELS[key]}` });
 
-  it('lists the five strategies in order, with a status that is earned and the two switches', async () => {
+  it('lists the six strategies in order, with a status that is earned and the two switches', async () => {
     await open('/system?tab=strategies');
     await screen.findByTestId('strategy-row-trend_pullback');
     expect(
@@ -598,7 +598,7 @@ describe('the strategies tab', () => {
         'Forward testing',
       );
     }
-    for (const key of ['trendline_retest', 'pattern_breakout'] as const) {
+    for (const key of ['trendline_retest', 'pattern_breakout', 'hourly_trend'] as const) {
       expect(screen.getByTestId(`strategy-status-${key}`), key).toHaveTextContent('Research');
     }
     for (const key of STRATEGY_KEYS) {

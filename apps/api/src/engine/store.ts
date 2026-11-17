@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 
-import { defaultSettings } from '@vmgs/config';
+import { settingsWithDefaults } from '@vmgs/config';
 import { engineStateSchema, settingsSchema } from '@vmgs/contracts';
 import {
   displayOptionsOf,
@@ -66,9 +66,7 @@ async function alertSettingsOf(client: PoolClient): Promise<AlertSettings> {
     'SELECT key, value FROM app_settings WHERE key = ANY($1::text[])',
     [SETTING_KEYS],
   );
-  const stored: Record<string, unknown> = { ...defaultSettings() };
-  for (const row of rows) stored[row.key] = row.value;
-  const settings = settingsSchema.parse(stored);
+  const settings = settingsSchema.parse(settingsWithDefaults(rows));
   return {
     displayTz: settings.displayTz,
     locale: settings.locale,

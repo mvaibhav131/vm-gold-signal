@@ -310,6 +310,19 @@ describe('workerEnvSchema', () => {
     }
   });
 
+  it('has no database soft limit unless DB_SOFT_LIMIT_GB is set, and takes a number of GB from 0.05 to 1000', () => {
+    expect(parseEnv(workerEnvSchema, worker).DB_SOFT_LIMIT_GB).toBeUndefined();
+    expect(parseEnv(apiEnvSchema, api).DB_SOFT_LIMIT_GB).toBeUndefined();
+    expect(parseEnv(workerEnvSchema, { ...worker, DB_SOFT_LIMIT_GB: '0.8' }).DB_SOFT_LIMIT_GB).toBe(
+      0.8,
+    );
+    expect(parseEnv(apiEnvSchema, { ...api, DB_SOFT_LIMIT_GB: '25' }).DB_SOFT_LIMIT_GB).toBe(25);
+    for (const bad of ['0', '-1', '0.01', '5000', 'lots']) {
+      expect(problems(workerEnvSchema, { ...worker, DB_SOFT_LIMIT_GB: bad })).toHaveLength(1);
+      expect(problems(apiEnvSchema, { ...api, DB_SOFT_LIMIT_GB: bad })).toHaveLength(1);
+    }
+  });
+
   it('has no health port unless PORT is set, and takes a real port number', () => {
     expect(parseEnv(workerEnvSchema, worker).PORT).toBeUndefined();
     expect(parseEnv(workerEnvSchema, { ...worker, PORT: '8080' }).PORT).toBe(8080);

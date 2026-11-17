@@ -12,7 +12,7 @@ import { qualityWeightsOf, riskParamsOf } from './riskParams';
 import { defaultStrategyConfig } from './strategy';
 
 describe('the trade model of a strategy config, as the engine reads it', () => {
-  it.each(STRATEGY_KEYS)(
+  it.each(STRATEGY_KEYS.filter((key) => key !== 'hourly_trend'))(
     '%s: the default config gives the defaults of core, with its own exit profile',
     (key) => {
       const params = riskParamsOf(defaultStrategyConfig(key));
@@ -20,6 +20,15 @@ describe('the trade model of a strategy config, as the engine reads it', () => {
       expect({ ...params, exitProfile: RISK_DEFAULTS.exitProfile }).toEqual(RISK_DEFAULTS);
     },
   );
+
+  it('hourly_trend: the defaults of core with the longer entry window and time stop of an hourly decision', () => {
+    expect(riskParamsOf(defaultStrategyConfig('hourly_trend'))).toEqual({
+      ...RISK_DEFAULTS,
+      entryValidSec: 300,
+      maxChaseAtr: 0.3,
+      timeStopMin: 240,
+    });
+  });
 
   it('has the eight numbers of the model, and no more', () => {
     expect(Object.keys(riskParamsOf(defaultStrategyConfig('trend_pullback'))).sort()).toEqual(

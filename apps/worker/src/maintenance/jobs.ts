@@ -116,6 +116,8 @@ export interface SizeGuardOptions {
   readonly disk: DiskUsage;
   readonly outbox: Pick<OutboxStore, 'enqueue'>;
   readonly settings: () => Promise<AlertSettings>;
+  /** The soft limit of the database in bytes (DB_SOFT_LIMIT_GB); the default of the core (10 GB) when none is given. */
+  readonly dbLimitBytes?: number;
   readonly onQueued?: () => void;
   readonly log?: Log;
 }
@@ -124,7 +126,7 @@ const GB = 1_000_000_000;
 const round3 = (value: number): number => Math.round(value * 1000) / 1000;
 
 /**
- * Compares the database and its disk with the soft limits (10 GB, 70 percent of the disk). From 80 percent of a
+ * Compares the database and its disk with the soft limits (10 GB unless `dbLimitBytes` says another, and 70 percent of the disk). From 80 percent of a
  * limit it shortens the days of ticks one step (14, 7, 3, 1), drops the old days at once, measures again and goes on
  * until it is below 80 percent or at one day; and tells the owner once a day (`storage:<day>:warning`). Well below the
  * limits (under 60 percent) it lengthens a shortened retention again, one step an hour, but never in the run that shortened it.
@@ -154,7 +156,7 @@ export class SizeGuard implements MaintenanceJob {
     const startDays = await storage.tickRetentionDays();
     let days = startDays;
     let measured = await this.measure();
-    const first = readStorage(measured);
+    const first = readStorage(measured, this.options.dbLimitBytes);
     let reading = first;
     let dropped = 0;
     let shortened = false;
@@ -172,7 +174,7 @@ export class SizeGuard implements MaintenanceJob {
       shortened = true;
       dropped += await retention.dropTickPartitions(days);
       measured = await this.measure();
-      reading = readStorage(measured);
+      reading = readStorage(measured, this.options.dbLimitBytes);
       steps.push({ days, share: round3(reading.share) });
     }
 

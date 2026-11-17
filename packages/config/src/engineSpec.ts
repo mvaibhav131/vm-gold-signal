@@ -1,6 +1,7 @@
 import type { StrategySpec, StrategyStatus } from '@vmgs/core';
 
 import { advisoryModesOf, gateParamsOf, requiredTimeframes } from './gateParams';
+import { hourlyTrendParamsOf } from './hourlyTrendParams';
 import { patternBreakoutParamsOf } from './patternBreakoutParams';
 import { qualityWeightsOf, riskParamsOf } from './riskParams';
 import { squeezeRetestParamsOf } from './squeezeRetestParams';
@@ -45,5 +46,7 @@ export function strategySpecOf(config: StrategyConfig, status: StrategyStatus): 
         strategyKey: config.strategyKey,
         params: patternBreakoutParamsOf(config),
       };
+    case 'hourly_trend':
+      return { ...common, strategyKey: config.strategyKey, params: hourlyTrendParamsOf(config) };
   }
 }

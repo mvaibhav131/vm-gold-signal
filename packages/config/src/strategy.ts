@@ -201,6 +201,28 @@ const patternBreakoutSchema = z.strictObject({
   }),
 });
 
+// Strategy F: it decides once an hour from the 1h trend and has no rule of its own beyond the averages and the stop.
+const hourlyTrendSchema = z.strictObject({
+  strategyKey: z.literal('hourly_trend'),
+  ...commonShape,
+  params: z
+    .strictObject({
+      emaFast: candleCount,
+      emaMid: candleCount,
+      emaSlow: candleCount,
+      atrPeriod: candleCount,
+      // The stop, in ATR(1h) from the price.
+      stopAtr1h: atrMultiple,
+      // How often it decides, in minutes (a multiple of 5 that divides an hour).
+      everyMin: z.int().min(5).max(60),
+    })
+    .refine(
+      (p) => p.emaFast < p.emaMid && p.emaMid < p.emaSlow,
+      'the averages must grow from fast to middle to slow',
+    )
+    .refine((p) => p.everyMin % 5 === 0 && 60 % p.everyMin === 0, 'everyMin must divide an hour'),
+});
+
 /** The immutable config of one strategy version, stored as strategy_versions.config. */
 export const strategyConfigSchema = z.discriminatedUnion('strategyKey', [
   trendPullbackSchema,
@@ -208,6 +230,7 @@ export const strategyConfigSchema = z.discriminatedUnion('strategyKey', [
   squeezeRetestSchema,
   trendlineRetestSchema,
   patternBreakoutSchema,
+  hourlyTrendSchema,
 ]);
 export type StrategyConfig = z.infer<typeof strategyConfigSchema>;
 
@@ -322,6 +345,49 @@ export function defaultStrategyConfig(key: StrategyKey): StrategyConfig {
         acceptedRegimes: ['TREND_UP', 'TREND_DOWN', 'RANGE', 'SQUEEZE', 'BREAKOUT', 'UNCERTAIN'],
         params: { retestWithinCandles: 8, stopBufferAtr: 0.25, minMeasuredMoveR: 1.5 },
       });
+    case 'hourly_trend': {
+      const common = defaultCommon('EP1_PARTIAL');
+      return strategyConfigSchema.parse({
+        strategyKey: key,
+        ...common,
+        // A trend in any regime: the strategy reads the 1h chart, not the 5m regime.
+        acceptedRegimes: [
+          'TREND_UP',
+          'TREND_DOWN',
+          'RANGE',
+          'SQUEEZE',
+          'BREAKOUT',
+          'HIGH_VOL',
+          'UNCERTAIN',
+        ],
+        // The stop is in ATR(1h), so in ATR(5m) it is about three and a half times wider than for the 5m strategies.
+        gates: { ...common.gates, stopAtr: [3, 16], tp1MaxAtr: 20 },
+        // The stop and the target are scored in ATR(5m) bands made for the 5m strategies, and there is no pullback or trigger candle:
+        // so the quality of an hourly setup rests on the trend, the session and news, and the volatility.
+        quality: {
+          ...common.quality,
+          weights: {
+            trend: 0.5,
+            structure: 0.05,
+            trigger: 0.02,
+            volatility: 0.12,
+            execution: 0.01,
+            sessionMacro: 0.29,
+            reward: 0.01,
+          },
+        },
+        // The decision is every half hour: the entry stays valid a little longer, and a trade runs four hours at most.
+        risk: { ...common.risk, entryValidSec: 300, maxChaseAtr: 0.3, timeStopMin: 240 },
+        params: {
+          emaFast: 20,
+          emaMid: 50,
+          emaSlow: 200,
+          atrPeriod: 14,
+          stopAtr1h: 2.5,
+          everyMin: 30,
+        },
+      });
+    }
   }
 }
 

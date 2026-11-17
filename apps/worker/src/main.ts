@@ -326,6 +326,9 @@ async function main(): Promise<void> {
           retention: maintenanceStore,
           // a database at a host (Aiven) has a disk of its own: this container's disk says nothing about it
           disk: databaseOnThisMachine(env.DATABASE_URL_WORKER) ? new StatfsDisk() : new NoDisk(),
+          ...(env.DB_SOFT_LIMIT_GB === undefined
+            ? {}
+            : { dbLimitBytes: env.DB_SOFT_LIMIT_GB * 1_000_000_000 }),
           outbox: outboxStore,
           settings: () => lifecycle.loadSettings(),
           onQueued: () => {

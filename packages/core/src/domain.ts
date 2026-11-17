@@ -50,6 +50,7 @@ export const STRATEGY_KEYS = [
   'squeeze_retest',
   'trendline_retest',
   'pattern_breakout',
+  'hourly_trend',
 ] as const;
 export type StrategyKey = (typeof STRATEGY_KEYS)[number];
 

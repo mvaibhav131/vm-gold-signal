@@ -10,8 +10,8 @@ describe('domain vocabularies', () => {
     }
   });
 
-  it('has one strategy per doc strategy (A to E)', () => {
-    expect(domain.STRATEGY_KEYS).toHaveLength(5);
+  it('has one strategy per doc strategy (A to F)', () => {
+    expect(domain.STRATEGY_KEYS).toHaveLength(6);
   });
 
   it('has the nine blocking gates of the signal engine', () => {

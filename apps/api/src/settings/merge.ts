@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 
-import { defaultSettings } from '@vmgs/config';
+import { settingsWithDefaults } from '@vmgs/config';
 import { settingsSchema, type Settings, type SettingsPatch } from '@vmgs/contracts';
 
 export type SettingKey = keyof Settings;
@@ -68,11 +68,9 @@ export class StoredSettingsError extends Error {
  * worker reads them). Rows of other keys are ignored.
  */
 export function assembleSettings(rows: readonly { key: string; value: unknown }[]): Settings {
-  const stored: Record<string, unknown> = { ...defaultSettings() };
-  for (const row of rows) {
-    if (isSettingKey(row.key)) stored[row.key] = row.value;
-  }
-  const parsed = settingsSchema.safeParse(stored);
+  const parsed = settingsSchema.safeParse(
+    settingsWithDefaults(rows.filter((row) => isSettingKey(row.key))),
+  );
   if (!parsed.success) {
     throw new StoredSettingsError([...new Set(parsed.error.issues.map((i) => String(i.path[0])))]);
   }

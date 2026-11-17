@@ -62,6 +62,20 @@ describe('readStorage', () => {
     expect(reading(7 * GB, 0.48).basis).toBe('DATABASE');
   });
 
+  it('measures against the limit of the host when one is given (Aiven free: 0.8 GB)', () => {
+    expect(
+      readStorage({ dbBytes: 0.7 * GB, diskTotalBytes: null, diskFreeBytes: null }, 0.8 * GB),
+    ).toMatchObject({
+      dbShare: 0.875,
+      state: 'GETTING_FULL',
+      basis: 'DATABASE',
+      budgetBytes: 0.8 * GB,
+    });
+    expect(
+      readStorage({ dbBytes: 0.7 * GB, diskTotalBytes: null, diskFreeBytes: null }).state,
+    ).toBe('OK');
+  });
+
   it('goes by the database alone when the disk cannot be read, and never counts negative use', () => {
     expect(
       readStorage({ dbBytes: 9 * GB, diskTotalBytes: null, diskFreeBytes: null }),

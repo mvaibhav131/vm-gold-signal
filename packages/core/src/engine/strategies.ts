@@ -1,5 +1,6 @@
 import type { Regime, StrategyKey } from '../domain';
 import type { SetupSource } from '../explain/setupFacts';
+import { HourlyTrendStrategy } from '../strategies/hourlyTrend/tracker';
 import { PatternBreakoutStrategy } from '../strategies/patternBreakout/tracker';
 import { SqueezeRetestStrategy } from '../strategies/squeezeRetest/tracker';
 import { SweepReversalStrategy } from '../strategies/sweepReversal/tracker';
@@ -129,6 +130,26 @@ export function runnerOf(spec: StrategySpec): StrategyRunner {
                 source: { strategyKey: 'pattern_breakout', facts: setup.facts },
                 sweptLevelId: null,
                 structureTarget: setup.facts.target,
+              };
+        },
+      };
+    }
+    case 'hourly_trend': {
+      const strategy = new HourlyTrendStrategy(spec.params);
+      return {
+        key: spec.strategyKey,
+        push: (tf, candle) => {
+          if (tf !== '15m') strategy.update(tf, candle);
+        },
+        find: () => {
+          const setup = strategy.evaluate()?.setup ?? null;
+          return setup === null
+            ? null
+            : {
+                setup,
+                source: { strategyKey: 'hourly_trend', facts: setup.facts },
+                sweptLevelId: null,
+                structureTarget: null,
               };
         },
       };

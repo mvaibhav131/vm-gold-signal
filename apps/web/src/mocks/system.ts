@@ -263,6 +263,14 @@ const SETUP_CONFIG: Readonly<Record<StrategyKey, Record<string, number | string>
   squeeze_retest: { squeezePercentile: 20, breakoutAtr: 0.8, retestBars: 6 },
   trendline_retest: { minTouches: 3, tolerancePct: 0.05 },
   pattern_breakout: { patterns: 'triangle, flag, double top, double bottom', minBars: 12 },
+  hourly_trend: {
+    emaFast: 20,
+    emaMid: 50,
+    emaSlow: 200,
+    atrPeriod: 14,
+    stopAtr1h: 2.5,
+    everyMin: 30,
+  },
 };
 
 const VERSIONS: Readonly<Record<StrategyKey, string>> = {
@@ -271,15 +279,17 @@ const VERSIONS: Readonly<Record<StrategyKey, string>> = {
   squeeze_retest: '0.1.0',
   trendline_retest: '0.0.1',
   pattern_breakout: '0.0.1',
+  hourly_trend: '0.1.0',
 };
 
-/** A, B and C are forward-tested; D and E have no backtest report yet. */
+/** A, B and C are forward-tested; D, E and F have no backtest report yet. */
 const STATUSES: Readonly<Record<StrategyKey, StrategyStatus>> = {
   trend_pullback: 'FORWARD_TESTING',
   sweep_reversal: 'FORWARD_TESTING',
   squeeze_retest: 'FORWARD_TESTING',
   trendline_retest: 'RESEARCH',
   pattern_breakout: 'RESEARCH',
+  hourly_trend: 'RESEARCH',
 };
 
 export const strategyVersion = (key: StrategyKey): string => VERSIONS[key];

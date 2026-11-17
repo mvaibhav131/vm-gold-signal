@@ -241,7 +241,7 @@ describe('a strategy', () => {
 
   it('says so when there is no evidence at all', () => {
     expect(evidenceLine(null)).toBe('No evidence yet');
-    expect(STRATEGY_KEYS).toHaveLength(5);
+    expect(STRATEGY_KEYS).toHaveLength(6);
   });
 });
 

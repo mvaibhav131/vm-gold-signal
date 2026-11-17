@@ -50,6 +50,9 @@ const baseShape = {
   // 10); a database with a small limit (Aiven's free one allows 20 for everything) needs less, so that the worker and
   // the api together never ask for more than the server gives.
   DATABASE_POOL_MAX: z.coerce.number().pipe(z.int().min(1).max(20)).optional(),
+  // The soft limit of the database in GB (decimal, as the System page shows it). The default is 10; a managed database with a
+  // small plan (Aiven's free one is 1 GB) needs less, so that the size guard shortens the ticks before the host refuses writes.
+  DB_SOFT_LIMIT_GB: z.coerce.number().pipe(z.number().min(0.05).max(1000)).optional(),
   // The CA of a database that is reached over TLS (a managed Postgres), as text, for a host that cannot mount a file
   // for NODE_EXTRA_CA_CERTS. Line breaks may be written as \n so that it fits one line.
   DATABASE_CA_PEM: z

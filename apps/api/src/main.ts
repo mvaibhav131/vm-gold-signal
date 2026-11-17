@@ -47,6 +47,9 @@ async function main(): Promise<void> {
         expectedMigration,
         log,
         vapidPublicKey: env.VAPID_PUBLIC_KEY ?? null,
+        ...(env.DB_SOFT_LIMIT_GB === undefined
+          ? {}
+          : { dbSoftLimitBytes: env.DB_SOFT_LIMIT_GB * 1_000_000_000 }),
       });
     },
     logger: apiLoggerOptions(env.LOG_LEVEL),

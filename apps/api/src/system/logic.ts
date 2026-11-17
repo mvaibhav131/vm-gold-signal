@@ -189,8 +189,10 @@ export function incidentOf(row: IncidentRow): FeedIncident {
 // ----------------------------------------------------------------------------------------------- storage
 
 /** The size guard's own limit is the larger of the database and the disk share; the API cannot see the disk, so it reports the database's. */
-export const budgetPctOf = (dbSizeBytes: number): number =>
-  round1((dbSizeBytes / DB_SOFT_LIMIT_BYTES) * 100);
+export const budgetPctOf = (
+  dbSizeBytes: number,
+  limitBytes: number = DB_SOFT_LIMIT_BYTES,
+): number => round1((dbSizeBytes / limitBytes) * 100);
 
 const days = (count: number): string => `${String(count)} days`;
 const sameNumber = (a: number, b: number): boolean => a === b;
@@ -239,7 +241,10 @@ export function retentionRules(tickDays: number): { item: string; rule: string }
   ];
 }
 
-export function storageOf(facts: StorageFacts): SystemStorage {
+export function storageOf(
+  facts: StorageFacts,
+  limitBytes: number = DB_SOFT_LIMIT_BYTES,
+): SystemStorage {
   const tables = [...facts.tables]
     .sort((a, b) => b.bytes - a.bytes || a.name.localeCompare(b.name))
     .map((table) => ({ name: table.name, sizeBytes: table.bytes }));
@@ -247,7 +252,7 @@ export function storageOf(facts: StorageFacts): SystemStorage {
     dbSizeBytes: facts.dbSizeBytes,
     tables,
     retention: retentionRules(facts.tickRetentionDays),
-    budgetPct: budgetPctOf(facts.dbSizeBytes),
+    budgetPct: budgetPctOf(facts.dbSizeBytes, limitBytes),
     lastMaintenanceRun:
       facts.lastRun === null
         ? null

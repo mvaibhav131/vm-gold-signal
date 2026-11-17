@@ -1,4 +1,4 @@
-/** The soft limit of the database (01_HLD section 7), in bytes: decimal units, as the System page shows them (10 GB). */
+/** The soft limit of the database (01_HLD section 7), in bytes: decimal units, as the System page shows them (10 GB). It is the default: a host with a smaller database sets `DB_SOFT_LIMIT_GB`. */
 export const DB_SOFT_LIMIT_BYTES = 10_000_000_000;
 /** The soft limit of the disk: the share of it that may be used. */
 export const DISK_SOFT_LIMIT = 0.7;
@@ -32,9 +32,12 @@ export interface StorageReading {
   readonly state: StorageState;
 }
 
-/** How full the database and its disk are, against their soft limits. */
-export function readStorage(measure: StorageMeasure): StorageReading {
-  const dbShare = measure.dbBytes / DB_SOFT_LIMIT_BYTES;
+/** How full the database and its disk are, against their soft limits (the database limit is `dbLimitBytes`, 10 GB unless the host sets another). */
+export function readStorage(
+  measure: StorageMeasure,
+  dbLimitBytes: number = DB_SOFT_LIMIT_BYTES,
+): StorageReading {
+  const dbShare = measure.dbBytes / dbLimitBytes;
   const { diskTotalBytes: total, diskFreeBytes: free } = measure;
   const diskShare =
     total === null || free === null || !(total > 0)
@@ -47,7 +50,7 @@ export function readStorage(measure: StorageMeasure): StorageReading {
     diskShare,
     share,
     basis: onDisk ? 'DISK' : 'DATABASE',
-    budgetBytes: onDisk && total !== null ? total * DISK_SOFT_LIMIT : DB_SOFT_LIMIT_BYTES,
+    budgetBytes: onDisk && total !== null ? total * DISK_SOFT_LIMIT : dbLimitBytes,
     state: share >= 1 ? 'OVER' : share >= GETTING_FULL_AT ? 'GETTING_FULL' : 'OK',
   };
 }
