@@ -104,9 +104,11 @@ for (const scheme of ['dark', 'light'] as const) {
       if (await fold.isVisible()) await fold.click();
       await expect(page.getByTestId('price-chart').locator('canvas').first()).toBeVisible();
       expect(await seriousViolations(page)).toEqual([]);
-      // the indicator menu, and the legend that an indicator adds
+      // the indicator menu, and the legend that an indicator adds. A menu fades in: axe reads colours mid-fade (blended with
+      // the page) on a slow machine, so the check waits until the menu is fully opaque.
       await page.getByTestId('indicators-button').click();
       await expect(page.getByTestId('indicators-menu')).toBeVisible();
+      await expect(page.getByTestId('indicators-menu')).toHaveCSS('opacity', '1');
       expect(await seriousViolations(page)).toEqual([]);
       await page.getByRole('checkbox', { name: 'MACD', exact: true }).check();
       await page.keyboard.press('Escape');
@@ -116,6 +118,7 @@ for (const scheme of ['dark', 'light'] as const) {
       // the drawing menu, and a tool that is on (with its hint)
       await page.getByTestId('draw-button').click();
       await expect(page.getByTestId('draw-menu')).toBeVisible();
+      await expect(page.getByTestId('draw-menu')).toHaveCSS('opacity', '1');
       expect(await seriousViolations(page)).toEqual([]);
       await page.getByRole('menuitem', { name: 'Trendline' }).click();
       await expect(page.getByTestId('draw-menu')).toBeHidden();
