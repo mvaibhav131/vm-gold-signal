@@ -9,6 +9,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 
+import { NO_AUTOSCALE } from './autoscale';
 import { computeIndicator } from './indicators';
 import { INDICATORS, type IndicatorId, type SeriesSpec } from './indicatorSpecs';
 
@@ -49,9 +50,12 @@ function create(chart: IChartApi, id: IndicatorId): IndicatorHandle {
   const precision = spec.decimals;
   const priceFormat = { type: 'price', precision, minMove: 1 / 10 ** precision } as const;
   const range = spec.fixedRange;
+  // A pane with a fixed range (RSI 0-100) keeps it; an overlay on the price never stretches the price scale.
   const autoscaleInfoProvider = range
     ? () => ({ priceRange: { minValue: range.min, maxValue: range.max } })
-    : undefined;
+    : spec.kind === 'overlay'
+      ? NO_AUTOSCALE
+      : undefined;
   const parts: Part[] = spec.series.map((series) => {
     if (series.kind === 'histogram') {
       const api = chart.addSeries(

@@ -8,6 +8,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 
+import { NO_AUTOSCALE } from './autoscale';
 import { fibPrices, clipSegment, type Drawing, type DrawingPoint } from './drawings';
 
 /** What the drawings of the owner leave on the chart, to take away again. */
@@ -42,6 +43,7 @@ function addSegment(
     priceLineVisible: false,
     lastValueVisible: false,
     crosshairMarkerVisible: false,
+    autoscaleInfoProvider: NO_AUTOSCALE,
   });
   line.setData(points.map((point) => ({ time: point.t as UTCTimestamp, value: point.price })));
   store.series.push(line);

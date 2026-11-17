@@ -24,6 +24,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { formatPrice } from '../../format/format';
 import { crosshairLabel, tickLabel } from './chartTime';
+import { NO_AUTOSCALE } from './autoscale';
 import { heikinBar, heikinSeries, type ChartType } from './chartTypes';
 import { CountdownPrimitive } from './CountdownPrimitive';
 import { emptyDrawingObjects, syncDrawings, type DrawingObjects } from './drawingLayer';
@@ -38,6 +39,7 @@ import {
 import { formatCountdown, formingStep, msToNextCandle, type FormingCandle } from './forming';
 import { legendText, syncIndicators, type IndicatorHandle } from './indicatorLayer';
 import { INDICATORS, type IndicatorId } from './indicatorSpecs';
+import { attachVerticalPan } from './verticalPan';
 import { ZonePrimitive } from './ZonePrimitive';
 
 /** An open signal drawn on the chart: its levels as lines and its entry as an arrow. A finished one also has its exit. */
@@ -411,6 +413,7 @@ export default function PriceChart(props: PriceChartProps) {
     chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (range) element.dataset.visibleBars = String(Math.round(range.to - range.from));
     });
+    const detachPan = attachVerticalPan(chart, element);
 
     // A drawing: one click for a horizontal line, two for a trendline or a Fibonacci retracement. Only on the price pane.
     const finish = (drawing: NewDrawing) => {
@@ -452,6 +455,7 @@ export default function PriceChart(props: PriceChartProps) {
     });
 
     return () => {
+      detachPan();
       chart.remove();
       handle.current = null;
     };
@@ -582,6 +586,7 @@ export default function PriceChart(props: PriceChartProps) {
           priceLineVisible: false,
           lastValueVisible: false,
           crosshairMarkerVisible: false,
+          autoscaleInfoProvider: NO_AUTOSCALE,
         });
         h.overlaySeries.set(name, line);
       }
@@ -697,6 +702,7 @@ export default function PriceChart(props: PriceChartProps) {
         priceLineVisible: false,
         lastValueVisible: false,
         crosshairMarkerVisible: false,
+        autoscaleInfoProvider: NO_AUTOSCALE,
       });
       line.setData([...points]);
       h.objectSeries.push(line);
@@ -809,7 +815,11 @@ export default function PriceChart(props: PriceChartProps) {
     if (handle.current) zoomBy(handle.current, ZOOM_STEP);
   }, []);
   const goLive = useCallback(() => {
-    handle.current?.chart.timeScale().scrollToRealTime();
+    const h = handle.current;
+    if (!h) return;
+    // back to the newest candle, and to a price scale that follows it
+    h.chart.priceScale('right').applyOptions({ autoScale: true });
+    h.chart.timeScale().scrollToRealTime();
   }, []);
   const resetView = useCallback(() => {
     const h = handle.current;

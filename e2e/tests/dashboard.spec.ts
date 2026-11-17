@@ -261,14 +261,50 @@ test.describe('the chart', () => {
 });
 
 test.describe('the chart tools', () => {
-  async function openChart(page: Page, isMobile: boolean) {
-    await logIn(page, { scenario: 'two-open' });
+  async function openChart(page: Page, isMobile: boolean, scenario = 'two-open') {
+    await logIn(page, { scenario });
     // the phone opens the chart on demand
     if (isMobile) await page.getByRole('button', { name: 'Chart', exact: true }).click();
     const chart = page.getByTestId('price-chart');
     await expect(chart.locator('canvas').first()).toBeVisible();
     await expect(chart).toHaveAttribute('data-panes', '1');
     return chart;
+  }
+
+  /** The highest row (in CSS px from the top of the plot) that holds a green or red candle pixel: where the candles are. */
+  async function topOfCandles(chart: Locator): Promise<number> {
+    return chart
+      .locator('canvas')
+      .first()
+      .evaluate((element) => {
+        const canvas = element as HTMLCanvasElement;
+        const context = canvas.getContext('2d');
+        if (!context) return -1;
+        const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+        const near = (value: number | undefined, wanted: number) =>
+          Math.abs((value ?? 0) - wanted) < 3;
+        for (let y = 0; y < canvas.height; y += 1) {
+          for (let x = 0; x < canvas.width; x += 1) {
+            const i = (y * canvas.width + x) * 4;
+            const up = near(data[i], 37) && near(data[i + 1], 182) && near(data[i + 2], 120);
+            const down = near(data[i], 228) && near(data[i + 1], 93) && near(data[i + 2], 93);
+            if (up || down) return y / (canvas.width / canvas.clientWidth);
+          }
+        }
+        return -1;
+      });
+  }
+
+  /** A drag with the left button from the middle of the plot, by (dx, dy) pixels. */
+  async function dragOnChart(page: Page, chart: Locator, dx: number, dy: number) {
+    const rect = await box(chart);
+    const x = rect.x + rect.width * 0.4;
+    const y = rect.y + rect.height * 0.5;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    // many small steps, as a real hand makes (the library skips the first moves of a drag)
+    await page.mouse.move(x + dx, y + dy, { steps: 40 });
+    await page.mouse.up();
   }
 
   test('indicators go over the price or into panes under it, with their numbers, and can be taken away', async ({
@@ -337,6 +373,45 @@ test.describe('the chart tools', () => {
       'data-countdown',
       /^(?:[0-3]:)?\d{2}:\d{2}$|^4:00:00$/,
     );
+    expect(errors).toEqual([]);
+  });
+
+  test('the chart moves up and down with the mouse, a small shake is only a click, and "Now" gives back the automatic scale', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'moving with the mouse');
+    const errors = collectErrors(page);
+    // a closed market sends no quotes, so the picture stands still between two measures
+    const chart = await openChart(page, isMobile, 'market-closed');
+    let seen = await topOfCandles(chart);
+    await expect
+      .poll(async () => {
+        const now = await topOfCandles(chart);
+        const same = now === seen;
+        seen = now;
+        return same;
+      })
+      .toBe(true);
+    const start = seen;
+    expect(start).toBeGreaterThanOrEqual(0);
+    const near = (value: number, wanted: number) => Math.abs(value - wanted) <= 12;
+
+    // Drag down 100 px (the first drag: the scale is automatic): the candles follow the pointer, by 100 px and not by 200.
+    await dragOnChart(page, chart, 0, 100);
+    await expect.poll(async () => near(await topOfCandles(chart), start + 100)).toBe(true);
+    // Drag up 100 px (the scale is not automatic any more): back where it was.
+    await dragOnChart(page, chart, 0, -100);
+    await expect.poll(async () => near(await topOfCandles(chart), start)).toBe(true);
+    // A shake of 2 px is a click: nothing moves.
+    await dragOnChart(page, chart, 0, 2);
+    expect(near(await topOfCandles(chart), start)).toBe(true);
+
+    // Down again, then "Now": the automatic scale fits the candles again, as at the start.
+    await dragOnChart(page, chart, 0, 120);
+    await expect.poll(async () => near(await topOfCandles(chart), start + 120)).toBe(true);
+    await page.getByTestId('chart-tools').getByRole('button', { name: /^Now/ }).click();
+    await expect.poll(async () => near(await topOfCandles(chart), start)).toBe(true);
     expect(errors).toEqual([]);
   });
 
