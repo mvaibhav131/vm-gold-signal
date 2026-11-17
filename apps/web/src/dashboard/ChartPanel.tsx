@@ -13,13 +13,35 @@ import { useMediaQuery } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import type { CandlesQuery } from '@vmgs/contracts';
 import type { Timeframe } from '@vmgs/core';
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useApi } from '../api/context';
 import { KEYS, useDisplayTz, useOpenSignals, useQuote, useSnapshot } from '../data/queries';
 import { formatPrice, midOf } from '../format/format';
 import { signalLabel } from '../format/signal';
+import { ChartToolbar } from './chart/ChartToolbar';
+import {
+  PREFS_KEY,
+  parsePrefs,
+  readStored,
+  serializePrefs,
+  toggleIndicator,
+  writeStored,
+  type ChartPrefs,
+} from './chart/chartPrefs';
+import type { ChartType } from './chart/chartTypes';
+import {
+  DRAWINGS_KEY,
+  newDrawingId,
+  parseDrawings,
+  serializeDrawings,
+  withDrawing,
+  type Drawing,
+  type DrawingTool,
+  type NewDrawing,
+} from './chart/drawings';
 import { candleRefetchDelayMs, serverClockOffsetMs } from './chart/forming';
+import type { IndicatorId } from './chart/indicatorSpecs';
 import type { ChartSignal, LiveTick } from './chart/PriceChart';
 
 const PriceChart = lazy(() => import('./chart/PriceChart'));
@@ -57,6 +79,12 @@ const OBJECT_CHOICES = [
 const DEFAULT_SHOWN = ['ema20', 'ema50', 'ema200', 'levels', 'trendlines', 'zones'];
 const OVERLAY_NAMES = new Set<string>(OVERLAY_CHOICES.map((c) => c.value));
 
+const CHART_WORD: Readonly<Record<ChartType, string>> = {
+  candles: 'candlestick',
+  heikin: 'Heikin Ashi',
+  line: 'line',
+};
+
 function ChartBody() {
   const api = useApi();
   const timeZone = useDisplayTz();
@@ -66,6 +94,62 @@ function ChartBody() {
   const open = useOpenSignals();
   const [tf, setTf] = useState<Timeframe>('5m');
   const [shown, setShown] = useState<string[]>(DEFAULT_SHOWN);
+  // What the owner chose (indicators, type of chart) and drew stays in this browser.
+  const [prefs, setPrefs] = useState<ChartPrefs>(() => parsePrefs(readStored(PREFS_KEY)));
+  const [drawings, setDrawings] = useState<Drawing[]>(() =>
+    parseDrawings(readStored(DRAWINGS_KEY)),
+  );
+  const [tool, setTool] = useState<DrawingTool | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const changePrefs = useCallback((next: ChartPrefs) => {
+    setPrefs(next);
+    writeStored(PREFS_KEY, serializePrefs(next));
+  }, []);
+  const toggle = useCallback(
+    (id: IndicatorId) => {
+      changePrefs({ ...prefs, indicators: toggleIndicator(prefs.indicators, id) });
+    },
+    [prefs, changePrefs],
+  );
+  const changeType = useCallback(
+    (chartType: ChartType) => {
+      changePrefs({ ...prefs, chartType });
+    },
+    [prefs, changePrefs],
+  );
+  const changeDrawings = useCallback((next: Drawing[]) => {
+    setDrawings(next);
+    writeStored(DRAWINGS_KEY, serializeDrawings(next));
+  }, []);
+  const addDrawing = useCallback(
+    (drawing: NewDrawing) => {
+      changeDrawings(withDrawing(drawings, drawing, newDrawingId()));
+    },
+    [drawings, changeDrawings],
+  );
+  const undoDrawing = useCallback(() => {
+    changeDrawings(drawings.slice(0, -1));
+  }, [drawings, changeDrawings]);
+  const clearDrawings = useCallback(() => {
+    changeDrawings([]);
+  }, [changeDrawings]);
+
+  // Full screen is the card laid over the whole window (not the browser's own full screen: that is missing on iPhones).
+  // Escape puts it away, unless a drawing tool is on: then Escape drops the tool first.
+  useEffect(() => {
+    if (!fullscreen) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && tool === null) setFullscreen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [fullscreen, tool]);
 
   const query = useMemo<CandlesQuery>(
     () => ({
@@ -116,7 +200,12 @@ function ChartBody() {
   const clockOffsetMs = serverClockOffsetMs(snapshot.data, snapshot.dataUpdatedAt);
 
   return (
-    <Stack gap="sm" data-testid="chart-panel">
+    <Stack
+      gap="sm"
+      data-testid="chart-panel"
+      className={fullscreen ? 'chart-body chart-body-full' : 'chart-body'}
+      data-fullscreen={fullscreen ? 'true' : 'false'}
+    >
       <Group justify="space-between" align="center" wrap="wrap" gap="sm">
         <Group gap="xs">
           <Text fw={700}>XAUUSD</Text>
@@ -131,9 +220,19 @@ function ChartBody() {
             data-testid="chart-timeframe"
           />
         </Group>
-        <Text size="xs" c="dimmed">
-          Mid price. The last candle is live.
-        </Text>
+        <ChartToolbar
+          chartType={prefs.chartType}
+          onChartType={changeType}
+          indicators={prefs.indicators}
+          onToggleIndicator={toggle}
+          tool={tool}
+          onTool={setTool}
+          drawingCount={drawings.length}
+          onUndoDrawing={undoDrawing}
+          onClearDrawings={clearDrawings}
+          fullscreen={fullscreen}
+          onFullscreen={setFullscreen}
+        />
       </Group>
 
       <Chip.Group multiple value={shown} onChange={setShown}>
@@ -151,16 +250,16 @@ function ChartBody() {
         role="group"
         aria-label={
           last
-            ? `XAUUSD ${tf} candlestick chart. Last close ${formatPrice(last.c)}. ${String(data?.candles.length ?? 0)} candles.`
+            ? `XAUUSD ${tf} ${CHART_WORD[prefs.chartType]} chart. Last close ${formatPrice(last.c)}. ${String(data?.candles.length ?? 0)} candles.`
             : data
-              ? `XAUUSD ${tf} candlestick chart, no candles yet`
-              : 'XAUUSD candlestick chart, loading'
+              ? `XAUUSD ${tf} ${CHART_WORD[prefs.chartType]} chart, no candles yet`
+              : `XAUUSD ${CHART_WORD[prefs.chartType]} chart, loading`
         }
       >
         {data ? (
           <Suspense fallback={<Skeleton height="100%" radius="md" />}>
             <PriceChart
-              key={tf}
+              key={`${tf}-${prefs.chartType}`}
               tf={tf}
               candles={data.candles}
               overlays={data.overlays}
@@ -173,6 +272,13 @@ function ChartBody() {
               initialBars={INITIAL_BARS[tf]}
               scheme={scheme}
               timeZone={timeZone}
+              chartType={prefs.chartType}
+              indicators={prefs.indicators}
+              onRemoveIndicator={toggle}
+              tool={tool}
+              drawings={drawings}
+              onDrawingAdd={addDrawing}
+              onToolChange={setTool}
             />
           </Suspense>
         ) : (

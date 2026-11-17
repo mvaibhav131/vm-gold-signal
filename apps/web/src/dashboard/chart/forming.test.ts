@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { candleRefetchDelayMs, formingStep, msToNextCandle, serverClockOffsetMs } from './forming';
+import {
+  candleRefetchDelayMs,
+  formatCountdown,
+  formingStep,
+  msToNextCandle,
+  serverClockOffsetMs,
+} from './forming';
 
 const MIN = 60_000;
 // 2026-11-16 10:07:30 UTC: inside the 5m candle that opened at 10:05:00
@@ -77,6 +83,23 @@ describe('serverClockOffsetMs', () => {
     expect(serverClockOffsetMs(undefined, AT)).toBe(0);
     expect(serverClockOffsetMs(snapshot, 0)).toBe(0);
     expect(serverClockOffsetMs({ receivedAt: 'nonsense', ageMs: 5 }, AT)).toBe(0);
+  });
+});
+
+describe('formatCountdown', () => {
+  it('shows minutes and seconds, and hours only from one hour on', () => {
+    expect(formatCountdown(0)).toBe('00:00');
+    expect(formatCountdown(4000)).toBe('00:04');
+    expect(formatCountdown(2 * MIN + 30_000)).toBe('02:30');
+    expect(formatCountdown(59 * MIN + 59_000)).toBe('59:59');
+    expect(formatCountdown(60 * MIN)).toBe('1:00:00');
+    expect(formatCountdown(3 * 60 * MIN + 5 * MIN + 9000)).toBe('3:05:09');
+  });
+
+  it('rounds up to the second and never goes below zero', () => {
+    expect(formatCountdown(1)).toBe('00:01');
+    expect(formatCountdown(59_001)).toBe('01:00');
+    expect(formatCountdown(-500)).toBe('00:00');
   });
 });
 

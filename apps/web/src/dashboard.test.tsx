@@ -2,7 +2,7 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { SseEvent } from '@vmgs/contracts';
 import { QUALITY_GROUPS } from '@vmgs/core';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ApiClient } from './api/client';
 import { GROUP_LABELS } from './format/signal';
@@ -390,5 +390,63 @@ describe('the rest of the dashboard', () => {
     await waitFor(() => {
       expect(within(panel).queryByTestId('chart-empty')).toBeNull();
     });
+  });
+});
+
+describe('the chart controls', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('keeps the indicators and the type of chart that the owner chose in this browser', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    const panel = within(await screen.findByTestId('chart-panel'));
+    await user.click(panel.getByRole('button', { name: 'Indicators' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'RSI' }));
+    await user.click(await screen.findByRole('checkbox', { name: 'Bollinger Bands' }));
+    expect(panel.getByRole('button', { name: 'Indicators (2)' })).toBeInTheDocument();
+    await user.click(panel.getByRole('radio', { name: 'Heikin Ashi' }));
+    expect(
+      await panel.findByRole('group', { name: /^XAUUSD 5m Heikin Ashi chart\./ }),
+    ).toBeInTheDocument();
+    const stored = JSON.parse(window.localStorage.getItem('vmgs.chart.prefs.v1') ?? '{}') as {
+      indicators?: string[];
+      chartType?: string;
+    };
+    expect(stored.indicators).toEqual(['rsi', 'bollinger']);
+    expect(stored.chartType).toBe('heikin');
+  });
+
+  it('starts from what was kept, and ignores what in it is not valid', async () => {
+    window.localStorage.setItem(
+      'vmgs.chart.prefs.v1',
+      JSON.stringify({ indicators: ['macd', 'nonsense'], chartType: 'line' }),
+    );
+    await start('two-open');
+    const panel = within(await screen.findByTestId('chart-panel'));
+    expect(panel.getByRole('button', { name: 'Indicators (1)' })).toBeInTheDocument();
+    expect(panel.getByRole('radio', { name: 'Line' })).toBeChecked();
+  });
+
+  it('has nothing to undo at first, and the full screen switches on and off', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    const panel = within(await screen.findByTestId('chart-panel'));
+    await user.click(panel.getByRole('button', { name: 'Draw' }));
+    expect(await screen.findByRole('menuitem', { name: 'Undo the last drawing' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'Clear all drawings' })).toBeDisabled();
+    await user.click(screen.getByRole('menuitem', { name: 'Trendline' }));
+    expect(await panel.findByRole('button', { name: 'Draw: Trendline' })).toBeInTheDocument();
+
+    const body = screen.getByTestId('chart-panel');
+    expect(body).toHaveAttribute('data-fullscreen', 'false');
+    await user.click(panel.getByRole('button', { name: 'Full screen' }));
+    expect(body).toHaveAttribute('data-fullscreen', 'true');
+    // With a tool on, Escape is for the tool (the chart drops it), so the full screen stays
+    await user.keyboard('{Escape}');
+    expect(body).toHaveAttribute('data-fullscreen', 'true');
+    await user.click(panel.getByRole('button', { name: 'Exit full screen' }));
+    expect(body).toHaveAttribute('data-fullscreen', 'false');
   });
 });

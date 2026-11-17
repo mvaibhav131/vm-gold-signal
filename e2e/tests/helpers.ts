@@ -9,10 +9,28 @@ export async function fillLogin(page: Page, password: string = OWNER.password): 
 }
 
 /**
+ * The width of the text depends on the fonts of the machine: the CI (Linux) has a wider font than Windows, and a layout that
+ * fits here can wrap there. To see here what the CI sees, run with VMGS_TEST_FONT=Verdana (about the width of the CI font);
+ * without it the font of this PC is used.
+ */
+async function useTestFont(page: Page): Promise<void> {
+  const family = process.env.VMGS_TEST_FONT;
+  if (family === undefined || family === '') return;
+  await page.addInitScript((name) => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.textContent = `:root{--mantine-font-family:${name} !important} body,button,input,select,textarea{font-family:${name} !important}`;
+      document.head.append(style);
+    });
+  }, family);
+}
+
+/**
  * Logs in through the real login screen and waits until the status bar has its data. The preview
  * state of the simulated market can be chosen with `scenario` (see the picker on the dashboard).
  */
 export async function logIn(page: Page, options: { scenario?: string } = {}): Promise<void> {
+  await useTestFont(page);
   await page.goto(options.scenario ? `/login?scenario=${options.scenario}` : '/login');
   await fillLogin(page);
   await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();

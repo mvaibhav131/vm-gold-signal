@@ -229,7 +229,20 @@ body {
 
   .status-row {
     flex-wrap: wrap;
-    gap: 8px 20px;
+    gap: 6px 14px;
+  }
+
+  /* A smaller price, so that the price and its change share a row even in a wide font (the bar is two rows, not three). */
+  .px-int {
+    font-size: 1.25rem;
+  }
+
+  .px-dec {
+    font-size: 1.0625rem;
+  }
+
+  .status-change {
+    font-size: 0.875rem;
   }
 
   .status-row-chips {
@@ -469,41 +482,74 @@ body {
 
 @media (max-width: 47.99em) {
   .chart-box {
-    height: 340px;
+    height: 400px;
   }
 }
 
+/* Full screen: the chart card laid over the whole window; the chart takes what the controls leave. */
+.chart-body-full {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  padding: 10px;
+  overflow-y: auto;
+  background: var(--mantine-color-body);
+}
+
+.chart-body-full .chart-box {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 320px;
+}
+
 .chart-wrap {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
+  min-height: 0;
 }
 
 .chart-canvas {
+  position: relative;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* The numbers of a bar, top left; the zoom buttons, top right inside the plot (the price axis is about 60 px wide). The logo
-   of the chart library, bottom left, stays visible: its licence asks for it. */
-.chart-numbers {
-  position: absolute;
-  top: 6px;
-  left: 8px;
-  z-index: 3;
-  max-width: calc(100% - 290px);
+.chart-wrap-drawing .chart-canvas canvas {
+  cursor: crosshair !important;
+}
+
+/* The line above the chart: the numbers of a bar and the time to the close on the left, the zoom buttons on the right. The logo
+   of the chart library, bottom left of the plot, stays visible: its licence asks for it. */
+.chart-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 0 2px 4px;
+}
+
+.chart-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 12px;
+  min-width: 0;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.4;
   font-variant-numeric: tabular-nums;
   color: var(--mantine-color-dimmed);
-  pointer-events: none;
+}
+
+.chart-numbers {
+  white-space: pre-wrap;
 }
 
 .chart-tools {
-  position: absolute;
-  top: 6px;
-  right: 64px;
-  z-index: 3;
   display: flex;
   gap: 4px;
 }
@@ -525,20 +571,73 @@ body {
   background: var(--mantine-color-default-hover);
 }
 
-.chart-tool:focus-visible {
+.chart-tool:focus-visible,
+.chart-legend-remove:focus-visible {
   outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: 1px;
 }
 
+/* The indicators that are on: name with its numbers, and a button to take it away. */
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  padding: 0 2px 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chart-legend-name {
+  font-weight: 600;
+}
+
+.chart-legend-values {
+  white-space: pre;
+  color: var(--mantine-color-dimmed);
+}
+
+.chart-legend-remove {
+  min-width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--mantine-color-dimmed);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chart-legend-remove:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.chart-hint {
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mantine-color-text);
+}
+
+.chart-hint:not(:empty) {
+  padding-bottom: 4px;
+}
+
 @media (max-width: 47.99em) {
-  .chart-numbers {
-    max-width: calc(100% - 70px);
+  .chart-readout {
     font-size: 11px;
   }
 
-  .chart-tools {
-    top: auto;
-    bottom: 34px;
+  .chart-legend {
+    font-size: 11px;
   }
 }
 

@@ -93,6 +93,40 @@ for (const scheme of ['dark', 'light'] as const) {
       expect(await seriousViolations(page)).toEqual([]);
     });
 
+    test('the dashboard chart with its menus open, an indicator on, a drawing tool on and in full screen has none', async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await logIn(page);
+      await page.goto('/');
+      await expect(page.getByTestId('chart-section')).toBeVisible();
+      const fold = page.getByRole('button', { name: 'Chart', exact: true });
+      if (await fold.isVisible()) await fold.click();
+      await expect(page.getByTestId('price-chart').locator('canvas').first()).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      // the indicator menu, and the legend that an indicator adds
+      await page.getByTestId('indicators-button').click();
+      await expect(page.getByTestId('indicators-menu')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      await page.getByRole('checkbox', { name: 'MACD', exact: true }).check();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('indicators-menu')).toBeHidden();
+      await expect(page.getByTestId('indicator-legend')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      // the drawing menu, and a tool that is on (with its hint)
+      await page.getByTestId('draw-button').click();
+      await expect(page.getByTestId('draw-menu')).toBeVisible();
+      expect(await seriousViolations(page)).toEqual([]);
+      await page.getByRole('menuitem', { name: 'Trendline' }).click();
+      await expect(page.getByTestId('draw-menu')).toBeHidden();
+      await expect(page.getByTestId('chart-hint')).toHaveText(/click the first point/);
+      expect(await seriousViolations(page)).toEqual([]);
+      // full screen
+      await page.getByTestId('chart-fullscreen').click();
+      await expect(page.getByTestId('chart-panel')).toHaveAttribute('data-fullscreen', 'true');
+      expect(await seriousViolations(page)).toEqual([]);
+    });
+
     for (const seq of [40, 41, 42, 39, 11, 29, 1]) {
       test(`the detail of signal ${String(seq)} (every kind of result), with its chart and snapshot opened, has none`, async ({
         page,

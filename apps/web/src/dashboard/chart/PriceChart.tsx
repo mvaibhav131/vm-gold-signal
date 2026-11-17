@@ -1,6 +1,7 @@
 import type { CandlesResponse, ChartObject, Level } from '@vmgs/contracts';
 import { bucketStart, type Side, type Timeframe } from '@vmgs/core';
 import {
+  AreaSeries,
   CandlestickSeries,
   ColorType,
   CrosshairMode,
@@ -13,6 +14,7 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type MouseEventParams,
   type SeriesMarker,
   type TickMarkType,
   type Time,
@@ -22,7 +24,20 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { formatPrice } from '../../format/format';
 import { crosshairLabel, tickLabel } from './chartTime';
-import { formingStep, type FormingCandle } from './forming';
+import { heikinBar, heikinSeries, type ChartType } from './chartTypes';
+import { CountdownPrimitive } from './CountdownPrimitive';
+import { emptyDrawingObjects, syncDrawings, type DrawingObjects } from './drawingLayer';
+import {
+  TOOL_LABELS,
+  TOOL_POINTS,
+  type Drawing,
+  type DrawingPoint,
+  type DrawingTool,
+  type NewDrawing,
+} from './drawings';
+import { formatCountdown, formingStep, msToNextCandle, type FormingCandle } from './forming';
+import { legendText, syncIndicators, type IndicatorHandle } from './indicatorLayer';
+import { INDICATORS, type IndicatorId } from './indicatorSpecs';
 import { ZonePrimitive } from './ZonePrimitive';
 
 /** An open signal drawn on the chart: its levels as lines and its entry as an arrow. A finished one also has its exit. */
@@ -55,6 +70,17 @@ export interface PriceChartProps {
   readonly initialBars?: number;
   readonly scheme: 'dark' | 'light';
   readonly timeZone: string;
+  /** How the price is drawn (the chart is made again when it changes). */
+  readonly chartType?: ChartType;
+  /** The indicators under and over the price, from the menu (computed with the classes of the core). */
+  readonly indicators?: readonly IndicatorId[];
+  readonly onRemoveIndicator?: (id: IndicatorId) => void;
+  /** The tool of the owner: the next click (or two) on the chart makes a drawing. */
+  readonly tool?: DrawingTool | null;
+  readonly drawings?: readonly Drawing[];
+  readonly onDrawingAdd?: (drawing: NewDrawing) => void;
+  /** Asked to put the tool away: after a drawing is made, and with Escape. */
+  readonly onToolChange?: (tool: DrawingTool | null) => void;
 }
 
 /** A live quote: the mid price and how old it was when it reached this page. */
@@ -101,15 +127,39 @@ const OVERLAY_STYLE: Readonly<Record<string, { color: string; width: 1 | 2; styl
   supertrend: { color: '#9EACBA', width: 1, style: LineStyle.Dotted },
 };
 
+interface Ohlc {
+  readonly o: number;
+  readonly h: number;
+  readonly l: number;
+  readonly c: number;
+}
+
+/** A bar as it is drawn: for Heikin Ashi it is not the real candle. */
+interface Bar extends Ohlc {
+  readonly time: UTCTimestamp;
+}
+
+type PriceApi = ISeriesApi<'Candlestick'> | ISeriesApi<'Area'>;
+
 interface Handle {
   chart: IChartApi;
-  series: ISeriesApi<'Candlestick'>;
+  type: ChartType;
+  series: PriceApi;
+  candleSeries: ISeriesApi<'Candlestick'> | null;
+  areaSeries: ISeriesApi<'Area'> | null;
   markers: ISeriesMarkersPluginApi<Time>;
   overlaySeries: Map<string, ISeriesApi<'Line'>>;
   objectSeries: ISeriesApi<'Line'>[];
   primitives: ZonePrimitive[];
+  /** The time to the close, as a label on the price axis under the live price. */
+  countdown: CountdownPrimitive;
   priceLines: IPriceLine[];
   liveLine: IPriceLine | null;
+  indicators: Map<IndicatorId, IndicatorHandle>;
+  drawings: DrawingObjects;
+  /** The first click of a drawing that needs two, and the mark that shows it. */
+  pendingPoint: DrawingPoint | null;
+  pendingLine: IPriceLine | null;
   fitted: boolean;
   /** The pointer is on the chart: the line of numbers shows the bar under it, not the newest one. */
   hovering: boolean;
@@ -117,18 +167,14 @@ interface Handle {
   forming: FormingCandle | null;
   /** The forming candles newer than the newest closed one, until the stored candle arrives and replaces them. */
   pending: Map<number, FormingCandle>;
-  /** The newest bar on the chart, for the line of numbers when the pointer is not on a bar. */
-  newest: CandlestickData | null;
+  /** The real (mid) candles by time in seconds, closed and forming: the numbers line shows them, whatever the chart type. */
+  raw: Map<number, Ohlc>;
+  newestRaw: Ohlc | null;
+  /** The Heikin Ashi bars of the closed candles, the base of the one that is forming. */
+  haClosed: Bar[];
 }
 
 const sec = (iso: string): UTCTimestamp => Math.floor(Date.parse(iso) / 1000) as UTCTimestamp;
-const barOf = (c: FormingCandle): CandlestickData<UTCTimestamp> => ({
-  time: Math.floor(c.startMs / 1000) as UTCTimestamp,
-  open: c.o,
-  high: c.h,
-  low: c.l,
-  close: c.c,
-});
 
 /** Empty space to the right of the newest bar, in bars. */
 const RIGHT_PAD = 6;
@@ -138,15 +184,51 @@ const MIN_BARS = 8;
 
 const signed = (value: number, text: string) => (value > 0 ? `+${text}` : text);
 
-/** "O 4017.285  H 4018.1  L 4016.9  C 4017.7  +0.415 (+0.01%)": the numbers of one bar. */
-function barText(bar: CandlestickData | null): string {
+/** "O 4017.285  H 4018.1  L 4016.9  C 4017.7  +0.415 (+0.01%)": the numbers of one candle. */
+function barText(bar: Ohlc | null): string {
   if (bar === null) return '';
-  const change = bar.close - bar.open;
-  const pct = bar.open === 0 ? 0 : (change / bar.open) * 100;
+  const change = bar.c - bar.o;
+  const pct = bar.o === 0 ? 0 : (change / bar.o) * 100;
   return (
-    `O ${formatPrice(bar.open)}  H ${formatPrice(bar.high)}  L ${formatPrice(bar.low)}  ` +
-    `C ${formatPrice(bar.close)}  ${signed(change, formatPrice(change))} (${signed(pct, pct.toFixed(2))}%)`
+    `O ${formatPrice(bar.o)}  H ${formatPrice(bar.h)}  L ${formatPrice(bar.l)}  ` +
+    `C ${formatPrice(bar.c)}  ${signed(change, formatPrice(change))} (${signed(pct, pct.toFixed(2))}%)`
   );
+}
+
+/** The bar that is drawn for a candle that is still forming (for Heikin Ashi it follows the bars before it). */
+function drawnBar(h: Handle, raw: FormingCandle): Bar {
+  const time = Math.floor(raw.startMs / 1000) as UTCTimestamp;
+  if (h.type !== 'heikin') return { time, o: raw.o, h: raw.h, l: raw.l, c: raw.c };
+  let previous: Ohlc | null = h.haClosed.at(-1) ?? null;
+  for (const [startMs, bar] of [...h.pending].sort((a, b) => a[0] - b[0])) {
+    if (startMs >= raw.startMs) break;
+    previous = heikinBar(previous, bar);
+  }
+  return { time, ...heikinBar(previous, raw) };
+}
+
+function writeBars(h: Handle, bars: readonly Bar[]) {
+  if (h.areaSeries) {
+    h.areaSeries.setData(bars.map((bar) => ({ time: bar.time, value: bar.c })));
+  } else {
+    h.candleSeries?.setData(
+      bars.map((bar) => ({ time: bar.time, open: bar.o, high: bar.h, low: bar.l, close: bar.c })),
+    );
+  }
+}
+
+function writeBar(h: Handle, bar: Bar) {
+  if (h.areaSeries) {
+    h.areaSeries.update({ time: bar.time, value: bar.c });
+  } else {
+    h.candleSeries?.update({
+      time: bar.time,
+      open: bar.o,
+      high: bar.h,
+      low: bar.l,
+      close: bar.c,
+    } satisfies CandlestickData<UTCTimestamp>);
+  }
 }
 
 /** Shows the newest `bars` bars (and a little empty space after them). */
@@ -165,7 +247,15 @@ function zoomBy(h: Handle, factor: number) {
   h.chart.timeScale().setVisibleLogicalRange({ from: range.to - width, to: range.to });
 }
 
-/** The candlestick chart. Prices are mid prices; every number comes from the API. */
+const round3 = (value: number) => Math.round(value * 1000) / 1000;
+
+/** The colours of the label of the live price: the colour of the candle that is forming (gold for the line). */
+function labelColors(type: ChartType, bar: Ohlc): { color: string; textColor: string } {
+  if (type === 'line') return { color: GOLD, textColor: '#121821' };
+  return { color: bar.c >= bar.o ? UP : DOWN, textColor: '#FFFFFF' };
+}
+
+/** The chart: candles, Heikin Ashi or a line of the mid price, with the indicators and the drawings of the owner. */
 export default function PriceChart(props: PriceChartProps) {
   const {
     tf,
@@ -180,10 +270,39 @@ export default function PriceChart(props: PriceChartProps) {
     initialBars,
     scheme,
     timeZone,
+    chartType = 'candles',
+    indicators = [],
+    onRemoveIndicator,
+    tool = null,
+    drawings = [],
+    onDrawingAdd,
+    onToolChange,
   } = props;
   const box = useRef<HTMLDivElement>(null);
-  const numbers = useRef<HTMLDivElement>(null);
+  const numbers = useRef<HTMLSpanElement>(null);
+  const legend = useRef<HTMLDivElement>(null);
+  const hint = useRef<HTMLDivElement>(null);
   const handle = useRef<Handle | null>(null);
+  // The latest tool and callbacks, for the handlers that are put on the chart once.
+  const toolRef = useRef<DrawingTool | null>(tool);
+  const addRef = useRef(onDrawingAdd);
+  const toolChangeRef = useRef(onToolChange);
+  useEffect(() => {
+    toolRef.current = tool;
+    addRef.current = onDrawingAdd;
+    toolChangeRef.current = onToolChange;
+  }, [tool, onDrawingAdd, onToolChange]);
+
+  /** The numbers of every indicator in the legend: at the pointer when it is on a bar, else the newest ones. */
+  const refreshLegend = useCallback((param: MouseEventParams | null) => {
+    const h = handle.current;
+    const root = legend.current;
+    if (!h || !root) return;
+    for (const element of root.querySelectorAll<HTMLElement>('[data-ind]')) {
+      const indicator = h.indicators.get(element.dataset.ind as IndicatorId);
+      element.textContent = indicator ? legendText(indicator, param) : '';
+    }
+  }, []);
 
   useEffect(() => {
     const element = box.current;
@@ -194,6 +313,7 @@ export default function PriceChart(props: PriceChartProps) {
       layout: {
         background: { type: ColorType.Solid, color: palette.background },
         textColor: palette.text,
+        panes: { separatorColor: palette.border, separatorHoverColor: palette.levelRound },
       },
       grid: { vertLines: { color: palette.grid }, horzLines: { color: palette.grid } },
       crosshair: { mode: CrosshairMode.Normal },
@@ -226,71 +346,176 @@ export default function PriceChart(props: PriceChartProps) {
         priceFormatter: (price: number) => formatPrice(price),
       },
     });
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: UP,
-      downColor: DOWN,
-      borderVisible: false,
-      wickUpColor: UP,
-      wickDownColor: DOWN,
-      priceLineVisible: false,
-      priceFormat: { type: 'price', precision: 3, minMove: 0.001 },
-    });
+    const priceFormat = { type: 'price', precision: 3, minMove: 0.001 } as const;
+    let candleSeries: ISeriesApi<'Candlestick'> | null = null;
+    let areaSeries: ISeriesApi<'Area'> | null = null;
+    let series: PriceApi;
+    if (chartType === 'line') {
+      areaSeries = chart.addSeries(AreaSeries, {
+        lineColor: GOLD,
+        topColor: 'rgba(217, 164, 65, 0.28)',
+        bottomColor: 'rgba(217, 164, 65, 0.02)',
+        lineWidth: 2,
+        priceLineVisible: false,
+        priceFormat,
+      });
+      series = areaSeries;
+    } else {
+      candleSeries = chart.addSeries(CandlestickSeries, {
+        upColor: UP,
+        downColor: DOWN,
+        borderVisible: false,
+        wickUpColor: UP,
+        wickDownColor: DOWN,
+        priceLineVisible: false,
+        priceFormat,
+      });
+      series = candleSeries;
+    }
+    const countdown = new CountdownPrimitive();
+    series.attachPrimitive(countdown);
     const state: Handle = {
       chart,
+      type: chartType,
       series,
+      candleSeries,
+      areaSeries,
       markers: createSeriesMarkers(series, []),
       overlaySeries: new Map(),
       objectSeries: [],
       primitives: [],
+      countdown,
       priceLines: [],
       liveLine: null,
+      indicators: new Map(),
+      drawings: emptyDrawingObjects(),
+      pendingPoint: null,
+      pendingLine: null,
       fitted: false,
       hovering: false,
       forming: null,
       pending: new Map(),
-      newest: null,
+      raw: new Map(),
+      newestRaw: null,
+      haClosed: [],
     };
     handle.current = state;
-    // The numbers of the bar under the pointer, or of the newest bar.
+
+    // The numbers of the candle under the pointer, or of the newest one; the legend of the indicators follows the pointer too.
     chart.subscribeCrosshairMove((param) => {
       state.hovering = param.time !== undefined;
-      const item = param.seriesData.get(series);
-      const bar = item !== undefined && 'open' in item ? item : state.newest;
-      if (numbers.current) numbers.current.textContent = barText(bar);
+      const hovered = typeof param.time === 'number' ? state.raw.get(param.time) : undefined;
+      if (numbers.current) numbers.current.textContent = barText(hovered ?? state.newestRaw);
+      refreshLegend(param.time === undefined ? null : param);
     });
     chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (range) element.dataset.visibleBars = String(Math.round(range.to - range.from));
     });
+
+    // A drawing: one click for a horizontal line, two for a trendline or a Fibonacci retracement. Only on the price pane.
+    const finish = (drawing: NewDrawing) => {
+      if (state.pendingLine) series.removePriceLine(state.pendingLine);
+      state.pendingLine = null;
+      state.pendingPoint = null;
+      addRef.current?.(drawing);
+      toolChangeRef.current?.(null);
+    };
+    chart.subscribeClick((param) => {
+      const active = toolRef.current;
+      if (active === null || !param.point || (param.paneIndex ?? 0) !== 0) return;
+      const price = series.coordinateToPrice(param.point.y);
+      const time = typeof param.time === 'number' ? param.time : null;
+      if (price === null || time === null) return;
+      const point: DrawingPoint = { t: time, price: round3(price) };
+      if (TOOL_POINTS[active] === 1) {
+        finish({ kind: 'hline', price: point.price });
+        return;
+      }
+      const first = state.pendingPoint;
+      if (first === null) {
+        state.pendingPoint = point;
+        state.pendingLine = series.createPriceLine({
+          price: point.price,
+          color: '#3B82F6',
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: '1',
+        });
+        if (hint.current) {
+          hint.current.textContent = `${TOOL_LABELS[active]}: click the second point. Escape cancels.`;
+        }
+        return;
+      }
+      if (first.t === point.t && first.price === point.price) return;
+      if (active === 'trend' || active === 'fib') finish({ kind: active, a: first, b: point });
+    });
+
     return () => {
       chart.remove();
       handle.current = null;
     };
-  }, [scheme, timeZone]);
+  }, [scheme, timeZone, chartType, refreshLegend]);
+
+  // The tool: a pending first click is dropped when the tool changes, and Escape puts the tool away.
+  useEffect(() => {
+    const h = handle.current;
+    if (h) {
+      if (h.pendingLine) h.series.removePriceLine(h.pendingLine);
+      h.pendingLine = null;
+      h.pendingPoint = null;
+    }
+    if (hint.current) {
+      hint.current.textContent =
+        tool === null
+          ? ''
+          : `${TOOL_LABELS[tool]}: ${TOOL_POINTS[tool] === 1 ? 'click the price' : 'click the first point'}. Escape cancels.`;
+    }
+    if (tool === null) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') toolChangeRef.current?.(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [tool, scheme, timeZone, chartType]);
 
   // Candles.
   useEffect(() => {
     const h = handle.current;
     if (!h) return;
-    h.series.setData(
-      candles.map((c) => ({ time: sec(c.t), open: c.o, high: c.h, low: c.l, close: c.c })),
-    );
+    const stamped: Bar[] = candles.map((c) => ({ time: sec(c.t), o: c.o, h: c.h, l: c.l, c: c.c }));
+    h.raw = new Map(stamped.map((bar) => [bar.time, bar]));
+    const drawn: Bar[] =
+      h.type === 'heikin'
+        ? heikinSeries(stamped).map((bar, i) => ({
+            ...bar,
+            time: stamped[i]?.time ?? (0 as UTCTimestamp),
+          }))
+        : stamped;
+    h.haClosed = h.type === 'heikin' ? drawn : [];
+    writeBars(h, drawn);
     // A candle that finished a moment ago may not be stored yet: the picture of it stays until the stored one arrives.
     const lastClosed = candles.at(-1);
     const newestClosed = lastClosed ? Date.parse(lastClosed.t) : 0;
     for (const [startMs, bar] of [...h.pending].sort((a, b) => a[0] - b[0])) {
-      if (startMs <= newestClosed) h.pending.delete(startMs);
-      else h.series.update(barOf(bar));
+      if (startMs <= newestClosed) {
+        h.pending.delete(startMs);
+        continue;
+      }
+      writeBar(h, drawnBar(h, bar));
+      h.raw.set(Math.floor(startMs / 1000), bar);
     }
-    const all = h.series.data();
-    const newest = all[all.length - 1];
-    h.newest = newest !== undefined && 'open' in newest ? newest : null;
-    if (numbers.current) numbers.current.textContent = barText(h.newest);
+    h.newestRaw = stamped.at(-1) ?? null;
+    for (const bar of h.pending.values()) h.newestRaw = bar;
+    if (numbers.current) numbers.current.textContent = barText(h.newestRaw);
     if (!h.fitted) {
       if (initialBars === undefined) h.chart.timeScale().fitContent();
       else showLast(h, initialBars);
       h.fitted = true;
     }
-  }, [candles, initialBars, scheme, timeZone]);
+  }, [candles, initialBars, scheme, timeZone, chartType]);
 
   // The candle that is forming follows the quotes: one bar updated, nothing else redrawn.
   useEffect(() => {
@@ -303,12 +528,38 @@ export default function PriceChart(props: PriceChartProps) {
     h.forming = next;
     // The stored candle is already there (or newer): the picture is not needed.
     if (closed !== null && next.startMs <= closed.startMs) return;
-    const bar = barOf(next);
     h.pending.set(next.startMs, next);
-    h.series.update(bar);
-    h.newest = bar;
-    if (numbers.current && !h.hovering) numbers.current.textContent = barText(bar);
-  }, [tick, candles, tf, clockOffsetMs, scheme, timeZone]);
+    const bar = drawnBar(h, next);
+    writeBar(h, bar);
+    h.countdown.update({ price: bar.c, ...labelColors(h.type, bar) });
+    h.raw.set(Math.floor(next.startMs / 1000), next);
+    h.newestRaw = next;
+    if (numbers.current && !h.hovering) numbers.current.textContent = barText(next);
+  }, [tick, candles, tf, clockOffsetMs, scheme, timeZone, chartType]);
+
+  // The time to the close of the candle, once a second: a label on the price axis under the live price, and the same text on the
+  // chart element for the tests. It is written into the chart directly, nothing is rendered again.
+  const live = tick !== null;
+  useEffect(() => {
+    const h = handle.current;
+    const element = box.current;
+    if (!h || !element) return undefined;
+    if (!live) {
+      h.countdown.update({ text: null });
+      element.dataset.countdown = '';
+      return undefined;
+    }
+    const draw = () => {
+      const text = formatCountdown(msToNextCandle(tf, Date.now() + clockOffsetMs));
+      h.countdown.update({ text });
+      element.dataset.countdown = text;
+    };
+    draw();
+    const timer = window.setInterval(draw, 1000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [live, tf, clockOffsetMs, scheme, timeZone, chartType]);
 
   // Overlays (EMA, supertrend): one line series each, kept and given new data (no flicker).
   useEffect(() => {
@@ -341,7 +592,34 @@ export default function PriceChart(props: PriceChartProps) {
         }),
       );
     }
-  }, [overlays, candles, scheme, timeZone]);
+  }, [overlays, candles, scheme, timeZone, chartType]);
+
+  // The indicators of the menu: overlays on the price, the others in panes under it.
+  useEffect(() => {
+    const h = handle.current;
+    const element = box.current;
+    if (!h || !element) return;
+    syncIndicators(h.chart, h.indicators, indicators, candles);
+    element.dataset.panes = String(h.chart.panes().length);
+    refreshLegend(null);
+  }, [indicators, candles, refreshLegend, scheme, timeZone, chartType]);
+
+  // The drawings of the owner.
+  useEffect(() => {
+    const h = handle.current;
+    const element = box.current;
+    if (!h || !element) return;
+    const first = candles[0];
+    const lastClosed = candles.at(-1);
+    const firstSec = first ? sec(first.t) : Number.NaN;
+    const lastSec = Math.max(
+      lastClosed ? sec(lastClosed.t) : Number.NaN,
+      ...(h.pending.size > 0 ? [Math.max(...h.pending.keys()) / 1000] : []),
+    );
+    syncDrawings(h.chart, h.series, h.drawings, drawings, tf, firstSec, lastSec);
+    element.dataset.drawings = String(drawings.length);
+    element.dataset.drawn = String(h.drawings.lines.length + h.drawings.series.length);
+  }, [drawings, candles, tf, scheme, timeZone, chartType]);
 
   // Levels, Fibonacci levels and the lines of the open signals are horizontal price lines.
   useEffect(() => {
@@ -394,7 +672,7 @@ export default function PriceChart(props: PriceChartProps) {
       add(signal.tp1, UP, LineStyle.Dashed, `${signal.label} TP1`);
       if (signal.tp2 !== null) add(signal.tp2, UP, LineStyle.Dashed, `${signal.label} TP2`);
     }
-  }, [levels, objects, signals, scheme, timeZone]);
+  }, [levels, objects, signals, scheme, timeZone, chartType]);
 
   // Trendlines, channels and patterns are line series; zones are shaded rectangles.
   useEffect(() => {
@@ -459,7 +737,7 @@ export default function PriceChart(props: PriceChartProps) {
         h.primitives.push(primitive);
       }
     }
-  }, [objects, candles, scheme, timeZone]);
+  }, [objects, candles, scheme, timeZone, chartType]);
 
   // An arrow at the candle where each open signal was produced.
   useEffect(() => {
@@ -496,12 +774,13 @@ export default function PriceChart(props: PriceChartProps) {
         .sort((x, y) => x.time - y.time)
         .map(({ time, marker }) => ({ ...marker, time: time as UTCTimestamp })),
     );
-  }, [signals, tf, candles, scheme, timeZone]);
+  }, [signals, tf, candles, scheme, timeZone, chartType]);
 
-  // The live price: with a forming candle the chart's own last-price label and line follow it; without one a line does.
+  // The live price: with a forming candle the chart's own last-price line and label follow it; without one a line does.
   useEffect(() => {
     const h = handle.current;
     if (!h) return;
+    h.series.applyOptions({ priceLineVisible: tick !== null, priceLineStyle: LineStyle.Dotted });
     if (livePrice === null || tick !== null) {
       if (h.liveLine) {
         h.series.removePriceLine(h.liveLine);
@@ -521,7 +800,7 @@ export default function PriceChart(props: PriceChartProps) {
         title: 'live',
       });
     }
-  }, [livePrice, tick, scheme, timeZone]);
+  }, [livePrice, tick, scheme, timeZone, chartType]);
 
   const zoomIn = useCallback(() => {
     if (handle.current) zoomBy(handle.current, 1 / ZOOM_STEP);
@@ -541,47 +820,79 @@ export default function PriceChart(props: PriceChartProps) {
   }, [initialBars]);
 
   return (
-    <div className="chart-wrap">
-      <div ref={numbers} className="chart-numbers" data-testid="chart-numbers" />
-      <div className="chart-tools" role="toolbar" aria-label="Chart view" data-testid="chart-tools">
-        <button
-          type="button"
-          className="chart-tool"
-          aria-label="Show more candles (zoom out)"
-          title="Zoom out"
-          onClick={zoomOut}
+    <div className={tool === null ? 'chart-wrap' : 'chart-wrap chart-wrap-drawing'}>
+      <div className="chart-head">
+        <div className="chart-readout">
+          <span ref={numbers} className="chart-numbers" data-testid="chart-numbers" />
+        </div>
+        <div
+          className="chart-tools"
+          role="toolbar"
+          aria-label="Chart view"
+          data-testid="chart-tools"
         >
-          &minus;
-        </button>
-        <button
-          type="button"
-          className="chart-tool"
-          aria-label="Show fewer candles (zoom in)"
-          title="Zoom in"
-          onClick={zoomIn}
-        >
-          +
-        </button>
-        <button
-          type="button"
-          className="chart-tool"
-          aria-label="Now: go to the newest candle"
-          title="Newest candle"
-          onClick={goLive}
-        >
-          Now
-        </button>
-        <button
-          type="button"
-          className="chart-tool"
-          aria-label="Reset the view"
-          title="Reset the view"
-          onClick={resetView}
-        >
-          Reset
-        </button>
+          <button
+            type="button"
+            className="chart-tool"
+            aria-label="Show more candles (zoom out)"
+            title="Zoom out"
+            onClick={zoomOut}
+          >
+            &minus;
+          </button>
+          <button
+            type="button"
+            className="chart-tool"
+            aria-label="Show fewer candles (zoom in)"
+            title="Zoom in"
+            onClick={zoomIn}
+          >
+            +
+          </button>
+          <button
+            type="button"
+            className="chart-tool"
+            aria-label="Now: go to the newest candle"
+            title="Newest candle"
+            onClick={goLive}
+          >
+            Now
+          </button>
+          <button
+            type="button"
+            className="chart-tool"
+            aria-label="Reset the view"
+            title="Reset the view"
+            onClick={resetView}
+          >
+            Reset
+          </button>
+        </div>
       </div>
-      <div ref={box} className="chart-canvas" data-testid="price-chart" />
+      {indicators.length > 0 && (
+        <div ref={legend} className="chart-legend" data-testid="indicator-legend">
+          {indicators.map((id) => (
+            <span key={id} className="chart-legend-item" data-testid={`indicator-${id}`}>
+              <span className="chart-legend-name">{INDICATORS[id].short}</span>
+              <span className="chart-legend-values" data-ind={id} />
+              {onRemoveIndicator && (
+                <button
+                  type="button"
+                  className="chart-legend-remove"
+                  aria-label={`Remove ${INDICATORS[id].name}`}
+                  onClick={() => {
+                    onRemoveIndicator(id);
+                  }}
+                >
+                  &times;
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      <div ref={hint} className="chart-hint" role="status" data-testid="chart-hint" />
+      <div ref={box} className="chart-canvas" data-testid="price-chart" data-type={chartType} />
     </div>
   );
 }

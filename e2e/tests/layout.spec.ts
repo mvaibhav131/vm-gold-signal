@@ -9,6 +9,8 @@ async function box(locator: Locator) {
   return rect;
 }
 
+// The width of the text depends on the fonts of the machine: see VMGS_TEST_FONT in helpers.ts.
+
 async function checkStatusBarRows(page: Page) {
   const bar = page.getByRole('region', { name: 'Market status' });
   const priceBox = await box(page.getByTestId('status-price'));
@@ -75,10 +77,19 @@ test.describe('desktop layout', () => {
     }
   });
 
-  test('the status bar is one line on a 1440 window and on a wider one', async ({ page }) => {
+  test('the status bar is one line on a wide window, and one line or two tidy rows on a 1440 one', async ({
+    page,
+  }) => {
     await logIn(page);
-    expect((await checkStatusBarOneLine(page)).height).toBeLessThan(90);
+    // On 1440 the one line needs the narrower fonts (Segoe UI, SF); a wide font (the CI's) puts the chips in a second row.
+    const first = await box(page.getByTestId('status-price'));
+    const second = await box(page.getByTestId('status-session'));
+    const oneLine = Math.abs(second.y - first.y) < 26;
+    const bar = oneLine ? await checkStatusBarOneLine(page) : await checkStatusBarRows(page);
+    expect(bar.height).toBeLessThan(oneLine ? 90 : 150);
     await page.setViewportSize({ width: 1920, height: 900 });
+    expect((await checkStatusBarOneLine(page)).height).toBeLessThan(90);
+    await page.setViewportSize({ width: 2200, height: 900 });
     expect((await checkStatusBarOneLine(page)).height).toBeLessThan(90);
   });
 
@@ -134,6 +145,7 @@ test.describe('phone layout', () => {
   }) => {
     await logIn(page);
     const bar = await checkStatusBarRows(page);
+    // two rows for the price and a row for the chips, also in a wide font (three rows for the price would be 230 px)
     expect(bar.height).toBeLessThan(200);
 
     const chips = page.getByRole('group', { name: 'Market details' });

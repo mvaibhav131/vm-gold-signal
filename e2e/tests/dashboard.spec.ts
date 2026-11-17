@@ -260,6 +260,252 @@ test.describe('the chart', () => {
   });
 });
 
+test.describe('the chart tools', () => {
+  async function openChart(page: Page, isMobile: boolean) {
+    await logIn(page, { scenario: 'two-open' });
+    // the phone opens the chart on demand
+    if (isMobile) await page.getByRole('button', { name: 'Chart', exact: true }).click();
+    const chart = page.getByTestId('price-chart');
+    await expect(chart.locator('canvas').first()).toBeVisible();
+    await expect(chart).toHaveAttribute('data-panes', '1');
+    return chart;
+  }
+
+  test('indicators go over the price or into panes under it, with their numbers, and can be taken away', async ({
+    page,
+    isMobile,
+  }) => {
+    const errors = collectErrors(page);
+    const chart = await openChart(page, isMobile);
+
+    await page.getByTestId('indicators-button').click();
+    await page.getByRole('checkbox', { name: 'RSI', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'MACD', exact: true }).check();
+    await page.getByRole('checkbox', { name: 'Bollinger Bands', exact: true }).check();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('indicators-menu')).toBeHidden();
+    await expect(page.getByTestId('indicators-button')).toHaveText('Indicators (3)');
+
+    // the price, the RSI and the MACD each have a pane; the Bollinger bands are over the price
+    await expect(chart).toHaveAttribute('data-panes', '3');
+    await expect(page.getByTestId('indicator-rsi').locator('[data-ind]')).toHaveText(
+      /^RSI\s+\d{1,3}\.\d{2}$/,
+    );
+    await expect(page.getByTestId('indicator-macd').locator('[data-ind]')).toHaveText(
+      /^Hist\s+-?\d+\.\d{3}\s+MACD\s+-?\d+\.\d{3}\s+Signal\s+-?\d+\.\d{3}$/,
+    );
+    await expect(page.getByTestId('indicator-bollinger').locator('[data-ind]')).toHaveText(
+      /^Upper\s+\d{4}\.\d{3}\s+Mid\s+\d{4}\.\d{3}\s+Lower\s+\d{4}\.\d{3}$/,
+    );
+
+    // a change of the type of chart keeps them
+    await page.getByTestId('chart-type').getByText('Line', { exact: true }).click();
+    await expect(chart).toHaveAttribute('data-type', 'line');
+    await expect(chart).toHaveAttribute('data-panes', '3');
+
+    // taking one away from its legend closes its pane
+    await page.getByRole('button', { name: 'Remove RSI', exact: true }).click();
+    await expect(chart).toHaveAttribute('data-panes', '2');
+    await expect(page.getByTestId('indicator-rsi')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Remove Bollinger Bands', exact: true }).click();
+    await page.getByRole('button', { name: 'Remove MACD', exact: true }).click();
+    await expect(chart).toHaveAttribute('data-panes', '1');
+    await expect(page.getByTestId('indicator-legend')).toHaveCount(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('the time to the close of the candle counts down, for the timeframe that is shown', async ({
+    page,
+    isMobile,
+  }) => {
+    const errors = collectErrors(page);
+    const chart = await openChart(page, isMobile);
+    // 5m: up to 5 minutes; it runs down by the second (the label itself is drawn on the price axis by the chart)
+    await expect(chart).toHaveAttribute('data-countdown', /^0[0-4]:\d{2}$|^05:00$/);
+    const first = await chart.getAttribute('data-countdown');
+    await expect
+      .poll(async () => chart.getAttribute('data-countdown'), { timeout: 5000 })
+      .not.toBe(first);
+    await page.getByTestId('chart-timeframe').getByText('1m', { exact: true }).click();
+    await expect(page.getByTestId('price-chart')).toHaveAttribute(
+      'data-countdown',
+      /^00:\d{2}$|^01:00$/,
+    );
+    await page.getByTestId('chart-timeframe').getByText('4h', { exact: true }).click();
+    // 4h: hours appear when more than an hour is left, and the text is a valid clock either way
+    await expect(page.getByTestId('price-chart')).toHaveAttribute(
+      'data-countdown',
+      /^(?:[0-3]:)?\d{2}:\d{2}$|^4:00:00$/,
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test('the type of chart can be candles, Heikin Ashi or a line, and it is kept for the next visit', async ({
+    page,
+    isMobile,
+  }) => {
+    const errors = collectErrors(page);
+    const chart = await openChart(page, isMobile);
+    await expect(chart).toHaveAttribute('data-type', 'candles');
+    for (const [label, type] of [
+      ['Heikin Ashi', 'heikin'],
+      ['Line', 'line'],
+      ['Candles', 'candles'],
+    ] as const) {
+      await page.getByTestId('chart-type').getByText(label, { exact: true }).click();
+      await expect(chart).toHaveAttribute('data-type', type);
+      await expect(chart.locator('canvas').first()).toBeVisible();
+    }
+    await page.getByTestId('chart-type').getByText('Heikin Ashi', { exact: true }).click();
+    await expect(chart).toHaveAttribute('data-type', 'heikin');
+    const kept = await page.evaluate(() => window.localStorage.getItem('vmgs.chart.prefs.v1'));
+    expect(JSON.parse(kept ?? '{}')).toMatchObject({ chartType: 'heikin' });
+    expect(errors).toEqual([]);
+  });
+
+  test('drawings: a horizontal line, a trendline and a Fibonacci retracement, then undo and clear', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'drawing is checked with the mouse');
+    const errors = collectErrors(page);
+    const chart = await openChart(page, isMobile);
+    await expect(chart).toHaveAttribute('data-drawings', '0');
+    const hint = page.getByTestId('chart-hint');
+    const draw = async (name: string, hintText: RegExp) => {
+      await page.getByTestId('draw-button').click();
+      await page.getByRole('menuitem', { name }).click();
+      // the menu fades out over the chart: wait for it to be gone before clicking on the chart
+      await expect(page.getByTestId('draw-menu')).toBeHidden();
+      await expect(hint).toHaveText(hintText);
+    };
+    // Two clicks within half a second are a double click for the chart, which is not a click: a person takes longer between
+    // two points, and so does this test.
+    let lastClickAt = 0;
+    const click = async (fx: number, fy: number) => {
+      const wait = 600 - (Date.now() - lastClickAt);
+      if (wait > 0) await page.waitForTimeout(wait);
+      const rect = await box(chart);
+      await page.mouse.click(rect.x + rect.width * fx, rect.y + rect.height * fy);
+      lastClickAt = Date.now();
+    };
+
+    await draw('Horizontal line', /^Horizontal line: click the price/);
+    await click(0.5, 0.4);
+    await expect(chart).toHaveAttribute('data-drawings', '1');
+    await expect(chart).toHaveAttribute('data-drawn', '1');
+    await expect(hint).toHaveText('');
+    await expect(page.getByTestId('draw-button')).toHaveText('Draw');
+
+    await draw('Trendline', /^Trendline: click the first point/);
+    await click(0.3, 0.6);
+    await expect(hint).toHaveText(/click the second point/);
+    await click(0.7, 0.3);
+    await expect(chart).toHaveAttribute('data-drawings', '2');
+    await expect(chart).toHaveAttribute('data-drawn', '2');
+
+    await draw('Fibonacci retracement', /^Fibonacci retracement: click the first point/);
+    await click(0.2, 0.7);
+    await click(0.6, 0.35);
+    await expect(chart).toHaveAttribute('data-drawings', '3');
+    // the dotted segment and the seven levels
+    await expect(chart).toHaveAttribute('data-drawn', '10');
+
+    // Escape puts the tool away without drawing anything
+    await draw('Horizontal line', /click the price/);
+    await page.keyboard.press('Escape');
+    await expect(hint).toHaveText('');
+    await expect(chart).toHaveAttribute('data-drawings', '3');
+
+    await page.getByTestId('draw-button').click();
+    await page.getByRole('menuitem', { name: 'Undo the last drawing' }).click();
+    await expect(chart).toHaveAttribute('data-drawings', '2');
+    await expect(chart).toHaveAttribute('data-drawn', '2');
+    const kept = await page.evaluate(() => window.localStorage.getItem('vmgs.chart.drawings.v1'));
+    expect(JSON.parse(kept ?? '[]')).toHaveLength(2);
+    await page.getByTestId('draw-button').click();
+    await page.getByRole('menuitem', { name: 'Clear all drawings' }).click();
+    await expect(chart).toHaveAttribute('data-drawings', '0');
+    await expect(chart).toHaveAttribute('data-drawn', '0');
+    expect(errors).toEqual([]);
+  });
+
+  test('full screen lays the chart over the whole window, and Escape or the button puts it back', async ({
+    page,
+    isMobile,
+  }) => {
+    const errors = collectErrors(page);
+    const chart = await openChart(page, isMobile);
+    const panel = page.getByTestId('chart-panel');
+    const view = page.viewportSize() ?? { width: 0, height: 0 };
+    const normal = await box(chart);
+
+    await page.getByTestId('chart-fullscreen').click();
+    await expect(panel).toHaveAttribute('data-fullscreen', 'true');
+    await expect(page.getByTestId('chart-fullscreen')).toHaveText('Exit full screen');
+    await expect(page.locator('body')).toHaveCSS('overflow', 'hidden');
+    await expect.poll(async () => (await box(panel)).width).toBeGreaterThanOrEqual(view.width - 1);
+    await expect
+      .poll(async () => (await box(panel)).height)
+      .toBeGreaterThanOrEqual(view.height - 1);
+    // the chart takes the room that the controls leave, and draws again at its new size
+    await expect.poll(async () => (await box(chart)).width).toBeGreaterThan(view.width - 40);
+    await expect.poll(async () => (await box(chart)).height).toBeGreaterThan(normal.height * 0.7);
+    await expect(chart.locator('canvas').first()).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveAttribute('data-fullscreen', 'false');
+    await expect(page.locator('body')).not.toHaveCSS('overflow', 'hidden');
+
+    await page.getByTestId('chart-fullscreen').click();
+    await expect(panel).toHaveAttribute('data-fullscreen', 'true');
+    await page.getByRole('button', { name: 'Exit full screen' }).click();
+    await expect(panel).toHaveAttribute('data-fullscreen', 'false');
+    expect(errors).toEqual([]);
+  });
+
+  test('phone: the controls fit the screen and the menus open inside it', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    const chart = await openChart(page, isMobile);
+    const view = page.viewportSize() ?? { width: 0, height: 0 };
+    for (const id of ['chart-type', 'indicators-button', 'draw-button', 'chart-fullscreen']) {
+      const rect = await box(page.getByTestId(id));
+      expect(rect.x, id).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width, id).toBeLessThanOrEqual(view.width + 1);
+      expect(rect.height, id).toBeGreaterThanOrEqual(22);
+    }
+    for (const [button, menu] of [
+      ['indicators-button', 'indicators-menu'],
+      ['draw-button', 'draw-menu'],
+    ] as const) {
+      await page.getByTestId(button).click();
+      await expect(page.getByTestId(menu)).toBeVisible();
+      const rect = await box(page.getByTestId(menu));
+      expect(rect.x, menu).toBeGreaterThanOrEqual(0);
+      expect(rect.x + rect.width, menu).toBeLessThanOrEqual(view.width + 1);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId(menu)).toBeHidden();
+    }
+    // a pane under the price still leaves the price a usable height on a phone
+    await page.getByTestId('indicators-button').click();
+    await page.getByRole('checkbox', { name: 'RSI', exact: true }).check();
+    await page.keyboard.press('Escape');
+    await expect(chart).toHaveAttribute('data-panes', '2');
+    expect((await box(chart)).height).toBeGreaterThan(300);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
 test.describe('the chart (basics)', () => {
   test('draws on a canvas, shows its overlays and levels as text and logs no error', async ({
     page,

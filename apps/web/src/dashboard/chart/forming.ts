@@ -54,6 +54,16 @@ export function msToNextCandle(tf: Timeframe, nowMs: number): number {
   return bucketStart(tf, nowMs) + TIMEFRAME_MS[tf] - nowMs;
 }
 
+/** "04:09" for a time under an hour, "1:04:09" above it (rounded up to the second, like a clock counting down). */
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const two = (value: number) => String(value).padStart(2, '0');
+  return hours > 0 ? `${hours}:${two(minutes)}:${two(seconds)}` : `${two(minutes)}:${two(seconds)}`;
+}
+
 /**
  * The server's clock minus this PC's, from a snapshot that was fetched at `fetchedAtMs` (this PC's clock): the snapshot says
  * when the server got its newest tick and how old that was, so the server's "now" is the sum. Off by the delay of the
