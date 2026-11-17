@@ -2,11 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import { expiryOf, priorityOf, type OutboxChannel, type OutboxRow } from '@vmgs/core';
 
-import type {
-  OutboxEntry,
-  OutboxStore,
-  PushSubscriptionRecord,
-  PushSubscriptionStore,
+import {
+  inLane,
+  type OutboxEntry,
+  type OutboxLane,
+  type OutboxStore,
+  type PushSubscriptionRecord,
+  type PushSubscriptionStore,
 } from '../alerts/store';
 
 type Mutable = { -readonly [K in keyof OutboxEntry]: OutboxEntry[K] };
@@ -76,12 +78,13 @@ export class MemoryOutboxStore implements OutboxStore, PushSubscriptionStore {
     return Promise.resolve(count);
   }
 
-  claimNext(channel: OutboxChannel, now: number): Promise<OutboxEntry | null> {
+  claimNext(channel: OutboxChannel, now: number, lane?: OutboxLane): Promise<OutboxEntry | null> {
     const due = this.rows
       .map((row, index) => ({ row, index }))
       .filter(
         ({ row }) =>
           row.channel === channel &&
+          inLane(row.kind, lane) &&
           (row.status === 'PENDING' || row.status === 'FAILED') &&
           row.nextAttemptAt <= now &&
           expiryOf(row.expiresAt, row.createdAt) > now,

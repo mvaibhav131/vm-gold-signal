@@ -130,6 +130,8 @@ export const workerEnvSchema = z
       .refine((symbols) => new Set(symbols).size === symbols.length, 'duplicate symbol')
       .refine((symbols) => symbols.includes(TRADED_SYMBOL), `must include ${TRADED_SYMBOL}`),
     TELEGRAM_BOT_TOKEN: telegramBotToken.optional(),
+    // A second bot for what is not a signal (the alert bot): see `SIGNAL_BOT_KINDS` of the core. Without it one bot tells all.
+    TELEGRAM_ALERT_BOT_TOKEN: telegramBotToken.optional(),
     VAPID_PUBLIC_KEY: vapidPublicKey.optional(),
     VAPID_PRIVATE_KEY: vapidPrivateKey.optional(),
     VAPID_SUBJECT: vapidSubject.optional(),
@@ -151,6 +153,25 @@ export const workerEnvSchema = z
         message: 'set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT together, or none',
         path: ['VAPID_PUBLIC_KEY'],
       });
+    }
+    // The alert bot only takes what the signal bot leaves, and the chat is the one that the signal bot is linked to.
+    if (ctx.value.TELEGRAM_ALERT_BOT_TOKEN !== undefined) {
+      if (ctx.value.TELEGRAM_BOT_TOKEN === undefined) {
+        ctx.issues.push({
+          code: 'custom',
+          input: ctx.value,
+          message: 'TELEGRAM_ALERT_BOT_TOKEN needs TELEGRAM_BOT_TOKEN (the signal bot) as well',
+          path: ['TELEGRAM_ALERT_BOT_TOKEN'],
+        });
+      } else if (ctx.value.TELEGRAM_ALERT_BOT_TOKEN === ctx.value.TELEGRAM_BOT_TOKEN) {
+        ctx.issues.push({
+          code: 'custom',
+          input: ctx.value,
+          message:
+            'the alert bot must be another bot than the signal bot (make a second one with @BotFather)',
+          path: ['TELEGRAM_ALERT_BOT_TOKEN'],
+        });
+      }
     }
   });
 export type WorkerEnv = z.infer<typeof workerEnvSchema>;

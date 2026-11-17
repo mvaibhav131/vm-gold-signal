@@ -40,6 +40,21 @@ import type {
 export const OUTBOX_CHANNELS = ['telegram', 'webpush'] as const;
 export type OutboxChannel = (typeof OUTBOX_CHANNELS)[number];
 
+/**
+ * What the signal bot tells: the signals and the reports about them. Everything else (a move of gold, a headline, the
+ * calendar, a notice about the feed or the storage, a test) is for the alert bot when there is one; without an alert bot
+ * every message goes to the one bot, as before.
+ */
+export const SIGNAL_BOT_KINDS: readonly NotificationKind[] = [
+  'SIGNAL_NEW',
+  'SIGNAL_TP1',
+  'SIGNAL_CLOSED',
+  'SIGNAL_CANCELLED',
+  'SIGNAL_REVIEW_FINAL',
+  'DAILY_DIGEST',
+  'MONTHLY_REPORT',
+];
+
 /** The settings that decide who is told about a signal (`app_settings`, the shape of `settingsSchema`). */
 export interface AlertSettings {
   readonly displayTz: string;

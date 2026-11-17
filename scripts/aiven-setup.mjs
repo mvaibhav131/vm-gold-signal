@@ -13,7 +13,11 @@
 //   pnpm aiven import    imports the newest three HistData zips (data/histdata) into the database again
 //   pnpm aiven status    asks the database whether the worker is running: "ALIVE" or not
 //   pnpm aiven link      makes the code that links your Telegram chat to the bot: send the bot  /link <code>
-//   pnpm aiven test      queues a test message; the running worker sends it to Telegram within seconds
+//   pnpm aiven test      queues a test message; the running worker sends it to Telegram within seconds (to the alert bot, when
+//                        there is one)
+//   pnpm aiven alerts    adds a second Telegram bot, the alert bot, for what is not a signal (moves of gold, headlines, feed and
+//                        storage notices, the test): only signals and their reports stay in the signal bot. `alerts off`
+//                        takes it away again
 //   pnpm aiven here      runs the worker on THIS PC in Docker (against the same Aiven database and Telegram bot), for when
 //                        the worker of the host is not running; `here stop` stops it, `here logs` shows its log. Never at
 //                        the same time as the worker of a host.
@@ -254,6 +258,8 @@ function workerVarsText(config, caText) {
     `DATABASE_CA_PEM=${oneLine(caText)}`,
   ];
   if (config.TELEGRAM_BOT_TOKEN) lines.push(`TELEGRAM_BOT_TOKEN=${config.TELEGRAM_BOT_TOKEN}`);
+  if (config.TELEGRAM_ALERT_BOT_TOKEN)
+    lines.push(`TELEGRAM_ALERT_BOT_TOKEN=${config.TELEGRAM_ALERT_BOT_TOKEN}`);
   if (config.HEALTHCHECKS_PING_URL)
     lines.push(`HEALTHCHECKS_PING_URL=${config.HEALTHCHECKS_PING_URL}`);
   return `${lines.join('\n')}\n`;
@@ -315,6 +321,8 @@ function bothVarsText(config, caText) {
     `APP_ENCRYPTION_KEY=${config.APP_ENCRYPTION_KEY}`,
   ];
   if (config.TELEGRAM_BOT_TOKEN) lines.push(`TELEGRAM_BOT_TOKEN=${config.TELEGRAM_BOT_TOKEN}`);
+  if (config.TELEGRAM_ALERT_BOT_TOKEN)
+    lines.push(`TELEGRAM_ALERT_BOT_TOKEN=${config.TELEGRAM_ALERT_BOT_TOKEN}`);
   if (config.HEALTHCHECKS_PING_URL)
     lines.push(`HEALTHCHECKS_PING_URL=${config.HEALTHCHECKS_PING_URL}`);
   return `${lines.join('\n')}\n`;
@@ -361,6 +369,7 @@ async function setup() {
       // by a second run, or the second step of the login would become unreadable
       APP_ENCRYPTION_KEY: same && saved.APP_ENCRYPTION_KEY ? saved.APP_ENCRYPTION_KEY : hex(32),
       TELEGRAM_BOT_TOKEN: same ? saved.TELEGRAM_BOT_TOKEN : undefined,
+      TELEGRAM_ALERT_BOT_TOKEN: same ? saved.TELEGRAM_ALERT_BOT_TOKEN : undefined,
       HEALTHCHECKS_PING_URL: same ? saved.HEALTHCHECKS_PING_URL : undefined,
     };
     if (same) say('   (This database was set up before: its saved passwords are used again.)\n');
@@ -430,6 +439,9 @@ function workerEnv(config) {
     FEED_PROVIDER: 'biquote',
     PUBLIC_HOST: 'localhost',
     ...(config.TELEGRAM_BOT_TOKEN ? { TELEGRAM_BOT_TOKEN: config.TELEGRAM_BOT_TOKEN } : {}),
+    ...(config.TELEGRAM_ALERT_BOT_TOKEN
+      ? { TELEGRAM_ALERT_BOT_TOKEN: config.TELEGRAM_ALERT_BOT_TOKEN }
+      : {}),
   };
 }
 
@@ -523,6 +535,67 @@ function telegram(command) {
   process.exitCode = pnpm(['cli', command], workerEnv(config));
 }
 
+/**
+ * `pnpm aiven alerts`: the second Telegram bot, for what is not a signal (moves of gold, headlines, the feed and storage
+ * notices, the test). Saves its token and writes the settings files again; `pnpm aiven alerts off` takes it away.
+ */
+async function alertBot(argument) {
+  const config = requireConfig();
+  if (!config.TELEGRAM_BOT_TOKEN) {
+    throw new Failure(
+      'The signal bot comes first: run  pnpm aiven setup  and paste its token at step 5.',
+    );
+  }
+  if (argument === 'off') {
+    delete config.TELEGRAM_ALERT_BOT_TOKEN;
+    saveConfig(config);
+    writeVarsFiles(config);
+    say('The alert bot is off: one bot tells everything again after the next deploy.');
+    say(
+      `Remove the line TELEGRAM_ALERT_BOT_TOKEN from the settings of the host, and deploy again. File: ${renderVarsFile}`,
+    );
+    return;
+  }
+  say(
+    'The alert bot keeps the signal bot clean: only signals and their reports stay in the signal bot,',
+  );
+  say(
+    'and the moves of gold, headlines, feed and storage notices and the test go to the alert bot.\n',
+  );
+  say(
+    '1. In Telegram open @BotFather, send /newbot, name it "VM Gold Alert" and copy the token it gives.',
+  );
+  say('2. Open the new bot and press START (a bot cannot write to you before you do).');
+  say('3. Paste the token here.\n');
+  const prompt = await makePrompter();
+  try {
+    const keep = config.TELEGRAM_ALERT_BOT_TOKEN ? ' (Enter keeps the saved one)' : '';
+    const token = await prompt.ask(`   Token of the alert bot${keep}: `, { secret: true });
+    if (token !== '') config.TELEGRAM_ALERT_BOT_TOKEN = token;
+    if (!config.TELEGRAM_ALERT_BOT_TOKEN) throw new Failure('No token was given.');
+    if (config.TELEGRAM_ALERT_BOT_TOKEN === config.TELEGRAM_BOT_TOKEN) {
+      throw new Failure(
+        'That is the token of the signal bot. The alert bot must be a second bot (@BotFather, /newbot).',
+      );
+    }
+    saveConfig(config);
+    writeVarsFiles(config);
+    say();
+    say(`Saved. Its line TELEGRAM_ALERT_BOT_TOKEN is in the settings file:  ${renderVarsFile}`);
+    say(
+      '4. Add that line to the environment variables of the Render service and deploy again (Manual Deploy).',
+    );
+    say(
+      '5. Then  pnpm aiven test  : the test message arrives in the alert bot, not in the signal bot.',
+    );
+    say(
+      'A worker on this PC (pnpm aiven here) takes the new token after  pnpm aiven here stop  and  pnpm aiven here.',
+    );
+  } finally {
+    prompt.close();
+  }
+}
+
 /** Writes the settings files again from what `pnpm aiven setup` saved: no need to run the setup again. */
 function render() {
   const config = requireConfig();
@@ -602,6 +675,9 @@ async function main() {
       break;
     case 'test':
       telegram('telegram:test');
+      break;
+    case 'alerts':
+      await alertBot(rest[0]);
       break;
     case 'render':
       render();

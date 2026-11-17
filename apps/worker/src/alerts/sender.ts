@@ -1,8 +1,8 @@
-import { afterFailure, expiryOf, type SendFailure } from '@vmgs/core';
+import { SIGNAL_BOT_KINDS, afterFailure, expiryOf, type SendFailure } from '@vmgs/core';
 
 import { classifyTelegramError } from '../telegram/client';
 import type { TelegramTransport } from '../telegram/transport';
-import type { OutboxEntry, OutboxStore, PushSubscriptionStore } from './store';
+import type { OutboxEntry, OutboxLane, OutboxStore, PushSubscriptionStore } from './store';
 import type { PushPayload, WebPushSink } from './webpush';
 
 export interface SenderStats {
@@ -18,6 +18,14 @@ export interface OutboxSenderOptions {
   readonly store: OutboxStore;
   /** Telegram; `chatId` is the linked chat, null while nothing is linked. Without it Telegram rows wait. */
   readonly telegram?: {
+    readonly transport: TelegramTransport;
+    readonly chatId: () => Promise<number | string | null>;
+  };
+  /**
+   * A second Telegram bot for what is not a signal (a move of gold, a headline, the feed and storage notices, a test). It
+   * has its own rate limit, so a wait of one bot never holds back the other. Without it `telegram` takes every message.
+   */
+  readonly alerts?: {
     readonly transport: TelegramTransport;
     readonly chatId: () => Promise<number | string | null>;
   };
@@ -42,6 +50,13 @@ export interface OutboxSenderOptions {
 const ERROR_LIMIT = 500;
 const clip = (text: string): string =>
   text.length > ERROR_LIMIT ? `${text.slice(0, ERROR_LIMIT)}...` : text;
+
+/** One Telegram bot of the sender and the messages it takes from the outbox (no lane: all of them). */
+interface TelegramLane {
+  readonly transport: TelegramTransport;
+  readonly chatId: () => Promise<number | string | null>;
+  readonly lane: OutboxLane | undefined;
+}
 
 const URGENCIES = ['very-low', 'low', 'normal', 'high'] as const;
 
@@ -78,7 +93,7 @@ function pushPayloadOf(payload: Readonly<Record<string, unknown>>): PushPayload 
  */
 export class OutboxSender {
   private readonly store: OutboxStore;
-  private readonly telegram: OutboxSenderOptions['telegram'];
+  private readonly lanes: readonly TelegramLane[];
   private readonly webpush: OutboxSenderOptions['webpush'];
   private readonly now: () => number;
   private readonly pollMs: number;
@@ -95,7 +110,18 @@ export class OutboxSender {
 
   constructor(options: OutboxSenderOptions) {
     this.store = options.store;
-    this.telegram = options.telegram;
+    const { telegram, alerts } = options;
+    if (telegram === undefined) {
+      this.lanes = [];
+    } else if (alerts === undefined) {
+      this.lanes = [{ ...telegram, lane: undefined }];
+    } else {
+      // the signal bot takes the signals and their reports, the alert bot everything else
+      this.lanes = [
+        { ...telegram, lane: { only: SIGNAL_BOT_KINDS } },
+        { ...alerts, lane: { except: SIGNAL_BOT_KINDS } },
+      ];
+    }
     this.webpush = options.webpush;
     this.now = options.now ?? Date.now;
     this.pollMs = options.pollMs ?? 500;
@@ -131,10 +157,9 @@ export class OutboxSender {
     this.counters.expired += await this.store.expireOverdue(start);
 
     let handled = 0;
-    const telegram = this.telegram;
-    if (telegram !== undefined) {
+    for (const telegram of this.lanes) {
       while (telegram.transport.waitMs() === 0) {
-        const row = await this.store.claimNext('telegram', this.now());
+        const row = await this.store.claimNext('telegram', this.now(), telegram.lane);
         if (row === null) break;
         await this.sendTelegram(row, telegram);
         handled += 1;
@@ -179,10 +204,7 @@ export class OutboxSender {
       let wait = this.pollMs;
       try {
         const handled = await this.runOnce();
-        if (handled > 0) {
-          const gate = this.telegram?.transport.waitMs() ?? 0;
-          wait = Math.min(this.pollMs, gate);
-        }
+        if (handled > 0) wait = Math.min(this.pollMs, this.nextTelegramGateMs());
       } catch (error) {
         this.counters.errors += 1;
         this.log('error', 'the outbox sender could not finish a pass', {
@@ -192,6 +214,13 @@ export class OutboxSender {
       }
       if (wait > 0) await this.sleep(wait);
     }
+  }
+
+  /** How long until the first Telegram bot may send again (0 when one may now, or when there is none). */
+  private nextTelegramGateMs(): number {
+    return this.lanes.length === 0
+      ? 0
+      : Math.min(...this.lanes.map((telegram) => telegram.transport.waitMs()));
   }
 
   private sleep(ms: number): Promise<void> {
@@ -210,10 +239,7 @@ export class OutboxSender {
     });
   }
 
-  private async sendTelegram(
-    row: OutboxEntry,
-    telegram: NonNullable<OutboxSenderOptions['telegram']>,
-  ): Promise<void> {
+  private async sendTelegram(row: OutboxEntry, telegram: TelegramLane): Promise<void> {
     const text = row.payload.text;
     if (typeof text !== 'string' || text === '') {
       await this.settle(row, { type: 'permanent', message: 'the message has no text' });

@@ -633,6 +633,143 @@ describe('channels', () => {
   });
 });
 
+describe('a signal bot and an alert bot', () => {
+  interface Bots {
+    readonly clock: { now: number };
+    readonly store: MemoryOutboxStore;
+    readonly sender: OutboxSender;
+    readonly signalBot: { chatId: number | string; text: string; at: number }[];
+    readonly alertBot: { chatId: number | string; text: string; at: number }[];
+    /** Makes the alert bot refuse (Telegram's 429): the signal bot must not notice. */
+    readonly alertScript: (Error | 'ok')[];
+  }
+
+  function bots(): Bots {
+    const clock = { now: T };
+    const store = new MemoryOutboxStore();
+    const signalBot: Bots['signalBot'] = [];
+    const alertBot: Bots['alertBot'] = [];
+    const alertScript: Bots['alertScript'] = [];
+    const transportOf = (sent: Bots['signalBot'], script: (Error | 'ok')[]) =>
+      new TelegramTransport({
+        client: {
+          sendMessage: (chatId, text) => {
+            const step = script.shift() ?? 'ok';
+            if (step !== 'ok') return Promise.reject(step);
+            sent.push({ chatId, text, at: clock.now });
+            return Promise.resolve({ messageId: sent.length });
+          },
+        },
+        now: () => clock.now,
+      });
+    const sender = new OutboxSender({
+      store,
+      telegram: { transport: transportOf(signalBot, []), chatId: () => Promise.resolve(CHAT) },
+      alerts: {
+        transport: transportOf(alertBot, alertScript),
+        chatId: () => Promise.resolve(CHAT),
+      },
+      now: () => clock.now,
+    });
+    return { clock, store, sender, signalBot, alertBot, alertScript };
+  }
+
+  it('sends the signals and their reports from the signal bot and everything else from the alert bot', async () => {
+    const b = bots();
+    const kinds: NotificationKind[] = [
+      'SIGNAL_NEW',
+      'SIGNAL_TP1',
+      'SIGNAL_CLOSED',
+      'SIGNAL_CANCELLED',
+      'SIGNAL_REVIEW_FINAL',
+      'DAILY_DIGEST',
+      'MONTHLY_REPORT',
+      'MARKET_MOVE',
+      'NEWS_HEADLINE',
+      'NEWS_UPCOMING',
+      'NEWS_RELEASED',
+      'SYSTEM_DEGRADED',
+      'SYSTEM_RECOVERED',
+      'ENGINE_PAUSED',
+      'STORAGE_WARNING',
+      'TEST',
+    ];
+    await b.store.enqueue(
+      kinds.map((kind) => tg(kind, kind)),
+      b.clock.now,
+    );
+    for (const _kind of kinds) {
+      await b.sender.runOnce();
+      b.clock.now += SECOND;
+    }
+    expect(b.signalBot.map((item) => item.text).sort()).toEqual(
+      [
+        'SIGNAL_NEW',
+        'SIGNAL_TP1',
+        'SIGNAL_CLOSED',
+        'SIGNAL_CANCELLED',
+        'SIGNAL_REVIEW_FINAL',
+        'DAILY_DIGEST',
+        'MONTHLY_REPORT',
+      ].sort(),
+    );
+    expect(b.alertBot.map((item) => item.text).sort()).toEqual(
+      [
+        'MARKET_MOVE',
+        'NEWS_HEADLINE',
+        'NEWS_UPCOMING',
+        'NEWS_RELEASED',
+        'SYSTEM_DEGRADED',
+        'SYSTEM_RECOVERED',
+        'ENGINE_PAUSED',
+        'STORAGE_WARNING',
+        'TEST',
+      ].sort(),
+    );
+    // both bots write to the same chat
+    expect(new Set([...b.signalBot, ...b.alertBot].map((item) => item.chatId))).toEqual(
+      new Set([CHAT]),
+    );
+  });
+
+  it('keeps two rate limits: an entry alert does not wait for the alert bot, nor the reverse', async () => {
+    const b = bots();
+    await b.store.enqueue(
+      [tg('MARKET_MOVE', 'move'), tg('SIGNAL_NEW', 'new'), tg('NEWS_HEADLINE', 'headline')],
+      b.clock.now,
+    );
+    // one pass at one instant: each bot sends one message (its own limit is one a second), neither waits for the other
+    expect(await b.sender.runOnce()).toBe(2);
+    expect(b.signalBot.map((item) => item.text)).toEqual(['new']);
+    expect(b.alertBot.map((item) => item.text)).toEqual(['move']);
+    b.clock.now += SECOND;
+    expect(await b.sender.runOnce()).toBe(1);
+    expect(b.alertBot.map((item) => item.text)).toEqual(['move', 'headline']);
+  });
+
+  it('a wait that Telegram asks of the alert bot does not hold back a signal', async () => {
+    const b = bots();
+    b.alertScript.push(new TelegramApiError('Too Many Requests', 'api', 429, 429, 120));
+    await b.store.enqueue([tg('MARKET_MOVE', 'move')], b.clock.now);
+    await b.sender.runOnce();
+    expect(b.alertBot).toEqual([]);
+    b.clock.now += SECOND;
+    await b.store.enqueue([tg('SIGNAL_NEW', 'new')], b.clock.now);
+    expect(await b.sender.runOnce()).toBe(1);
+    expect(b.signalBot.map((item) => item.text)).toEqual(['new']);
+  });
+
+  it('without an alert bot one bot tells everything, as before', async () => {
+    const r = rig();
+    await r.store.enqueue([tg('MARKET_MOVE', 'move'), tg('SIGNAL_NEW', 'new')], r.clock.now);
+    for (let i = 0; i < 2; i += 1) {
+      await r.sender.runOnce();
+      r.clock.now += SECOND;
+    }
+    expect(r.sent.map((item) => item.text)).toEqual(['new', 'move']);
+  });
+});
+
 describe('the loop', () => {
   let r: Rig;
   beforeEach(() => {

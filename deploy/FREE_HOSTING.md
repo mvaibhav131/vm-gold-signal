@@ -122,6 +122,22 @@ The `backup` and `drill` checks belong to the server way and are not used here.
 
 The strategies are in forward testing: treat every alert as a test, not as an instruction to trade.
 
+### 2.8 A second bot for the alerts (optional)
+
+The signal bot gets only signals and their reports (new signal, TP1, closed, cancelled, final review, daily and monthly reports).
+Everything else (a move of gold, headlines, the calendar, feed and storage notices, the test) can go to a second bot, the
+alert bot, so that the signal bot stays clean.
+
+1. `@BotFather`, `/newbot`, name it for example "VM Gold Alert", copy its token.
+2. Open that bot in Telegram and press **Start** (a bot cannot write to you first).
+3. `pnpm aiven alerts` asks for the token (hidden), saves it and writes `render-vars.txt` again.
+4. Add the new line `TELEGRAM_ALERT_BOT_TOKEN=...` to the environment of the Render service and deploy again.
+5. `pnpm aiven test`: the test message arrives in the alert bot.
+
+Nothing is linked for the alert bot: in a private chat the chat id is yours for every bot, so it writes to the chat that the signal
+bot is linked to. Until you press Start in it, its messages wait and are tried again (for up to an hour each, then dropped).
+`pnpm aiven alerts off` takes it away: one bot tells everything again.
+
 ## 3. When something stops
 
 | What happens                                  | What you see                                                                              | What to do                                                                                                                                                                           |
@@ -173,6 +189,7 @@ The lines of `render-vars.txt`. Any host that runs the image of the root `Docker
 | `APP_ENCRYPTION_KEY`                          | 32 random bytes in hex. The second step of the login is encrypted with it: it is made once and never changed (losing it: `owner:totp-off`). |
 | `API_TRUSTED_PROXY_HOPS`                      | `2`: Caddy and the proxy of the host (`deploy/Caddyfile.site`).                                                                             |
 | `TELEGRAM_BOT_TOKEN`, `HEALTHCHECKS_PING_URL` | Optional: without the token no Telegram message is sent; without the URL nothing is pinged.                                                 |
+| `TELEGRAM_ALERT_BOT_TOKEN`                    | Optional: a second bot for what is not a signal (section 2.8). Needs `TELEGRAM_BOT_TOKEN`; press Start in the alert bot once.               |
 | `PUBLIC_HOST`                                 | Only for a host that is not Render: the public name of the website. On Render it comes from `RENDER_EXTERNAL_HOSTNAME`.                     |
 
 The Postgres side: three roles, one per program (`vmgs_worker`, `vmgs_api`, `vmgs_backup`), made by the migrations with the
@@ -217,3 +234,11 @@ ticks of the last 14 days exist only in the database.
   `pnpm aiven here` is the way out on any day.
 - **Test clocks.** Two tests of the preview data had the numbers of one month in them and failed in the next one; the
   clock of those tests is fixed.
+- **A storage alert that was not true.** The size guard read the disk of the container the worker runs in. With the database
+  at Aiven that is the shared disk of Render (83 percent full): "STORAGE 119% of the 291 GB budget", and the days of ticks
+  were cut from 14 to 1 for nothing. The disk is read only when the database is on the same machine (`db`, `localhost`); with a
+  database at a host the guard compares the size of the database with its limit, and a shortened retention lengthens again,
+  one step an hour. The limit of the database is still 10 GB, but the free Aiven plan has 1 GB: it is a number to watch on the
+  System screen (Storage).
+- **Alerts for every reconnect.** A reconnect of the feed takes about half a minute and each one was announced twice
+  (down and back). A break is now told once it has lasted 3 minutes, or at once when a signal is open.

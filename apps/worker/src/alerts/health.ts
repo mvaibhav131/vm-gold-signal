@@ -34,6 +34,11 @@ export interface HealthWatcherOptions {
   readonly pollMs?: number;
   /** An incident that ended longer ago than this is not announced as recovered: the news would be stale. */
   readonly recoveredWithinMs?: number;
+  /**
+   * A break of the feed is told only once it has lasted this long: a reconnect takes half a minute and is not news. When a
+   * signal is open (it cannot be followed without the feed) it is told at once.
+   */
+  readonly announceAfterMs?: number;
   readonly log?: (
     level: 'info' | 'error',
     message: string,
@@ -54,6 +59,7 @@ export class HealthWatcher {
   private readonly now: () => number;
   private readonly pollMs: number;
   private readonly recoveredWithinMs: number;
+  private readonly announceAfterMs: number;
   private readonly log: NonNullable<HealthWatcherOptions['log']>;
   private readonly announced = new Set<string>();
   private running = false;
@@ -65,6 +71,7 @@ export class HealthWatcher {
     this.now = options.now ?? Date.now;
     this.pollMs = options.pollMs ?? 5_000;
     this.recoveredWithinMs = options.recoveredWithinMs ?? 600_000;
+    this.announceAfterMs = options.announceAfterMs ?? 180_000;
     this.log = options.log ?? (() => undefined);
   }
 
@@ -80,12 +87,14 @@ export class HealthWatcher {
     for (const incident of incidents) {
       if (incident.endedAt === null) {
         if (this.announced.has(key(incident))) continue;
+        const openSeqs = await this.options.store.openSeqs();
+        if (openSeqs.length === 0 && now - incident.startedAt < this.announceAfterMs) continue;
         const message = feedDegradedMessage(
           {
             kind: incident.kind,
             since: incident.startedAt,
             silentMs: incident.kind === 'STALE' ? Math.max(0, now - incident.startedAt) : null,
-            openSeqs: await this.options.store.openSeqs(),
+            openSeqs,
           },
           display,
         );

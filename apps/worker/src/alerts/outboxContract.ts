@@ -122,6 +122,28 @@ export function outboxStoreContract(
       });
     });
 
+    it('takes only the kinds of a lane, still most important first', async () => {
+      await withStore(async ({ store }) => {
+        const signal = outboxRow('SIGNAL_NEW');
+        const result = outboxRow('SIGNAL_CLOSED');
+        const degraded = outboxRow('SYSTEM_DEGRADED');
+        const move = outboxRow('MARKET_MOVE');
+        await store.enqueue([degraded], T);
+        await store.enqueue([move, result, signal], T + SECOND);
+        const signals = { only: ['SIGNAL_NEW', 'SIGNAL_CLOSED'] } as const;
+        const rest = { except: ['SIGNAL_NEW', 'SIGNAL_CLOSED'] } as const;
+        const now = T + 2 * SECOND;
+
+        expect((await store.claimNext('telegram', now, signals))?.eventKey).toBe(signal.eventKey);
+        // the rest: the oldest of the same importance first
+        expect((await store.claimNext('telegram', now, rest))?.eventKey).toBe(degraded.eventKey);
+        expect((await store.claimNext('telegram', now, signals))?.eventKey).toBe(result.eventKey);
+        expect(await store.claimNext('telegram', now, signals)).toBeNull();
+        expect((await store.claimNext('telegram', now, rest))?.eventKey).toBe(move.eventKey);
+        expect(await store.claimNext('telegram', now, rest)).toBeNull();
+      });
+    });
+
     it('a claimed message is SENDING with one more attempt, and nobody gets it twice', async () => {
       await withStore(async (harness) => {
         const message = outboxRow('SIGNAL_NEW');

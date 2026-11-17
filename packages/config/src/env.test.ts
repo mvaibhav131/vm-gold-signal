@@ -256,6 +256,24 @@ describe('workerEnvSchema', () => {
     expect(problems(workerEnvSchema, { ...worker, TELEGRAM_BOT_TOKEN: 'abc' })).toHaveLength(1);
   });
 
+  it('takes an alert bot only beside the signal bot, and another bot than it', () => {
+    const OTHER = `123456789:${'B'.repeat(35)}`;
+    const both = { ...worker, TELEGRAM_BOT_TOKEN: TOKEN, TELEGRAM_ALERT_BOT_TOKEN: OTHER };
+    expect(problems(workerEnvSchema, both)).toEqual([]);
+    expect(parseEnv(workerEnvSchema, both).TELEGRAM_ALERT_BOT_TOKEN).toBe(OTHER);
+    expect(problems(workerEnvSchema, { ...worker, TELEGRAM_ALERT_BOT_TOKEN: OTHER })).toEqual([
+      expect.stringMatching(/^TELEGRAM_ALERT_BOT_TOKEN: .*needs TELEGRAM_BOT_TOKEN/),
+    ]);
+    expect(
+      problems(workerEnvSchema, {
+        ...worker,
+        TELEGRAM_BOT_TOKEN: TOKEN,
+        TELEGRAM_ALERT_BOT_TOKEN: TOKEN,
+      }),
+    ).toEqual([expect.stringMatching(/^TELEGRAM_ALERT_BOT_TOKEN: .*another bot/)]);
+    expect(problems(workerEnvSchema, { ...both, TELEGRAM_ALERT_BOT_TOKEN: 'abc' })).toHaveLength(1);
+  });
+
   it('needs all VAPID values or none', () => {
     const all = {
       VAPID_PUBLIC_KEY: VAPID_PUBLIC,

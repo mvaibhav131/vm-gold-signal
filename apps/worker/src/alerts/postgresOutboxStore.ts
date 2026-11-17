@@ -9,6 +9,7 @@ import type { Pool } from 'pg';
 
 import type {
   OutboxEntry,
+  OutboxLane,
   OutboxStatus,
   OutboxStore,
   PushSubscriptionRecord,
@@ -104,12 +105,24 @@ export class PostgresOutboxStore implements OutboxStore, PushSubscriptionStore {
     return result.rowCount ?? 0;
   }
 
-  async claimNext(channel: OutboxChannel, now: number): Promise<OutboxEntry | null> {
+  async claimNext(
+    channel: OutboxChannel,
+    now: number,
+    lane?: OutboxLane,
+  ): Promise<OutboxEntry | null> {
+    // the kinds of the lane are fixed names of the core, written into the statement as parameters, never as text
+    const kinds = lane === undefined ? null : 'only' in lane ? lane.only : lane.except;
+    const laneSql =
+      lane === undefined
+        ? ''
+        : 'only' in lane
+          ? 'AND kind = ANY($3::text[])'
+          : 'AND NOT (kind = ANY($3::text[]))';
     const { rows } = await this.pool.query<EntryRow>(
       `WITH next AS (
          SELECT id FROM notification_outbox
           WHERE channel = $1 AND status IN ('PENDING', 'FAILED')
-            AND next_attempt_at <= $2 AND ${EXPIRY_SQL} > $2
+            AND next_attempt_at <= $2 AND ${EXPIRY_SQL} > $2 ${laneSql}
           ORDER BY ${PRIORITY_SQL}, next_attempt_at, created_at, id
           LIMIT 1
           FOR UPDATE SKIP LOCKED)
@@ -120,7 +133,7 @@ export class PostgresOutboxStore implements OutboxStore, PushSubscriptionStore {
        RETURNING ${COLUMNS.split(', ')
          .map((column) => `o.${column}`)
          .join(', ')}`,
-      [channel, new Date(now)],
+      kinds === null ? [channel, new Date(now)] : [channel, new Date(now), [...kinds]],
     );
     const row = rows[0];
     return row === undefined ? null : entryOf(row);

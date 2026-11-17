@@ -23,6 +23,19 @@ export interface OutboxEntry {
 }
 
 /**
+ * Which kinds a claim may take: only the listed ones, or everything except them. It is how the signal bot and the alert
+ * bot each take their own messages from the one outbox.
+ */
+export type OutboxLane =
+  { readonly only: readonly NotificationKind[] } | { readonly except: readonly NotificationKind[] };
+
+/** Whether a message of `kind` belongs to the lane (no lane: all of them). */
+export function inLane(kind: NotificationKind, lane: OutboxLane | undefined): boolean {
+  if (lane === undefined) return true;
+  return 'only' in lane ? lane.only.includes(kind) : !lane.except.includes(kind);
+}
+
+/**
  * The outbox as the sender uses it. Every write of a state is one statement, so a crash leaves a
  * row in a state that `recoverStuck` and the retry rules can read: SENDING means "claimed at
  * `nextAttemptAt`, no result yet".
@@ -35,9 +48,9 @@ export interface OutboxStore {
   /**
    * Takes the next message of a channel that is due and not expired, most important first (SIGNAL_NEW,
    * then results, then the rest), oldest first within that. It becomes SENDING with one more attempt.
-   * Two callers never get the same row.
+   * Two callers never get the same row. With a `lane` only the messages of those kinds are taken.
    */
-  claimNext(channel: OutboxChannel, now: number): Promise<OutboxEntry | null>;
+  claimNext(channel: OutboxChannel, now: number, lane?: OutboxLane): Promise<OutboxEntry | null>;
   markSent(id: string, at: number, providerMessageId: string | null): Promise<void>;
   markFailed(id: string, nextAttemptAt: number, error: string): Promise<void>;
   markDead(id: string, error: string): Promise<void>;

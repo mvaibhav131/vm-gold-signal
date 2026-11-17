@@ -17,6 +17,7 @@ import { DatabaseCourseSource } from './lifecycle/course';
 import { PostgresLifecycleStore } from './lifecycle/postgresStore';
 import { SignalCreator } from './lifecycle/signals';
 import { OutcomeTracker } from './lifecycle/tracker';
+import { NoDisk, databaseOnThisMachine } from './maintenance/disk';
 import { RollupReconcileJob, RetentionJob, SizeGuard } from './maintenance/jobs';
 import { PostgresMaintenanceStore, StatfsDisk } from './maintenance/postgresStore';
 import { MaintenanceRunner } from './maintenance/runner';
@@ -163,12 +164,23 @@ async function main(): Promise<void> {
         : new TelegramClient({ token: env.TELEGRAM_BOT_TOKEN });
     const transport =
       telegramClient === null ? null : new TelegramTransport({ client: telegramClient });
+    // The alert bot: its own client and rate limit, and the same chat id (in a private chat the id is the person's, whichever
+    // bot it is). It can only write once the owner has pressed Start in it; until then its messages wait and are retried.
+    const alertTransport =
+      telegramClient === null || env.TELEGRAM_ALERT_BOT_TOKEN === undefined
+        ? null
+        : new TelegramTransport({
+            client: new TelegramClient({ token: env.TELEGRAM_ALERT_BOT_TOKEN }),
+          });
     const { VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT } = env;
     const sender = new OutboxSender({
       store: outboxStore,
       ...(transport === null
         ? {}
         : { telegram: { transport, chatId: () => botStore.linkedChat() } }),
+      ...(alertTransport === null
+        ? {}
+        : { alerts: { transport: alertTransport, chatId: () => botStore.linkedChat() } }),
       ...(VAPID_PUBLIC_KEY === undefined ||
       VAPID_PRIVATE_KEY === undefined ||
       VAPID_SUBJECT === undefined
@@ -312,7 +324,8 @@ async function main(): Promise<void> {
         new SizeGuard({
           storage: maintenanceStore,
           retention: maintenanceStore,
-          disk: new StatfsDisk(),
+          // a database at a host (Aiven) has a disk of its own: this container's disk says nothing about it
+          disk: databaseOnThisMachine(env.DATABASE_URL_WORKER) ? new StatfsDisk() : new NoDisk(),
           outbox: outboxStore,
           settings: () => lifecycle.loadSettings(),
           onQueued: () => {
