@@ -221,7 +221,7 @@ body {
 /* Phones: the price comes first, and the chips scroll inside their own box. */
 @media (max-width: 47.99em) {
   .status-bar {
-    flex-direction: column;
+    flex-flow: column nowrap;
     align-items: stretch;
     gap: 8px;
     padding: 10px var(--app-shell-padding, 16px);

@@ -76,7 +76,9 @@ describe('signedFixed', () => {
 });
 
 describe('changedMask', () => {
-  it('marks only the characters that differ from the price before', () => {
+  it('lights every character from the first one that differs from the price before, to the end', () => {
+    // 234 to 335: the 3 in the middle is the same digit, but the number from the first change on is a new number
+    expect(changedMask('234', '335')).toEqual([true, true, true]);
     expect(changedMask('4000.100', '4000.600')).toEqual([
       false,
       false,
@@ -84,11 +86,21 @@ describe('changedMask', () => {
       false,
       false,
       true,
-      false,
-      false,
+      true,
+      true,
     ]);
     expect(changedMask('5.344', '5.345')).toEqual([false, false, false, false, true]);
     expect(changedMask('5.299', '5.345')).toEqual([false, false, true, true, true]);
+    expect(changedMask('4017.285', '4018.285')).toEqual([
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+    ]);
   });
 
   it('marks nothing for the first price and everything when the length changed', () => {

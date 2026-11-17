@@ -69,15 +69,17 @@ export function signedFixed(value: number, decimals: number): string {
 export type TickDirection = 'up' | 'down' | 'flat';
 
 /**
- * Which characters of a price differ from the price before (same length: position by position). Only those are coloured when
- * the price moves, and the rest keeps its colour. With no price before nothing is marked; if the length changed (999.999 to
- * 1000.000) every character is.
+ * Which characters of a price light up when it moves: from the first digit that differs from the price before to the end,
+ * as on a quote board (234 to 335 lights all three, because the whole number from the first changed digit on is a new
+ * number; 5.344 to 5.345 lights only the last one). The digits before the first change keep their colour. With no price before
+ * nothing is marked; if the length changed (999.999 to 1000.000) every character is.
  */
 export function changedMask(previous: string | null, next: string): boolean[] {
-  const chars = [...next];
+  const chars = Array.from(next);
   if (previous === null) return chars.map(() => false);
   if (previous.length !== chars.length) return chars.map(() => true);
-  return chars.map((char, index) => char !== previous[index]);
+  const first = chars.findIndex((char, index) => char !== previous[index]);
+  return chars.map((_, index) => first !== -1 && index >= first);
 }
 
 /**

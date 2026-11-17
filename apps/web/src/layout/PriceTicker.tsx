@@ -47,7 +47,7 @@ export function PriceTicker({ bid, ask }: { bid: number | undefined; ask: number
       </Text>
     );
   }
-  const chars = [...tick.text];
+  const chars = Array.from(tick.text);
   const mask = changedMask(tick.previous, tick.text);
   const dot = tick.text.indexOf('.');
   // A changed digit gets a new key for every move, so that its colour starts again; the others keep theirs.

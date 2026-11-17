@@ -31,13 +31,13 @@ describe('the price in the status bar', () => {
       expect(price).toHaveTextContent('4000.100 (bid 4000.000 / ask 4000.200)');
     });
 
-    // 4000.100 to 4000.600: one digit changed, and only that one is green
+    // 4000.100 to 4000.600: from the first digit that changed (the 1 became 6) to the end, the digits are green
     emit(quote(4000.5, 4000.7));
     await waitFor(() => {
       expect(price).toHaveAttribute('data-direction', 'up');
     });
     expect(price).toHaveTextContent('4000.600 (bid');
-    expect(lit('.px-hi-up')).toBe('6');
+    expect(lit('.px-hi-up')).toBe('600');
     expect(price.querySelector('.px-hi-down')).toBeNull();
     // the number is still one number: the two parts are only for the size of the digits
     expect(price.querySelector('.px-int')).toHaveTextContent('4000');
@@ -45,12 +45,12 @@ describe('the price in the status bar', () => {
     // no background and no colour on the whole price
     expect(price.querySelector('.px')).not.toHaveClass('px-up');
 
-    // 4000.600 to 3999.100: the digits that differ are red, the 0s that stayed are not
+    // 4000.600 to 3999.100: the first digit changed, so every digit is red
     emit(quote(3999.0, 3999.2));
     await waitFor(() => {
       expect(price).toHaveAttribute('data-direction', 'down');
     });
-    expect(lit('.px-hi-down')).toBe('39991');
+    expect(lit('.px-hi-down')).toBe('3999.100');
     expect(price.querySelector('.px-hi-up')).toBeNull();
 
     // the same mid price again (only the spread moved): nothing lights up again and the direction stays
@@ -59,7 +59,7 @@ describe('the price in the status bar', () => {
       expect(price).toHaveTextContent('3999.100 (bid 3998.900 / ask 3999.300)');
     });
     expect(price).toHaveAttribute('data-direction', 'down');
-    expect(lit('.px-hi-down')).toBe('39991');
+    expect(lit('.px-hi-down')).toBe('3999.100');
   });
 
   it('shows how much the price moved since the trading day opened, with the sign', async () => {
