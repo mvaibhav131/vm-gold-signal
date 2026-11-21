@@ -5,9 +5,11 @@ import { ToneBadge } from '../components/ToneBadge';
 import { formatPrice } from '../format/format';
 import { STRATEGY_LABELS, formatR, formatScore, signalLabel } from '../format/signal';
 import { formatCountdown } from '../format/time';
+import { STYLE_HINT, distanceNote, styleOf } from '../format/tradeStyle';
 import { useNow } from '../hooks';
 import type { Tone } from '../format/format';
 import { EvidenceBlock } from './EvidenceBlock';
+import { PositionSize } from './PositionSize';
 import { WhyPanel } from './WhyPanel';
 
 /** The advisory flags as chips: short words, the full sentence in the tooltip. */
@@ -97,6 +99,7 @@ export function SignalCard({
   const afterTp1 = live.status === 'TP1_HIT';
   const buy = signal.side === 'BUY';
   const bodyId = `signal-body-${String(signal.seq)}`;
+  const style = styleOf(signal);
 
   return (
     <Paper withBorder p="md" radius="md" data-testid={`signal-card-${String(signal.seq)}`}>
@@ -122,6 +125,9 @@ export function SignalCard({
           <Group gap="xs">
             <ToneBadge tone={state.tone} data-testid="signal-state">
               {state.text}
+            </ToneBadge>
+            <ToneBadge tone="neutral" title={STYLE_HINT[style.style]} data-testid="signal-style">
+              {style.label}
             </ToneBadge>
             {!expanded && (
               <Text
@@ -205,17 +211,24 @@ export function SignalCard({
               <Level
                 label="TP1"
                 value={signal.tp1}
-                note={
+                note={`+${distanceNote(signal.entry, signal.tp1, signal.riskDistance)}${
                   afterTp1
-                    ? 'reached: close 50%, stop moved to entry'
-                    : '1.0R: close 50%, move stop to entry'
-                }
+                    ? ' · reached: close 50%, stop moved to entry'
+                    : ' · close 50%, move stop to entry'
+                }`}
                 testId="signal-tp1"
               />
               {signal.tp2 !== null && (
-                <Level label="TP2" value={signal.tp2} note="2.0R" testId="signal-tp2" />
+                <Level
+                  label="TP2"
+                  value={signal.tp2}
+                  note={`+${distanceNote(signal.entry, signal.tp2, signal.riskDistance)}`}
+                  testId="signal-tp2"
+                />
               )}
             </SimpleGrid>
+
+            <PositionSize signal={signal} />
 
             <Group justify="space-between" align="flex-end">
               <div>

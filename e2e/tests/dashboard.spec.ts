@@ -810,6 +810,59 @@ test.describe('E17 many open signals, folding them, and hiding them on the chart
   });
 });
 
+test.describe('E18 the style of the trade and the size of the position', () => {
+  test('a card names its style and sizes the position for a demo account, which can be changed and is kept', async ({
+    page,
+  }) => {
+    const errors = collectErrors(page);
+    await logIn(page, { scenario: 'two-open' });
+    await expect(card(page, 42).getByTestId('signal-style')).toHaveText('INTRADAY, up to 2 h');
+    await expect(card(page, 42).getByText('+6.470 USD, 1.0R')).toBeVisible();
+    await expect(card(page, 42).getByTestId('position-size-account')).toContainText(
+      '10,000.00 USD, risking 0.5% (50.00 USD)',
+    );
+    await expect(card(page, 42).getByTestId('position-size-lots')).toContainText(
+      '0.07 lot · stop −45.29 USD',
+    );
+
+    await card(page, 42).getByTestId('position-size-edit').click();
+    const balance = card(page, 42).getByTestId('position-size-balance');
+    const risk = card(page, 42).getByTestId('position-size-risk');
+    await balance.fill('50000');
+    await risk.fill('1');
+    await risk.blur();
+    await expect(card(page, 42).getByTestId('position-size-lots')).toContainText('0.77 lot');
+    // every card follows
+    await expect(card(page, 43).getByTestId('position-size-account')).toContainText(
+      '50,000.00 USD, risking 1% (500.00 USD)',
+    );
+
+    // the form is not an accessibility problem
+    const results = await new AxeBuilder({ page }).analyze();
+    const serious = results.violations.filter(
+      (v) => v.impact === 'serious' || v.impact === 'critical',
+    );
+    expect(serious.map((v) => v.id)).toEqual([]);
+
+    // kept in this browser: a reload starts the preview again, and the account is the same
+    await page.reload();
+    await page.getByTestId('preview-scenario').selectOption('two-open');
+    await expect(card(page, 42).getByTestId('position-size-lots')).toContainText('0.77 lot');
+    expect(errors).toEqual([]);
+  });
+
+  test('says when the stop is too wide for the account', async ({ page }) => {
+    await logIn(page, { scenario: 'two-open' });
+    await card(page, 42).getByTestId('position-size-edit').click();
+    const balance = card(page, 42).getByTestId('position-size-balance');
+    await balance.fill('1000');
+    await balance.blur();
+    await expect(card(page, 42).getByTestId('position-size-lots')).toContainText(
+      'Too wide for this account: even 0.01 lot would lose 6.47 USD at the stop',
+    );
+  });
+});
+
 test.describe('E16 accessibility of every state', () => {
   // an axe run on a busy machine can take long: 60 s instead of 30 s
   test.describe.configure({ timeout: 60_000 });

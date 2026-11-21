@@ -543,3 +543,86 @@ describe('folding the signal cards and hiding the signals on the chart', () => {
     expect(card(43).getByRole('button', { name: 'Show on chart S-0043' })).toBeInTheDocument();
   });
 });
+
+describe('the style of the trade and the size of the position on a card', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('names the style with the longest time the trade may take, even when the card is folded', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    expect(card(42).getByTestId('signal-style')).toHaveTextContent('INTRADAY, up to 2 h');
+    await user.click(card(42).getByRole('button', { name: 'Fold S-0042' }));
+    expect(card(42).getByTestId('signal-style')).toBeVisible();
+  });
+
+  it('gives each target in dollars and in R', async () => {
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    expect(card(42).getByText(/\+6\.470 USD, 1\.0R/)).toBeInTheDocument();
+    expect(card(42).getByText('+12.940 USD, 2.0R')).toBeInTheDocument();
+  });
+
+  it('sizes the position for a demo balance of 10,000 USD risking 0.5% until the owner says otherwise', async () => {
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    expect(card(42).getByTestId('position-size-account')).toHaveTextContent(
+      'Position size for 10,000.00 USD, risking 0.5% (50.00 USD)',
+    );
+    // 50 USD / (6.47 x 100) = 0.077 lot, down to 0.07: the stop costs 7 oz x 6.47
+    expect(card(42).getByTestId('position-size-lots')).toHaveTextContent(
+      '0.07 lot · stop −45.29 USD · TP1 +45.29 USD · TP2 +90.58 USD',
+    );
+  });
+
+  it('takes another balance and risk, sizes every card by them, and keeps them in the browser', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    await user.click(card(42).getByTestId('position-size-edit'));
+    const balance = card(42).getByTestId('position-size-balance');
+    await user.clear(balance);
+    await user.type(balance, '50000');
+    await user.tab();
+    const risk = card(42).getByTestId('position-size-risk');
+    await user.clear(risk);
+    await user.type(risk, '1');
+    await user.tab();
+    // 500 USD / (6.47 x 100) = 0.77 lot
+    await waitFor(() => {
+      expect(card(42).getByTestId('position-size-lots')).toHaveTextContent('0.77 lot');
+    });
+    expect(card(43).getByTestId('position-size-account')).toHaveTextContent(
+      'Position size for 50,000.00 USD, risking 1% (500.00 USD)',
+    );
+    expect(JSON.parse(window.localStorage.getItem('vmgs.risk.v1') ?? '{}')).toEqual({
+      balanceUsd: 50_000,
+      riskPct: 1,
+    });
+  });
+
+  it('refuses a risk above the limit and goes back to the number it had', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    await user.click(card(42).getByTestId('position-size-edit'));
+    const risk = card(42).getByTestId('position-size-risk');
+    await user.clear(risk);
+    await user.type(risk, '40');
+    await user.tab();
+    expect(card(42).getByTestId('position-size-account')).toHaveTextContent('risking 0.5%');
+    expect(window.localStorage.getItem('vmgs.risk.v1')).toBeNull();
+  });
+
+  it('says so when even the smallest lot is more than the budget, and does not size it up', async () => {
+    window.localStorage.setItem('vmgs.risk.v1', JSON.stringify({ balanceUsd: 1000, riskPct: 0.5 }));
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    // 5 USD budget, and 0.01 lot loses 6.47 USD at this stop
+    expect(card(42).getByTestId('position-size-lots')).toHaveTextContent(
+      'Too wide for this account: even 0.01 lot would lose 6.47 USD at the stop, more than 5.00 USD.',
+    );
+  });
+});

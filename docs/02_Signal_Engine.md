@@ -524,6 +524,22 @@ The tests: each rule for both sides, a from-scratch first-passage reference over
 
 Code: `packages/core/src/trade/style.ts` (`tradeStyleOf`, `tradeStyleOfTimes`). Every signal carries a name that tells the owner how long the trade is meant to last, so that he knows how long he has to watch it and when to stop waiting: **SCALP** when the time stop is at most 45 minutes after the signal, **INTRADAY** up to 6 hours, **SWING** beyond that. The number that counts is the time stop: a trade that has not worked by then is closed (rule 5 above), so the owner never has to stay longer than it says. The style is not stored: it is read from `generatedAt` and `timeStopAt`, so it is the same in Telegram, the dashboard and a replay. The entry alert shows it with the time (`INTRADAY: a trade of a few hours. Plan to stay up to 2 h (until 13:35 IST) ...`). A SWING needs a tracker that can follow a trade across the daily break and the weekend; until the tracker can do that (the 60 s gap rule above), a time stop is cut at the market close (9.1), so in practice no signal is a SWING yet.
 
+### 9.3 Position size and the reward-to-risk bar (R1)
+
+Code: `packages/core/src/trade/sizing.ts` (`sizePosition`, `breakEvenWinRate`, `OUNCES_PER_LOT`, `LOT_STEP`). The rest of the system measures every result in R; this is the one place that turns R into dollars for an account. It does not change a signal: a signal has the same levels whatever the account.
+
+**The rule: the risk of a trade is fixed in dollars, not in lots.** The budget of a trade is `balance x risk percent` (a demo balance is fine). One lot of gold is 100 ounces, so a stop at distance `d` dollars costs `100 x d` per lot, and `lots = budget / (100 x d)`, **rounded down** to 0.01 lot: the loss at the stop is never above the budget, whatever the stop. A wide stop gets a small position and a close one a larger one, and every stop costs the same share of the balance. When even 0.01 lot would lose more than the budget the answer is 0 lots with `tooSmall` set: the trade does not fit the account at that risk, and the dashboard says so instead of sizing it up.
+
+**What it returns:** the budget, the lots and ounces, the dollars the stop costs (1R), the dollars at TP1 and TP2 for the whole position before costs, the quoted spread in dollars at that size, and the distance to each target in R. The dollars at a target are for the whole position: with `EP1_PARTIAL` half closes at TP1 and half at TP2, so the realised result is 1.5R when both are reached (section 9, rule 4).
+
+**`breakEvenWinRate(rewardR, costR)` = (1 + costR) / (1 + rewardR):** the share of trades that must win for that reward to break even when each trade also costs `costR` (spread, slippage, commission in R). 1:1 with no cost needs 50 percent, 1:2 needs 33. It is the bar that the evidence of a strategy has to clear, not a forecast: a strategy whose forward win rate is below its break-even rate loses money however good each trade looks.
+
+**Where the owner sees it.** The demo account (a balance, 10,000 USD at first, and the risk of a trade, 0.5 percent at first; at most 5 percent) is the owner's choice and stays in his browser (`vmgs.risk.v1`): no server needs to know it, and a signal does not depend on it. Every open-signal card and the detail page show the size for it (`0.07 lot - stop -45.29 USD - TP1 +45.29 USD - TP2 +90.58 USD`), and say so when the stop is too wide for the account. The Telegram message states what 0.01 lot (1 ounce) risks: `1R = 6.470 USD per 0.01 lot (1 oz)`. Position size is advice for a trade the owner places by hand (section 14 of the HLD); the system never places an order.
+
+**Not here yet.** The open risk across signals and a daily loss in R as advisory flags (R2), and the expectancy of the strategy next to each signal (R3).
+
+NOTE (live check, 21 November 2026): the live stops of F were about 48 USD (median), so at 10,000 USD and 0.5 percent (a 50 USD budget) only 0.01 lot fitted and a 69 USD stop did not fit at all. G keeps its stop between 3 and 4.2 ATR(5m) and under 16 USD for this reason (7.7).
+
 ## 10. Signal policy
 
 There are no throttles. Signals are produced at any hour and in any number, regardless of how earlier signals ended.
@@ -757,7 +773,7 @@ Open signals now: none (open risk 0R)
 EVIDENCE (same setup type)
 Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.5
 Source: forward paper trades. Match: strategy + side + session. Low sample.
-This is a historical frequency, not a guarantee. 1R = 6.47 USD per oz.
+This is a historical frequency, not a guarantee. 1R = 6.47 USD per 0.01 lot (1 oz).
 ```
 
 Result alert after a loss:

@@ -253,7 +253,7 @@ Trend Pullback v0.1.0                                 (italic)
 ⚠️ Warnings: ...   (only when there are some)
 
 📈 Track record of this setup: 58% wins (n=64), +0.31R per trade.
-This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.   (italic)
+This is a historical frequency, not a guarantee. 1R = 6.470 USD per 0.01 lot (1 oz).   (italic)
 
 ▼ DETAILS (tap to open)   (folds: warnings, macro, news, open signals, evidence, WHY THIS SIGNAL with one line per group, weak, research only)
 ```

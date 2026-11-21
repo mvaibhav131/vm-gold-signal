@@ -42,6 +42,15 @@ describe('the detail of a loss (scenario E8)', () => {
     expect(text('detail-exit-profile')).toContain('Close 50% at TP1');
   });
 
+  it('names the style of the trade, the targets in dollars and in R, and the size of the position', async () => {
+    await open(40);
+    expect(text('detail-style')).toContain('Style: INTRADAY, up to 2 h');
+    expect(screen.getByText('+6.100 USD, 1.0R')).toBeVisible();
+    expect(screen.getByText('+12.200 USD, 2.0R')).toBeVisible();
+    // 50 USD / (6.1 x 100) = 0.081 lot, down to 0.08
+    expect(text('position-size-lots')).toContain('0.08 lot');
+  });
+
   it('has the result block: badge, net R, exit price and reason, duration, MFE, MAE, targets, cost', async () => {
     await open(40);
     const result = within(screen.getByTestId('detail-result'));

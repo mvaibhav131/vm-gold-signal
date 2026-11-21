@@ -67,7 +67,7 @@ describe('the entry alert of the example, golden', () => {
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         '',
         `${ICON.evidence} Track record of this setup: 58% wins (n=64), +0.31R per trade.`,
-        '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.</i>',
+        '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per 0.01 lot (1 oz).</i>',
         '',
         `<blockquote expandable><b>DETAILS (tap to open)</b>`,
         `${ICON.warning} <b>Warnings</b>:`,
@@ -108,7 +108,7 @@ describe('the entry alert of the example, golden', () => {
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         '',
         `${ICON.evidence} Is setup ka record: 58% jeet (n=64), +0.31R per trade.`,
-        '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per oz.</i>',
+        '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per 0.01 lot (1 oz).</i>',
         '',
         `<blockquote expandable><b>DETAIL (kholne ke liye dabao)</b>`,
         `${ICON.warning} <b>Chetavni</b>:`,
@@ -159,7 +159,7 @@ describe('a SELL', () => {
       `${ICON.tp1} TP1  3965.260  (+17.370, 1.00R)  close 50%, move stop to entry`,
     );
     expect(message).toContain(`${ICON.tp2} TP2  3947.890  (+34.740, 2.00R)  runner`);
-    expect(message).toContain('1R = 17.370 USD per oz.');
+    expect(message).toContain('1R = 17.370 USD per 0.01 lot (1 oz).');
   });
 
   it('says below in Hinglish too', () => {
@@ -567,7 +567,7 @@ describe('evidence', () => {
         .split('\n')
         .find((candidate) => candidate.includes('1R = '));
       expect(line).toMatch(/^<i>.*guarantee.*<\/i>$/);
-      expect(line).toContain('1R = 6.470 USD per oz.');
+      expect(line).toContain('1R = 6.470 USD per 0.01 lot (1 oz).');
     }
   });
 });
@@ -727,7 +727,7 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
           'Open signals now: none',
           'EVIDENCE (same setup type)',
           'Win rate 58%  (n=64, 95% CI 46-69%)',
-          'This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.',
+          'This is a historical frequency, not a guarantee. 1R = 6.470 USD per 0.01 lot (1 oz).',
         ]) {
           expect(message, `level ${String(level)}: ${part}`).toContain(part);
         }
