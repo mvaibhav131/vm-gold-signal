@@ -27,15 +27,23 @@ afterAll(async () => {
 
 /**
  * A pool whose connections run `afterQuery` once, right after the first query that matches: the moment in which the
- * worker closes the signal while the API is half way through reading it.
+ * worker closes the signal while the API is half way through reading it. `pids` collects the process id of every
+ * connection that was taken from the pool, so that a test can look at those connections and no others.
  */
-function interrupted(pool: Pool, matches: string, afterQuery: () => Promise<void>): Pool {
+function interrupted(
+  pool: Pool,
+  matches: string,
+  afterQuery: () => Promise<void>,
+  pids: number[] = [],
+): Pool {
   let done = false;
   return new Proxy(pool, {
     get(target, property, receiver) {
       if (property !== 'connect') return Reflect.get(target, property, receiver) as unknown;
       return async () => {
         const client = await target.connect();
+        const { rows } = await client.query<{ pid: number }>('SELECT pg_backend_pid() AS pid');
+        for (const row of rows) pids.push(row.pid);
         return new Proxy(client, {
           get(inner, name, innerReceiver) {
             if (name !== 'query') return Reflect.get(inner, name, innerReceiver) as unknown;
@@ -94,17 +102,21 @@ describe('the signals reader on Postgres', () => {
   });
 
   it('gives its connection back, also when a read fails, and does not leave a transaction open', async () => {
+    // the connections of this reader, by their process id: only these are looked at, so that a transaction of something else
+    // that the API is doing in the same second cannot be taken for a leak
+    const pids: number[] = [];
     const reader = new PostgresSignalsReader(
-      interrupted(api.pool, 'FROM signal_state', () => Promise.reject(new Error('lost'))),
+      interrupted(api.pool, 'FROM signal_state', () => Promise.reject(new Error('lost')), pids),
     );
     const signal = await world.createSignal({ generatedAt: SEED_AT + 5 * MINUTE_MS });
     await expect(reader.detail(signal.id)).rejects.toThrow('lost');
-    const { rows } = await api.admin.query<{ n: string }>(
-      `SELECT count(*) AS n FROM pg_stat_activity
-        WHERE datname = $1 AND usename = 'vmgs_api' AND state = 'idle in transaction'`,
-      [api.database.name],
+    expect(pids).toHaveLength(1);
+    const { rows } = await api.admin.query<{ state: string }>(
+      'SELECT state FROM pg_stat_activity WHERE pid = ANY($1::int[])',
+      [pids],
     );
-    expect(Number(rows[0]?.n)).toBe(0);
+    // idle: back in the pool, with its transaction rolled back (not `idle in transaction`, and not gone)
+    expect(rows.map((row) => row.state)).toEqual(['idle']);
     expect((await new PostgresSignalsReader(api.pool).detail(signal.id))?.signal.id).toBe(
       signal.id,
     );
