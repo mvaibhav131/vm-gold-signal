@@ -102,6 +102,33 @@ describe('MarketMoveDetector.check', () => {
     expect(queued.count).toBe(1);
   });
 
+  it('adds where the indicators lean when the candles are there, and leaves it out when they are not', async () => {
+    const stretched = await rig();
+    let close = 3980;
+    stretched.market.candles['5m'] = Array.from({ length: 60 }, (_, index) => {
+      const move = index < 40 ? (index % 2 === 0 ? -0.3 : 0.3) : 1.5;
+      const candle = {
+        openTime: NOW - (60 - index) * 5 * MIN,
+        o: close,
+        h: Math.max(close, close + move) + 0.3,
+        l: Math.min(close, close + move) - 0.3,
+        c: close + move,
+      };
+      close += move;
+      return candle;
+    });
+    stretched.detector.onTicks(asTicks(SPIKE()));
+    await stretched.detector.check();
+    const text = plain(String(stretched.outbox.entries()[0]?.payload.text));
+    expect(text).toContain('Context: gold is stretched up');
+    expect(text).toContain('a pullback is possible');
+
+    const thin = await rig();
+    thin.detector.onTicks(asTicks(SPIKE()));
+    await thin.detector.check();
+    expect(plain(String(thin.outbox.entries()[0]?.payload.text))).not.toContain('Context:');
+  });
+
   it('sees a fall, and a rise of 3 x ATR(1m) within a minute', async () => {
     const down = await rig();
     down.detector.onTicks(asTicks(rampTicks(NOW - 240_000, NOW, 4010, 4000, 1)));

@@ -36,7 +36,10 @@ function everyText(w: Words): string[] {
   add(w.doNotChase('BUY', '4018.015'));
   add(w.doNotChase('SELL', '3981.985'));
   add(w.validFor('3 min', '11:38 IST'));
-  add(w.timeStop('2 h', '13:35 IST'));
+  add(w.styleLine('a quick trade', '2 h', '13:35 IST'));
+  add(w.trackShort('58%', 64, '+0.31R'));
+  add(w.trackShort('58%', 64, null));
+  add(w.trackNone(12));
   add(w.quality('78', 'Strong'));
   add(w.nextEvent('CPI m/m', '16:00 IST', '4 h'));
   add(w.newsCount(1));

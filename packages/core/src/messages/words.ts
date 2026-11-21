@@ -10,6 +10,7 @@ import type {
   StatsScope,
 } from '../domain';
 import type { ExitReason } from '../trade/types';
+import type { TradeStyle } from '../trade/style';
 
 // The fixed words of the messages, in English and in Hinglish (Hindi in Latin letters). Only labels
 // and sentences are translated: numbers, levels, ids, trading terms and the facts of an explanation
@@ -31,7 +32,13 @@ export interface Words {
   readonly tp1Note: Readonly<Record<ExitProfile, string>>;
   readonly runner: string;
   readonly validFor: (span: string, until: string) => string;
-  readonly timeStop: (span: string, at: string) => string;
+  readonly style: Readonly<Record<TradeStyle, string>>;
+  /** What the style means for the owner: how long the trade may take, in one line. */
+  readonly styleLine: (hint: string, span: string, at: string) => string;
+  readonly styleHint: Readonly<Record<TradeStyle, string>>;
+  readonly detailsHeader: string;
+  readonly trackShort: (rate: string, n: number, expectancy: string | null) => string;
+  readonly trackNone: (n: number) => string;
   readonly quality: (score: string, grade: string) => string;
   readonly grade: Readonly<Record<Grade, string>>;
   readonly whyHeader: string;
@@ -122,7 +129,18 @@ const en: Words = {
   },
   runner: 'runner',
   validFor: (span, until) => `Valid for ${span} (until ${until}).`,
-  timeStop: (span, at) => `Time stop ${span} (${at}).`,
+  style: { SCALP: 'SCALP', INTRADAY: 'INTRADAY', SWING: 'SWING' },
+  styleHint: {
+    SCALP: 'a quick trade',
+    INTRADAY: 'a trade of a few hours',
+    SWING: 'a long trade, over the day',
+  },
+  styleLine: (hint, span, at) =>
+    `${hint}. Plan to stay up to ${span} (until ${at}); it is closed then if it has not worked.`,
+  detailsHeader: 'DETAILS (tap to open)',
+  trackShort: (rate, n, expectancy) =>
+    `Track record of this setup: ${rate} wins (n=${String(n)})${expectancy === null ? '' : `, ${expectancy} per trade`}.`,
+  trackNone: (n) => `Track record of this setup: not enough trades yet (n=${String(n)}).`,
   quality: (score, grade) => `Setup quality ${score}/100 (${grade})`,
   grade: { Moderate: 'Moderate', Strong: 'Strong', 'Very strong': 'Very strong' },
   whyHeader: 'WHY THIS SIGNAL',
@@ -257,7 +275,18 @@ const hinglish: Words = {
   },
   runner: 'runner (bacha hua hissa)',
   validFor: (span, until) => `${span} tak valid (${until} tak).`,
-  timeStop: (span, at) => `Time stop ${span} (${at}).`,
+  style: { SCALP: 'SCALP', INTRADAY: 'INTRADAY', SWING: 'SWING' },
+  styleHint: {
+    SCALP: 'jaldi ka trade',
+    INTRADAY: 'kuch ghante ka trade',
+    SWING: 'lamba trade, poore din se zyada',
+  },
+  styleLine: (hint, span, at) =>
+    `${hint}. Zyada se zyada ${span} rukna hai (${at} tak); tab tak na chale to band ho jata hai.`,
+  detailsHeader: 'DETAIL (kholne ke liye dabao)',
+  trackShort: (rate, n, expectancy) =>
+    `Is setup ka record: ${rate} jeet (n=${String(n)})${expectancy === null ? '' : `, ${expectancy} per trade`}.`,
+  trackNone: (n) => `Is setup ka record: abhi kaafi trades nahi (n=${String(n)}).`,
   quality: (score, grade) => `Setup quality ${score}/100 (${grade})`,
   grade: { Moderate: 'Moderate', Strong: 'Strong', 'Very strong': 'Bahut strong' },
   whyHeader: 'YE SIGNAL KYUN AAYA',

@@ -1,8 +1,10 @@
 import {
   HEADLINE_ALERT_MAX_AGE_MS,
+  LEAN_CANDLES,
   atrOfCandles,
   headlineAlertDue,
   headlineTold,
+  marketLeanOf,
   moveSince,
   newsHeadlineRows,
   timeOf,
@@ -64,17 +66,20 @@ export class NewsAlerts {
     if (due.length === 0) return 0;
 
     const atr5 = atrOfCandles(await this.options.market.closedCandles('5m', now, 15));
+    const candles = await this.options.market.closedCandles('5m', now, LEAN_CANDLES);
     const stats = await this.options.impact.topicStats();
     let queued = 0;
     for (const story of due) {
       const at = timeOf(story);
       const ticks = await this.options.market.ticks(at - 30_000, now);
+      const last = ticks[ticks.length - 1];
       const rows = newsHeadlineRows(
         {
           cluster: story,
           detectedAt: now,
           since: moveSince(ticks, at, now, atr5),
           history: historyOf(story, stats),
+          lean: marketLeanOf(candles, last === undefined ? null : (last.bid + last.ask) / 2),
         },
         settings,
         now,

@@ -10,11 +10,12 @@ import type { NewsFeedState, NewsImpact, NewsTopic, Side } from '../domain';
 import { percentText, signedPriceText, priceText, signedRText, spanText } from '../explain/format';
 import { displayOptionsOf, type AlertSettings, type OutboxRow } from '../lifecycle/alerts';
 import { signalTag } from '../messages/common';
-import { bold, clean } from '../messages/markup';
+import { bold, clean, fold } from '../messages/markup';
 import { ICON, sideIcon } from '../messages/style';
 import { clockText } from '../messages/time';
 import type { DisplayOptions } from '../messages/types';
 import { HEADLINE_ALERT_MAX_AGE_MS, timeOf, type Cause, type HeadlineCluster } from './context';
+import { leanLine, type MarketLean } from './lean';
 import type { MoveDetection } from './move';
 
 // The messages about headlines and sudden moves of gold (04_API_and_Notifications section 4.1):
@@ -60,6 +61,8 @@ export interface HeadlineAlertData {
   /** Gold since publication; null when no tick could measure it. */
   readonly since: MoveSince | null;
   readonly history: TopicHistory | null;
+  /** Where the indicators lean now (context only); null or absent when it cannot be read. */
+  readonly lean?: MarketLean | null;
 }
 
 /** The story is fresh enough to be news: at most 30 minutes old by its published time (or first seen). */
@@ -92,7 +95,6 @@ export function newsHeadlineMessage(
   const lines = [
     `${ICON.news} ${bold(w.headlineTitle(cluster.impact, topics))}`,
     `"${title}"`,
-    w.headlineSeen(sources, published === null ? null : at(published), at(detectedAt), delay),
     data.since === null
       ? w.goldSinceNone
       : w.goldSince(
@@ -101,21 +103,25 @@ export function newsHeadlineMessage(
           data.since.spread === null ? null : priceText(data.since.spread),
         ),
   ];
-  const history = data.history;
-  if (history !== null && history.n >= TOPIC_HISTORY_MIN_N) {
-    lines.push(
-      w.topicHistory(
-        w.impactName[history.impact],
-        w.topicName[history.topic],
-        percentText(history.share),
-        history.n,
-        history.baseline === null ? null : percentText(history.baseline),
-      ),
-    );
-  } else {
-    lines.push(w.topicHistoryNone);
+  if (data.lean !== undefined && data.lean !== null) {
+    lines.push(`${ICON.lean} ${leanLine(data.lean, options.locale)}`);
   }
   lines.push(w.headlineLink(cluster.url), w.headlineNote);
+  // Where it was seen and what the topic did before are for the owner who wants to read on.
+  const history = data.history;
+  const more = [
+    w.headlineSeen(sources, published === null ? null : at(published), at(detectedAt), delay),
+    history !== null && history.n >= TOPIC_HISTORY_MIN_N
+      ? w.topicHistory(
+          w.impactName[history.impact],
+          w.topicName[history.topic],
+          percentText(history.share),
+          history.n,
+          history.baseline === null ? null : percentText(history.baseline),
+        )
+      : w.topicHistoryNone,
+  ];
+  lines.push(fold(more.join('\n')));
   return systemMessage('NEWS_HEADLINE', lines, {
     title: `HEADLINE (${cluster.impact}): ${ALERT_WORDS.en.topicName[cluster.topics[0] ?? 'GOLD_DIRECT']}`,
     body: title,
@@ -158,6 +164,8 @@ export interface MarketMoveData {
   /** Whether "no headline" can be said: it cannot while the headline feeds are down. */
   readonly feed: NewsFeedState;
   readonly open: readonly OpenSignalLine[];
+  /** Where the indicators lean now (context only); null or absent when it cannot be read. */
+  readonly lean?: MarketLean | null;
 }
 
 export function marketMoveMessage(data: MarketMoveData, options: DisplayOptions): SystemMessage {
@@ -181,20 +189,8 @@ export function marketMoveMessage(data: MarketMoveData, options: DisplayOptions)
       ),
     )}`,
   ];
-  if (data.causes.length > 0) {
-    lines.push(w.causesTitle);
-    data.causes.forEach((cause, index) => {
-      const { headline } = cause;
-      const sources = headline.sources.map((name) => clean(name)).join(', ');
-      const title = clean(headline.title);
-      lines.push(
-        headline.classified && headline.impact !== null
-          ? w.causeLine(index + 1, w.impactName[headline.impact], title, sources, at(cause.at))
-          : w.causeUnclassified(index + 1, title, sources, at(cause.at)),
-      );
-    });
-  } else {
-    lines.push(data.feed === 'UNAVAILABLE' ? w.causesUnavailable : w.noCause);
+  if (data.lean !== undefined && data.lean !== null) {
+    lines.push(`${ICON.lean} ${leanLine(data.lean, options.locale)}`);
   }
   lines.push(
     w.moveOpen(
@@ -208,6 +204,24 @@ export function marketMoveMessage(data: MarketMoveData, options: DisplayOptions)
             .join(', '),
     ),
   );
+  // The headlines around the move are possible causes only: they are there to open, not to read first.
+  const causes: string[] = [];
+  if (data.causes.length > 0) {
+    causes.push(w.causesTitle);
+    data.causes.forEach((cause, index) => {
+      const { headline } = cause;
+      const sources = headline.sources.map((name) => clean(name)).join(', ');
+      const title = clean(headline.title);
+      causes.push(
+        headline.classified && headline.impact !== null
+          ? w.causeLine(index + 1, w.impactName[headline.impact], title, sources, at(cause.at))
+          : w.causeUnclassified(index + 1, title, sources, at(cause.at)),
+      );
+    });
+  } else {
+    causes.push(data.feed === 'UNAVAILABLE' ? w.causesUnavailable : w.noCause);
+  }
+  lines.push(fold(causes.join('\n')));
   return systemMessage('MARKET_MOVE', lines, {
     title: `GOLD SPIKE ${up ? 'UP' : 'DOWN'} ${signedPriceText(sign * detection.moveUsd)} USD`,
     body: `${detection.moveAtr.toFixed(1)} x ATR ${detection.basis} in ${span}.`,

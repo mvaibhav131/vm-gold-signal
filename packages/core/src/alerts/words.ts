@@ -6,6 +6,7 @@ import type {
   NewsTopic,
   StrategyStatus,
 } from '../domain';
+import type { LeanKind } from '../news/lean';
 
 // The fixed words of the command replies and of the system messages, in English and in Hinglish
 // (Hindi in Latin letters), like `messages/words.ts`: only labels and sentences are translated, the
@@ -212,6 +213,8 @@ export interface AlertWords {
   readonly noCause: string;
   readonly causesUnavailable: string;
   readonly moveOpen: (list: string | null) => string;
+  /** One line of context after a move or a headline; `kind` says which way the indicators lean. */
+  readonly lean: (kind: LeanKind, rsi: string, hourMove: string, stretch: string) => string;
   readonly headlineFeedsDownTitle: (since: string) => string;
   readonly headlineFeedsSilent: (span: string) => string;
   readonly headlineFeedsDownBody: string;
@@ -400,6 +403,21 @@ const en: AlertWords = {
   causesUnavailable:
     'The headline feeds are unavailable, so possible causes could not be checked. The move may be technical, flow-driven, or news.',
   moveOpen: (list) => (list === null ? 'Open signals: none.' : `Open signals: ${list}.`),
+  lean: (kind, rsi, hourMove, stretch) => {
+    const numbers = `RSI ${rsi}, ${hourMove} ATR in the last hour, ${stretch} ATR from the 5m average`;
+    switch (kind) {
+      case 'BOUNCE_POSSIBLE':
+        return `Context: gold is stretched down (${numbers}). After a fall this long a bounce is possible, but it can also fall on. Not a forecast, not a signal.`;
+      case 'PULLBACK_POSSIBLE':
+        return `Context: gold is stretched up (${numbers}). After a rise this long a pullback is possible, but it can also rise on. Not a forecast, not a signal.`;
+      case 'DOWN_WITH_TREND':
+        return `Context: the fall is with the 5m trend (EMA 20 below EMA 50; ${numbers}). More downside is possible while the trend holds. Not a forecast, not a signal.`;
+      case 'UP_WITH_TREND':
+        return `Context: the rise is with the 5m trend (EMA 20 above EMA 50; ${numbers}). More upside is possible while the trend holds. Not a forecast, not a signal.`;
+      case 'MIXED':
+        return `Context: no clear lean from the indicators (${numbers}). Not a forecast, not a signal.`;
+    }
+  },
   headlineFeedsDownTitle: (since) => `HEADLINE FEEDS DOWN since ${since}`,
   headlineFeedsSilent: (span) => `(no feed answered for ${span})`,
   headlineFeedsDownBody:
@@ -590,6 +608,21 @@ const hinglish: AlertWords = {
   causesUnavailable:
     'Headline feeds available nahi hain, isliye possible causes check nahi ho sake. Move technical, flow ya news se ho sakta hai.',
   moveOpen: (list) => (list === null ? 'Khule signals: koi nahi.' : `Khule signals: ${list}.`),
+  lean: (kind, rsi, hourMove, stretch) => {
+    const numbers = `RSI ${rsi}, pichhle ghante mein ${hourMove} ATR, 5m average se ${stretch} ATR`;
+    switch (kind) {
+      case 'BOUNCE_POSSIBLE':
+        return `Context: gold bahut neeche kheencha hua hai (${numbers}). Itne girne ke baad bounce possible hai, par gir bhi sakta hai. Forecast nahi, signal nahi.`;
+      case 'PULLBACK_POSSIBLE':
+        return `Context: gold bahut upar kheencha hua hai (${numbers}). Itne chadhne ke baad pullback possible hai, par chadh bhi sakta hai. Forecast nahi, signal nahi.`;
+      case 'DOWN_WITH_TREND':
+        return `Context: giravat 5m trend ke saath hai (EMA 20 neeche EMA 50 ke; ${numbers}). Trend chalte rahne tak aur giravat possible hai. Forecast nahi, signal nahi.`;
+      case 'UP_WITH_TREND':
+        return `Context: tezi 5m trend ke saath hai (EMA 20 upar EMA 50 ke; ${numbers}). Trend chalte rahne tak aur tezi possible hai. Forecast nahi, signal nahi.`;
+      case 'MIXED':
+        return `Context: indicators se koi saaf jhukav nahi (${numbers}). Forecast nahi, signal nahi.`;
+    }
+  },
   headlineFeedsDownTitle: (since) => `HEADLINE FEEDS BAND, ${since} se`,
   headlineFeedsSilent: (span) => `(${span} se kisi feed ne jawab nahi diya)`,
   headlineFeedsDownBody:

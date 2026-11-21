@@ -234,36 +234,35 @@ Telegram has no colours, so colour comes from pictures, and the layout from a fe
 - **Colour.** BUY is 🟢 and SELL 🔴; a group of the quality score is 🟢 strong or OK, 🟡 weak, 🔴 failed, ⚪ no data; results are ✅ win, 🟡 partial win, ❌ loss, ⏱ time exit, 🚫 cancelled, ⚪ data invalid; the feed is 🟢 live, 🟡 stale, 🔴 disconnected, ⚪ closed; system messages are 🔴 feed down, 🟢 feed back, ⏸ paused, ▶️ resumed, 🧪 test. All pictures are in one table (`messages/style.ts`).
 - **Bold** for the label (the first line, always), the title of a message and the result of a trade (`WIN #S-0042  +1.47R net`), the label of every level and every section title. **Italic** for the strategy line and the statement that a rate is not a guarantee.
 - **Tap to copy.** Every price of the entry card (entry, stop, TP1, TP2) is a `code` span, outside bold, so that one tap copies the number into the trading platform.
-- **Quotes.** The long "why" of an entry alert is one folding quote (`blockquote expandable`) at the end of the message: it shows its first lines and opens on a tap. What decides the trade (levels, validity, quality, warnings, macro, open risk, evidence) is outside it and always visible. The reasons of a review are a plain quote, so that the heuristic warning is never hidden.
+- **Quotes.** The entry alert is short on purpose. What the owner needs to act on is outside the quote and always visible: the label, the side, the style of the trade with how long it may last, the quality, the levels (each target with its distance in USD and in R), the validity, the warnings (only when there are some) and one line of track record. Everything that explains the signal (the full warnings line, macro, news, open signals, the full evidence, the "why" of every group, weak and research-only items) is one folding quote (`blockquote expandable`) at the end: it shows its first lines and opens on a tap. `MARKET_MOVE` and `NEWS_HEADLINE` follow the same rule: the move or the headline, the line of context and the open signals are visible; the possible causes, where the story was seen and the topic history are folded. The reasons of a review are a plain quote, so that the heuristic warning is never hidden.
 - **Safety.** The pictures and tags come from the formatters only. Text from outside is escaped and has the markup markers removed. A message that Telegram would not parse is sent as plain text, and the test server of the worker refuses invalid HTML with a 400 as the real service does.
 
 ```text
 FORWARD-TEST (paper) | Manual execution only.         (bold label)
 🟢 BUY XAUUSD  #S-0042                                (bold)
 Trend Pullback v0.1.0                                 (italic)
+🧭 INTRADAY: a trade of a few hours. Plan to stay up to 2 h (until 13:35 IST); it is closed then if it has not worked.
 📊 Setup quality 95/100 (Very strong)                 (bold)
 
 📍 Entry  4017.370  (do not chase above 4018.015)     (label bold, price copyable)
 🛑 Stop  4010.900  (-6.470)
-🎯 TP1  4023.840  (1.00R)  close 50%, move stop to entry
-🏁 TP2  4030.310  (2.00R)  runner
-⏱ Valid for 3 min (until 11:38 IST). Time stop 2 h (13:35 IST).
+🎯 TP1  4023.840  (+6.470, 1.00R)  close 50%, move stop to entry
+🏁 TP2  4030.310  (+12.940, 2.00R)  runner
+⏱ Valid for 3 min (until 11:38 IST).
 
-⚠️ Warnings: ...   🗓 Macro: ...   📰 News ...   📂 Open signals now: ...
+⚠️ Warnings: ...   (only when there are some)
 
-📈 EVIDENCE (same setup type)
-Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50
-...
+📈 Track record of this setup: 58% wins (n=64), +0.31R per trade.
 This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.   (italic)
 
-▼ WHY THIS SIGNAL   (folds: one line per group with its colour, weak, research only)
+▼ DETAILS (tap to open)   (folds: warnings, macro, news, open signals, evidence, WHY THIS SIGNAL with one line per group, weak, research only)
 ```
 
 The examples below show the words and numbers of each message in plain text (the pictures and tags are left out for readability); the exact layout is fixed by the golden tests.
 
 Examples show the `en` locale. Times are in the display time zone. The messages about a signal (`SIGNAL_NEW`, `SIGNAL_TP1`, `SIGNAL_CLOSED`, `SIGNAL_CANCELLED`, `SIGNAL_REVIEW_FINAL`) are written by `packages/core/src/messages`; their exact layout, the levels of detail used to stay under the length limit, and the lifetimes are in `02_Signal_Engine.md` section 14.1.
 
-**SIGNAL_NEW**: defined in `02_Signal_Engine.md` section 14. It always contains: direction, strategy and version, id, paper-test label, entry and do-not-chase level, stop with distance, TP1 and TP2 with R and the partial-exit instruction, validity, quality score and grade, the full "why" list (one line per evidence group with the actual indicator values), weak and research-only items, macro state, advisory warnings, open signals with total open risk, historical evidence with sample size and interval, and the statement that this is a historical frequency and not a guarantee.
+**SIGNAL_NEW**: defined in `02_Signal_Engine.md` section 14. It always contains: direction, strategy and version, id, paper-test label, the style of the trade (`SCALP` up to 45 minutes of time stop, `INTRADAY` up to 6 hours, `SWING` beyond; `02` section 9.2) with the longest time it may stay open, entry and do-not-chase level, stop with distance, TP1 and TP2 with their distance in USD and in R and the partial-exit instruction, validity, quality score and grade, the warnings, the open signals with total open risk, one line of track record, and the statement that this is a historical frequency and not a guarantee; the folded part has the full "why" list (one line per evidence group with the actual indicator values), weak and research-only items, macro state, news and the full historical evidence with sample size and interval.
 
 **SIGNAL_TP1**
 ```text
@@ -329,23 +328,26 @@ Figures are shown in the unit of the event (`%`, `K`, `B`) with its own number o
 ```text
 HEADLINE (HIGH) | Geopolitics, Trump policy
 "Trump announces new tariffs on ..."
-Seen in: BBC, CNBC. Published 21:42 IST, detected 21:44 IST (2 min later).
 Gold since publication: +3.8 USD (0.9 x ATR 5m), spread 0.21.
-Topic history: HIGH geopolitics headlines moved gold by 1 ATR or more in 38% of cases (n=52, normal 14%). Example numbers; below n=30 this line says "not enough data yet".
+Context: gold is stretched down (RSI 27, -3.1 ATR in the last hour, -2.8 ATR from the 5m average). After a fall this long a bounce is possible, but it can also fall on. Not a forecast, not a signal.   (only when the candles can be read)
 Link: https://...
 This is context, not a signal. Whether the headline caused the move is not known.
+▼ (folded) Seen in: BBC, CNBC. Published 21:42 IST, detected 21:44 IST (2 min later).
+▼ (folded) Topic history: HIGH geopolitics headlines moved gold by 1 ATR or more in 38% of cases (n=52, normal 14%). Example numbers; below n=30 this line says "not enough data yet".
 ```
 
 **MARKET_MOVE**
 ```text
 GOLD SPIKE UP +9.8 USD in 4 min (2.8 x ATR 5m), spread 0.35 at 21:47 IST.
-Possible causes, not confirmed (headlines in the previous 30 min, by impact):
-1. HIGH  "Missile strike reported near ..." (BBC, 21:31 IST)
-2. MED   "Treasury yields fall as ..." (CNBC, 21:40 IST)
-3. (unclassified, timing only) "..." (Al Jazeera, 21:44 IST)
-If no headline matched, this line reads: No matching headline found in the free feeds. The move may be technical, flow-driven, or the news may not be in these feeds yet.
+Context: gold is stretched up (RSI 74, +3.4 ATR in the last hour, +2.9 ATR from the 5m average). After a rise this long a pullback is possible, but it can also rise on. Not a forecast, not a signal.   (only when the candles can be read)
 Open signals: #S-0046 BUY (+1.4R).
+▼ (folded) Possible causes, not confirmed (headlines in the previous 30 min, by impact):
+▼ (folded) 1. HIGH  "Missile strike reported near ..." (BBC, 21:31 IST)
+▼ (folded) 2. MED   "Treasury yields fall as ..." (CNBC, 21:40 IST)
+▼ (folded) 3. (unclassified, timing only) "..." (Al Jazeera, 21:44 IST)
+If no headline matched, the folded part reads: No matching headline found in the free feeds. The move may be technical, flow-driven, or the news may not be in these feeds yet.
 ```
+The line of context is the lean of `news/lean.ts` (`02` section 16): from the closed 5-minute candles only (RSI 14, the distance of the price from the EMA 20 in ATR, the move of the last hour in ATR, the EMA 20 against the EMA 50). It says "a bounce is possible" or "a pullback is possible" when gold is stretched (RSI at 30 or below / 70 or above, or 2.5 ATR from its average, and moving that way), "more downside / upside is possible while the trend holds" when the move is with the trend, and "no clear lean" otherwise. It never says what will happen and always ends with "Not a forecast, not a signal."
 
 **SYSTEM_DEGRADED / SYSTEM_RECOVERED**
 ```text

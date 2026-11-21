@@ -4,6 +4,7 @@ export * from './cluster';
 export * from './context';
 export * from './feedHealth';
 export * from './impact';
+export * from './lean';
 export * from './move';
 export * from './rules';
 export * from './stats';

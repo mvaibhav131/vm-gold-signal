@@ -54,14 +54,22 @@ describe('the entry alert of the example, golden', () => {
         '<b>FORWARD-TEST (paper)</b> | Manual execution only.',
         SIDE,
         '<i>Trend Pullback v0.1.0</i>',
+        `${ICON.style} <b>INTRADAY</b>: a trade of a few hours. Plan to stay up to 2 h (until 13:35 IST); it is closed then if it has not worked.`,
         `${ICON.quality} <b>Setup quality 95/100 (Very strong)</b>`,
         '',
         `${ICON.entry} <b>Entry</b>  <code>4017.370</code>  (do not chase above 4018.015)`,
         `${ICON.stop} <b>Stop</b>  <code>4010.900</code>  (-6.470)`,
-        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (1.00R)  close 50%, move stop to entry`,
-        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (2.00R)  runner`,
-        `${ICON.time} Valid for 3 min (until 11:38 IST). Time stop 2 h (13:35 IST).`,
+        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (+6.470, 1.00R)  close 50%, move stop to entry`,
+        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (+12.940, 2.00R)  runner`,
+        `${ICON.time} Valid for 3 min (until 11:38 IST).`,
         '',
+        `${ICON.warning} <b>Warnings</b>:`,
+        '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
+        '',
+        `${ICON.evidence} Track record of this setup: 58% wins (n=64), +0.31R per trade.`,
+        '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.</i>',
+        '',
+        `<blockquote expandable><b>DETAILS (tap to open)</b>`,
         `${ICON.warning} <b>Warnings</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         `${ICON.macro} <b>Macro</b>: clear. Next high-impact event: CPI m/m at 16:00 IST (in 4 h 25 min).`,
@@ -72,9 +80,8 @@ describe('the entry alert of the example, golden', () => {
         'Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50',
         'TP1 reached 70%, TP2 reached 40%.',
         'Source: forward paper trades. Match: strategy, side and session. Low sample.',
-        '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per oz.</i>',
         '',
-        `<blockquote expandable><b>WHY THIS SIGNAL</b>`,
+        '<b>WHY THIS SIGNAL</b>',
         ...GROUPS_EN,
         `${ICON.weak} <b>Weak</b>: none`,
         `${ICON.research} <b>Research only (not used)</b>: DXY 15m -0.2%; Silver 15m +0.3%</blockquote>`,
@@ -88,14 +95,22 @@ describe('the entry alert of the example, golden', () => {
         '<b>FORWARD-TEST (paper)</b> | Order aapko khud haath se lagana hai.',
         SIDE,
         '<i>Trend Pullback v0.1.0</i>',
+        `${ICON.style} <b>INTRADAY</b>: kuch ghante ka trade. Zyada se zyada 2 h rukna hai (13:35 IST tak); tab tak na chale to band ho jata hai.`,
         `${ICON.quality} <b>Setup quality 95/100 (Bahut strong)</b>`,
         '',
         `${ICON.entry} <b>Entry</b>  <code>4017.370</code>  (4018.015 se upar entry mat lo)`,
         `${ICON.stop} <b>Stop</b>  <code>4010.900</code>  (-6.470)`,
-        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (1.00R)  50% band karo, stop entry par le aao`,
-        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (2.00R)  runner (bacha hua hissa)`,
-        `${ICON.time} 3 min tak valid (11:38 IST tak). Time stop 2 h (13:35 IST).`,
+        `${ICON.tp1} <b>TP1</b>  <code>4023.840</code>  (+6.470, 1.00R)  50% band karo, stop entry par le aao`,
+        `${ICON.tp2} <b>TP2</b>  <code>4030.310</code>  (+12.940, 2.00R)  runner (bacha hua hissa)`,
+        `${ICON.time} 3 min tak valid (11:38 IST tak).`,
         '',
+        `${ICON.warning} <b>Chetavni</b>:`,
+        '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
+        '',
+        `${ICON.evidence} Is setup ka record: 58% jeet (n=64), +0.31R per trade.`,
+        '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per oz.</i>',
+        '',
+        `<blockquote expandable><b>DETAIL (kholne ke liye dabao)</b>`,
         `${ICON.warning} <b>Chetavni</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         `${ICON.macro} <b>Macro</b>: clear. Agla bada event: CPI m/m, 16:00 IST (4 h 25 min mein).`,
@@ -106,9 +121,8 @@ describe('the entry alert of the example, golden', () => {
         'Win rate 58%  (n=64, 95% CI 46-69%)  Expectancy +0.31R  PF 1.50',
         'TP1 tak 70% baar, TP2 tak 40% baar.',
         'Source: forward paper trades. Match: strategy, side and session. Sample kam hai.',
-        '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per oz.</i>',
         '',
-        `<blockquote expandable><b>YE SIGNAL KYUN AAYA</b>`,
+        '<b>YE SIGNAL KYUN AAYA</b>',
         ...GROUPS_HI,
         `${ICON.weak} <b>Kamzor</b>: koi nahi`,
         `${ICON.research} <b>Sirf research (signal mein use nahi hua)</b>: DXY 15m -0.2%; Silver 15m +0.3%</blockquote>`,
@@ -141,8 +155,10 @@ describe('a SELL', () => {
     expect(message).toContain(`${ICON.sell} SELL XAUUSD  #S-0043`);
     expect(message).toContain(`${ICON.entry} Entry  3982.630  (do not chase below 3981.985)`);
     expect(message).toContain(`${ICON.stop} Stop  4000.000  (+17.370)`);
-    expect(message).toContain(`${ICON.tp1} TP1  3965.260  (1.00R)  close 50%, move stop to entry`);
-    expect(message).toContain(`${ICON.tp2} TP2  3947.890  (2.00R)  runner`);
+    expect(message).toContain(
+      `${ICON.tp1} TP1  3965.260  (+17.370, 1.00R)  close 50%, move stop to entry`,
+    );
+    expect(message).toContain(`${ICON.tp2} TP2  3947.890  (+34.740, 2.00R)  runner`);
     expect(message).toContain('1R = 17.370 USD per oz.');
   });
 
@@ -222,7 +238,7 @@ describe('the targets of the other exit profiles', () => {
 
   it('has no TP2 line and closes everything at the single target', () => {
     const message = messageOf('EP2_SINGLE', 4027.075, null);
-    expect(message).toContain(`${ICON.tp1} TP1  4027.075  (1.50R)  close all`);
+    expect(message).toContain(`${ICON.tp1} TP1  4027.075  (+9.705, 1.50R)  close all`);
     expect(message).not.toContain(ICON.tp2);
     expect(message).not.toContain('runner');
   });
@@ -230,7 +246,7 @@ describe('the targets of the other exit profiles', () => {
   it('words a structure target and shows a distance that is not a round R', () => {
     const message = messageOf('EP3_STRUCTURE', 4026, null);
     expect(message).toContain(
-      `${ICON.tp1} TP1  4026.000  (1.33R)  close all (nearest opposing level)`,
+      `${ICON.tp1} TP1  4026.000  (+8.630, 1.33R)  close all (nearest opposing level)`,
     );
     expect(message).not.toContain(ICON.tp2);
   });
@@ -246,15 +262,14 @@ describe('times', () => {
       timeStopAt: generatedAt + 120 * 60_000,
     };
     const message = text(newSignal(signal, EXPLANATION));
-    expect(message).toContain(
-      'Valid for 3 min (until 23:58 IST). Time stop 2 h (01:55 IST (24 Oct)).',
-    );
+    expect(message).toContain('Valid for 3 min (until 23:58 IST).');
+    expect(message).toContain('Plan to stay up to 2 h (until 01:55 IST (24 Oct))');
   });
 
   it('shows the times in the display zone', () => {
-    expect(text(newSignal(), { locale: 'en', displayTz: 'UTC' })).toContain(
-      'Valid for 3 min (until 06:08 UTC). Time stop 2 h (08:05 UTC).',
-    );
+    const message = text(newSignal(), { locale: 'en', displayTz: 'UTC' });
+    expect(message).toContain('Valid for 3 min (until 06:08 UTC).');
+    expect(message).toContain('Plan to stay up to 2 h (until 08:05 UTC)');
   });
 
   it('counts a validity that is not whole minutes', () => {
@@ -314,14 +329,64 @@ describe('the groups', () => {
     expect(text(withDoc({ researchOnly: [] }))).not.toContain('Research only');
   });
 
-  it('folds the whole "why" into one block at the end, and nothing else', () => {
+  it('folds everything that explains the signal into one block at the end, and nothing else', () => {
     const message = html();
     const start = message.indexOf('<blockquote expandable>');
     expect(start).toBeGreaterThan(0);
     expect(message.endsWith('</blockquote>')).toBe(true);
-    expect(message.slice(0, start)).not.toContain('STRONG');
-    expect(message.slice(0, start)).toContain('Entry');
-    expect(message.slice(start)).toContain('Trend STRONG');
+    const plainPart = message.slice(0, start);
+    const folded = message.slice(start);
+    expect(plainPart).not.toContain('STRONG');
+    expect(plainPart).toContain('Entry');
+    expect(plainPart).toContain('TP1');
+    expect(plainPart).toContain('INTRADAY');
+    for (const heavy of ['Macro', 'News (', 'Open signals now', 'EVIDENCE', 'Win rate', 'Weak']) {
+      expect(plainPart, heavy).not.toContain(heavy);
+      expect(folded, heavy).toContain(heavy);
+    }
+    expect(folded).toContain('Trend STRONG');
+  });
+
+  it('says in one plain line how much is known of this setup, and the full figures are folded', () => {
+    const start = html().indexOf('<blockquote expandable>');
+    expect(html().slice(0, start)).toContain(
+      'Track record of this setup: 58% wins (n=64), +0.31R per trade.',
+    );
+    const none = html(withDoc({ evidence: EVIDENCE_INSUFFICIENT }));
+    expect(none.slice(0, none.indexOf('<blockquote expandable>'))).toMatch(
+      /Track record of this setup: not enough trades yet \(n=\d+\)\./,
+    );
+  });
+
+  it('names the style from the time stop: a scalp, an intraday trade or a swing', () => {
+    const styled = (minutes: number) =>
+      text(
+        newSignal(
+          { ...BUY_SIGNAL, timeStopAt: BUY_SIGNAL.generatedAt + minutes * 60_000 },
+          EXPLANATION,
+        ),
+      );
+    expect(styled(30)).toContain(`${ICON.style} SCALP: a quick trade. Plan to stay up to 30 min`);
+    expect(styled(120)).toContain(`${ICON.style} INTRADAY: a trade of a few hours.`);
+    expect(styled(600)).toContain(`${ICON.style} SWING: a long trade, over the day.`);
+    expect(
+      text(
+        newSignal({ ...BUY_SIGNAL, timeStopAt: BUY_SIGNAL.generatedAt + 30 * 60_000 }, EXPLANATION),
+        HINGLISH,
+      ),
+    ).toContain(`${ICON.style} SCALP: jaldi ka trade. Zyada se zyada 30 min rukna hai`);
+  });
+
+  it('shows the warnings in plain view only when there are some', () => {
+    const plainPartOf = (doc: ReturnType<typeof withDoc>): string => {
+      const message = html(doc);
+      return message.slice(0, message.indexOf('<blockquote expandable>'));
+    };
+    const warnings: ExplanationDoc['warnings'] = [
+      { code: 'NEWS_WINDOW', text: 'News window: CPI m/m in 22 min' },
+    ];
+    expect(plainPartOf(withDoc({ warnings }))).toContain('News window: CPI m/m in 22 min');
+    expect(plainPartOf(withDoc({ warnings: [] }))).not.toContain('Warnings');
   });
 });
 
@@ -524,14 +589,17 @@ describe('every required field, in both languages (04 section 4.1)', () => {
       '4010.900', // stop
       '(-6.470)', // stop distance
       '4023.840', // TP1
-      '(1.00R)',
+      '(+6.470, 1.00R)',
       w.tp1Note.EP1_PARTIAL, // the partial-exit instruction
       '4030.310', // TP2
-      '(2.00R)',
+      '(+12.940, 2.00R)',
       '11:38 IST', // validity
       '13:35 IST', // time stop
+      w.style.INTRADAY, // style of the trade
+      w.styleHint.INTRADAY,
       'Setup quality 95/100', // quality
       w.grade['Very strong'],
+      w.detailsHeader,
       w.whyHeader,
       ...Object.values(w.groupName), // one line per group
       w.weak,

@@ -80,11 +80,11 @@ describe('NEWS_HEADLINE', () => {
       [
         `${ICON.news} <b>HEADLINE (HIGH) | Trump policy, Geopolitics</b>`,
         '"Trump announces new tariffs on European goods"',
-        'Seen in: BBC News, CNBC. Published 21:42 IST, detected 21:44 IST (2 min later).',
         'Gold since publication: +3.800 USD (0.9 x ATR 5m), spread 0.210.',
-        'Topic history: HIGH Trump policy headlines moved gold by 1 ATR or more in 38% of cases (n=52, normal 14%).',
         'Link: https://www.bbc.co.uk/news/articles/c95ynd587',
         'This is context, not a signal. Whether the headline caused the move is not known.',
+        '<blockquote expandable>Seen in: BBC News, CNBC. Published 21:42 IST, detected 21:44 IST (2 min later).',
+        'Topic history: HIGH Trump policy headlines moved gold by 1 ATR or more in 38% of cases (n=52, normal 14%).</blockquote>',
       ].join('\n'),
     );
     expect(message.push).toEqual({
@@ -100,12 +100,30 @@ describe('NEWS_HEADLINE', () => {
       [
         `${ICON.news} HEADLINE (HIGH) | Trump policy, Geopolitics`,
         '"Trump announces new tariffs on European goods"',
-        'Dikhi: BBC News, CNBC. Published 21:42 IST, detect hui 21:44 IST (2 min baad).',
         'Publication ke baad gold: +3.800 USD (0.9 x ATR 5m), spread 0.210.',
-        'Topic ka record: HIGH Trump policy headlines ke baad gold 38% baar 1 ATR ya zyada hila (n=52, normal 14%).',
         'Link: https://www.bbc.co.uk/news/articles/c95ynd587',
         'Ye context hai, signal nahi. Headline se move hua ya nahi, ye pata nahi.',
+        'Dikhi: BBC News, CNBC. Published 21:42 IST, detect hui 21:44 IST (2 min baad).',
+        'Topic ka record: HIGH Trump policy headlines ke baad gold 38% baar 1 ATR ya zyada hila (n=52, normal 14%).',
       ].join('\n'),
+    );
+  });
+
+  it('adds one line of context about where the indicators lean, before the link', () => {
+    const lean = {
+      kind: 'BOUNCE_POSSIBLE',
+      rsi: 27.4,
+      hourMoveAtr: -3.1,
+      stretchAtr: -2.8,
+      trend: 'DOWN',
+    } as const;
+    const lines = plain(newsHeadlineMessage({ ...HEADLINE, lean }, EN).telegram.text).split('\n');
+    expect(lines[3]).toBe(
+      `${ICON.lean} Context: gold is stretched down (RSI 27, -3.1 ATR in the last hour, -2.8 ATR from the 5m average). After a fall this long a bounce is possible, but it can also fall on. Not a forecast, not a signal.`,
+    );
+    expect(lines[4]).toBe('Link: https://www.bbc.co.uk/news/articles/c95ynd587');
+    expect(plain(newsHeadlineMessage({ ...HEADLINE, lean: null }, EN).telegram.text)).not.toContain(
+      ICON.lean,
     );
   });
 
@@ -308,11 +326,11 @@ describe('MARKET_MOVE', () => {
     expect(message.telegram.text).toBe(
       [
         `${ICON.spikeUp} <b>GOLD SPIKE UP +9.800 USD in 4 min (2.8 x ATR 5m), spread 0.350 at 21:47 IST.</b>`,
-        'Possible causes, not confirmed (headlines in the previous 30 min, by impact):',
+        `Open signals: ${ICON.buy} #S-0046 BUY (+1.40R).`,
+        '<blockquote expandable>Possible causes, not confirmed (headlines in the previous 30 min, by impact):',
         '1. HIGH  "Missile strike reported near Kharkiv" (BBC News, 21:31 IST)',
         '2. MED  "Treasury yields fall as investors weigh data" (CNBC, 21:40 IST)',
-        '3. (unclassified, timing only) "Local bakery wins a prize" (Al Jazeera, 21:44 IST)',
-        `Open signals: ${ICON.buy} #S-0046 BUY (+1.40R).`,
+        '3. (unclassified, timing only) "Local bakery wins a prize" (Al Jazeera, 21:44 IST)</blockquote>',
       ].join('\n'),
     );
     expect(message.push).toEqual({
@@ -327,13 +345,38 @@ describe('MARKET_MOVE', () => {
     expect(plain(marketMoveMessage(MOVE, HI).telegram.text)).toBe(
       [
         `${ICON.spikeUp} GOLD SPIKE UP +9.800 USD 4 min mein (2.8 x ATR 5m), spread 0.350, 21:47 IST par.`,
+        `Khule signals: ${ICON.buy} #S-0046 BUY (+1.40R).`,
         'Possible causes, confirm nahi (pichhle 30 min ki headlines, impact ke hisaab se):',
         '1. HIGH  "Missile strike reported near Kharkiv" (BBC News, 21:31 IST)',
         '2. MED  "Treasury yields fall as investors weigh data" (CNBC, 21:40 IST)',
         '3. (unclassified, sirf timing) "Local bakery wins a prize" (Al Jazeera, 21:44 IST)',
-        `Khule signals: ${ICON.buy} #S-0046 BUY (+1.40R).`,
       ].join('\n'),
     );
+  });
+
+  it('says where the indicators lean after the move, and that this is not a forecast', () => {
+    const lean = {
+      kind: 'PULLBACK_POSSIBLE',
+      rsi: 74.2,
+      hourMoveAtr: 3.4,
+      stretchAtr: 2.9,
+      trend: 'UP',
+    } as const;
+    const lines = plain(marketMoveMessage({ ...MOVE, lean }, EN).telegram.text).split('\n');
+    expect(lines[1]).toBe(
+      `${ICON.lean} Context: gold is stretched up (RSI 74, +3.4 ATR in the last hour, +2.9 ATR from the 5m average). After a rise this long a pullback is possible, but it can also rise on. Not a forecast, not a signal.`,
+    );
+    expect(lines[2]).toContain('Open signals');
+    expect(plain(marketMoveMessage({ ...MOVE, lean }, HI).telegram.text)).toContain(
+      'pullback possible hai, par chadh bhi sakta hai. Forecast nahi, signal nahi.',
+    );
+  });
+
+  it('keeps the possible causes folded, below what the owner needs first', () => {
+    const text = marketMoveMessage(MOVE, EN).telegram.text;
+    const start = text.indexOf('<blockquote expandable>');
+    expect(text.slice(0, start)).not.toContain('Missile strike');
+    expect(text.slice(start)).toContain('Missile strike');
   });
 
   it('shows a fall as a fall, in red, with the move signed, and a 1-minute move by its own ATR', () => {

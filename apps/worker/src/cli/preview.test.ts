@@ -103,8 +103,10 @@ describe('sampleMessages', () => {
     expect(headline).toContain('Gold since publication: +2.400 USD (0.8 x ATR 5m), spread 0.120.');
     expect(headline).toContain('(n=64, normal 18%)');
     expect(headline).toContain('This is context, not a signal.');
+    expect(headline).toContain('💡 Context: gold is stretched down');
     const caused = texts['MARKET_MOVE, with possible causes'];
     expect(caused).toContain('📈 GOLD SPIKE UP +10.000 USD in 4 min (3.3 x ATR 5m)');
+    expect(caused).toContain('💡 Context: gold is stretched up');
     expect(caused).toContain('1. HIGH  "Fed officials signal rates may stay higher for longer"');
     expect(caused).toContain('2. (unclassified, timing only) "Local bakery wins a prize"');
     expect(caused).toContain('Open signals: 🟢 #S-0046 BUY (+1.40R).');

@@ -13,6 +13,7 @@ import { matchLevelText } from '../explain/names';
 import type { ExplanationDoc, ExplanationEvidence, ExplanationHeadline } from '../explain/types';
 import { TRADED_SYMBOL } from '../symbol';
 import { assertLevels, labelLine, rewardR, signalTag, strategyText } from './common';
+import { tradeStyleOfTimes } from '../trade/style';
 import { bold, clean, fold, italic, mono } from './markup';
 import { ICON, STATE_ICON, sideIcon } from './style';
 import { clockText } from './time';
@@ -81,18 +82,34 @@ function levelLines(data: NewSignalData, w: Words, at: (ms: number) => string): 
       ICON.tp1,
       w.tp1,
       signal.tp1,
-      `(${plainRText(rewardR(signal, signal.tp1))})  ${w.tp1Note[signal.exitProfile]}`,
+      `(${signedPriceText(Math.abs(signal.tp1 - signal.entry))}, ${plainRText(rewardR(signal, signal.tp1))})  ${w.tp1Note[signal.exitProfile]}`,
     ),
   ];
   if (signal.tp2 !== null) {
     lines.push(
-      row(ICON.tp2, w.tp2, signal.tp2, `(${plainRText(rewardR(signal, signal.tp2))})  ${w.runner}`),
+      row(
+        ICON.tp2,
+        w.tp2,
+        signal.tp2,
+        `(${signedPriceText(Math.abs(signal.tp2 - signal.entry))}, ${plainRText(rewardR(signal, signal.tp2))})  ${w.runner}`,
+      ),
     );
   }
   lines.push(
-    `${ICON.time} ${w.validFor(spanText(signal.entryValidUntil - signal.generatedAt), at(signal.entryValidUntil))} ${w.timeStop(spanText(signal.timeStopAt - signal.generatedAt), at(signal.timeStopAt))}`,
+    `${ICON.time} ${w.validFor(spanText(signal.entryValidUntil - signal.generatedAt), at(signal.entryValidUntil))}`,
   );
   return lines;
+}
+
+/** One line of the track record for the plain part of the alert; the full figures are folded. */
+function trackLine(e: ExplanationEvidence, w: Words): string {
+  if (e.sampleLabel === 'INSUFFICIENT' || e.winRate === null || e.ci === null)
+    return w.trackNone(e.n);
+  return w.trackShort(
+    percentText(e.winRate),
+    e.n,
+    e.expectancyR === null ? null : signedRText(e.expectancyR),
+  );
 }
 
 function groupLines(e: ExplanationDoc, w: Words, d: Detail): string[] {
@@ -161,7 +178,8 @@ function render(data: NewSignalData, options: DisplayOptions, level: number): Re
   const w = WORDS[options.locale];
   const at = (ms: number): string => clockText(ms, options.displayTz, signal.generatedAt);
 
-  // What decides the trade is on top and in plain view; the long "why" is folded at the end.
+  // What the owner needs to act on is in plain view and short: the levels, how long the trade may take,
+  // the warnings that exist and one line of track record. Everything that explains it is folded.
   const warnings =
     e.warnings.length === 0
       ? [`${ICON.warning} ${bold(w.warnings)}: ${w.none}`]
@@ -179,24 +197,34 @@ function render(data: NewSignalData, options: DisplayOptions, level: number): Re
       `${ICON.research} ${bold(w.researchOnly)}: ${e.researchOnly.map((fact) => `${fact.label} ${String(fact.value)}`).join('; ')}`,
     );
   }
-
-  const lines: string[] = [
-    labelLine(signal, w, true),
-    `${sideIcon(signal.side)} ${bold(`${signal.side} ${TRADED_SYMBOL}`)}  ${signalTag(signal.seq)}`,
-    italic(strategyText(signal)),
-    `${ICON.quality} ${bold(w.quality(String(Math.round(e.quality.score)), w.grade[e.quality.grade]))}`,
-    '',
-    ...levelLines(data, w, at),
-    '',
+  const holdMs = Math.max(0, signal.timeStopAt - signal.generatedAt);
+  const style = tradeStyleOfTimes(signal.generatedAt, signal.timeStopAt);
+  const details = [
+    bold(w.detailsHeader),
     ...warnings,
     macroLine(e, w, at, signal.generatedAt),
     ...newsLines(e, w, detail, at),
     `${ICON.open} ${bold(w.openSignals)}: ${e.open.count === 0 ? w.none : String(e.open.count)} (${w.openRisk(plainRText(e.open.riskR))})`,
     '',
     ...evidenceLines(e.evidence, w),
+    '',
+    ...why,
+  ];
+
+  const lines: string[] = [
+    labelLine(signal, w, true),
+    `${sideIcon(signal.side)} ${bold(`${signal.side} ${TRADED_SYMBOL}`)}  ${signalTag(signal.seq)}`,
+    italic(strategyText(signal)),
+    `${ICON.style} ${bold(w.style[style])}: ${w.styleLine(w.styleHint[style], spanText(holdMs), at(signal.timeStopAt))}`,
+    `${ICON.quality} ${bold(w.quality(String(Math.round(e.quality.score)), w.grade[e.quality.grade]))}`,
+    '',
+    ...levelLines(data, w, at),
+    ...(e.warnings.length === 0 ? [] : ['', ...warnings]),
+    '',
+    `${ICON.evidence} ${trackLine(e.evidence, w)}`,
     italic(`${w.disclaimer} ${w.oneR(priceText(signal.riskDistance))}`),
     '',
-    fold(why.join('\n')),
+    fold(details.join('\n')),
   ];
   return { lines, dropped: detail.dropped };
 }

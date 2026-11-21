@@ -1,15 +1,18 @@
 import {
   CAUSE_WINDOW_MS,
+  LEAN_CANDLES,
   MOVE_COOLDOWN_MS,
   MOVE_WINDOW_5M_MS,
   TRADED_SYMBOL,
   atrOfCandles,
   detectMove,
   headlineFeedHealth,
+  marketLeanOf,
   marketMoveRows,
   newsFeedState,
   possibleCauses,
   type AlertSettings,
+  type MarketLean,
   type MoveDetection,
   type OpenSignalLine,
   type TickInput,
@@ -126,11 +129,26 @@ export class MarketMoveDetector {
     }
   }
 
+  /** Where the indicators lean now; null when the candles cannot be read (the alert is then told without it). */
+  private async lean(now: number): Promise<MarketLean | null> {
+    try {
+      const candles = await this.options.market.closedCandles('5m', now, LEAN_CANDLES);
+      const last = this.ticks[this.ticks.length - 1];
+      return marketLeanOf(candles, last === undefined ? null : (last.bid + last.ask) / 2);
+    } catch (error) {
+      this.log('error', 'the reading of the indicators for a move alert failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
   private async keep(detection: MoveDetection, now: number): Promise<void> {
     const { news, buffer } = this.options;
-    const [sources, stories] = await Promise.all([
+    const [sources, stories, lean] = await Promise.all([
       news.sources(),
       news.clustersSince(detection.at - CAUSE_WINDOW_MS),
+      this.lean(now),
     ]);
     const causes = possibleCauses(stories, buffer.items(), detection.at);
     const feed = newsFeedState(headlineFeedHealth(sources, now));
@@ -159,7 +177,12 @@ export class MarketMoveDetector {
     try {
       const settings = await this.options.settings();
       const open = await this.options.open().catch((): OpenSignalLine[] => []);
-      const rows = marketMoveRows({ detection, spread, causes, feed, open }, id, settings, now);
+      const rows = marketMoveRows(
+        { detection, spread, causes, feed, open, lean },
+        id,
+        settings,
+        now,
+      );
       if ((await this.options.outbox.enqueue(rows, now)) > 0) this.options.onQueued?.();
     } catch (error) {
       this.log('error', 'the alert of a sudden move could not be queued', {
