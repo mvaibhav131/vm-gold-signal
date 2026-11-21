@@ -51,6 +51,7 @@ export const STRATEGY_KEYS = [
   'trendline_retest',
   'pattern_breakout',
   'hourly_trend',
+  'confluence',
 ] as const;
 export type StrategyKey = (typeof STRATEGY_KEYS)[number];
 

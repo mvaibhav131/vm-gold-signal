@@ -201,6 +201,60 @@ describe('hourly trend lines', () => {
   });
 });
 
+describe('confluence lines', () => {
+  const facts = {
+    trend1h: 'UP',
+    trend15m: 'UP',
+    votes: ['TREND_1H', 'TREND_15M', 'EMA_STACK_5M', 'ADX', 'DAY_MEAN', 'BREAKOUT', 'MACD'],
+    rsi: 61.4,
+    macdHistogram: 0.34,
+    adx: 27.2,
+    plusDI: 29.6,
+    minusDI: 14.1,
+    atr5m: 3.5,
+    atrRatio: 1.12,
+    emaFast5m: 4008,
+    emaMid5m: 4004,
+    dayMean: 4000,
+    swingLevel: 4003.2,
+    stopAtr: 3.4,
+    stopUsd: 11.9,
+  } as const;
+
+  it('names the two trends, the stop structure, the votes that agreed and the numbers behind them', () => {
+    expect(setupFacts({ strategyKey: 'confluence', facts })).toEqual({
+      structure: [
+        { label: 'Trend 1h / 15m', value: 'up / up' },
+        {
+          label: 'Stop structure',
+          value: 'swing 4003.200, stop 3.4 x ATR (11.900 USD) from the close',
+        },
+      ],
+      trigger: [
+        {
+          label: 'Votes',
+          value:
+            '7 of 9: 1h trend, 15m trend, 5m EMA 20/50, ADX, day mean, 6-candle breakout, MACD',
+        },
+        {
+          label: 'Momentum',
+          value: 'RSI 61, ADX 27 (+DI 30 / -DI 14), MACD histogram 0.34',
+        },
+        { label: 'Range of the market', value: 'ATR(5m) 3.500, 1.12 x its average of the day' },
+      ],
+    });
+  });
+
+  it('words a missing trend and the other direction', () => {
+    const lines = setupFacts({
+      strategyKey: 'confluence',
+      facts: { ...facts, trend1h: null, trend15m: 'DOWN', votes: ['TREND_15M'] },
+    });
+    expect(lines.structure[0]?.value).toBe('none / down');
+    expect(lines.trigger[0]?.value).toBe('1 of 9: 15m trend');
+  });
+});
+
 describe('names', () => {
   it('has a name for every strategy', () => {
     expect(Object.keys(STRATEGY_NAMES).sort()).toEqual([...STRATEGY_KEYS].sort());

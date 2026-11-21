@@ -34,7 +34,7 @@ describe('backtestCommand', () => {
     expect(result.run.strategies.map((s) => s.strategyKey)).toEqual(['trend_pullback']);
   });
 
-  it('runs all six strategies when none is named', () => {
+  it('runs every strategy key when none is named', () => {
     const result = backtestCommand({ ...BASE, strategies: [] });
     expect(result.records.map((record) => record.strategyKey)).toEqual([
       'trend_pullback',
@@ -43,6 +43,7 @@ describe('backtestCommand', () => {
       'trendline_retest',
       'pattern_breakout',
       'hourly_trend',
+      'confluence',
     ]);
   });
 

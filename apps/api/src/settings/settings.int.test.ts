@@ -320,12 +320,13 @@ describe('PATCH /settings on Postgres', () => {
         'trendline_retest',
         'pattern_breakout',
         'hourly_trend',
+        'confluence',
       ].map((key) => store.patch({ strategyAlerts: { [key]: 'off' } }, T0)),
     );
-    expect(results).toHaveLength(6);
+    expect(results).toHaveLength(7);
     expect(rollbacks).toBe(0);
     expect(Object.values((await getSettings()).strategyAlerts)).toEqual(
-      Array.from({ length: 6 }, () => 'off'),
+      Array.from({ length: 7 }, () => 'off'),
     );
   });
 

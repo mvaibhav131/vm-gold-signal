@@ -272,6 +272,17 @@ const SETUP_CONFIG: Readonly<Record<StrategyKey, Record<string, number | string>
     stopAtr1h: 2.5,
     everyMin: 30,
   },
+  confluence: {
+    minVotes: 7,
+    minBodyAtr: 0.4,
+    atrFloor: 0.8,
+    swingCandles: 10,
+    stopBufferAtr: 0.5,
+    minStopAtr: 3,
+    maxStopAtr: 4.2,
+    maxStopUsd: 16,
+    slotMin: 30,
+  },
 };
 
 const VERSIONS: Readonly<Record<StrategyKey, string>> = {
@@ -281,9 +292,10 @@ const VERSIONS: Readonly<Record<StrategyKey, string>> = {
   trendline_retest: '0.0.1',
   pattern_breakout: '0.0.1',
   hourly_trend: '0.1.0',
+  confluence: '0.1.0',
 };
 
-/** A, B and C are forward-tested; D, E and F have no backtest report yet. */
+/** A, B and C are forward-tested; D, E, F and G have no backtest report yet. */
 const STATUSES: Readonly<Record<StrategyKey, StrategyStatus>> = {
   trend_pullback: 'FORWARD_TESTING',
   sweep_reversal: 'FORWARD_TESTING',
@@ -291,6 +303,7 @@ const STATUSES: Readonly<Record<StrategyKey, StrategyStatus>> = {
   trendline_retest: 'RESEARCH',
   pattern_breakout: 'RESEARCH',
   hourly_trend: 'RESEARCH',
+  confluence: 'RESEARCH',
 };
 
 export const strategyVersion = (key: StrategyKey): string => VERSIONS[key];

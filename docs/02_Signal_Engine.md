@@ -264,8 +264,18 @@ Accepted regimes: all (the strategy reads the 1h chart, not the 5m regime). A **
 - Exit profile `EP1_PARTIAL`, entry valid 300 s, time stop 240 minutes.
 - Setup key: the 5m candle that closes the slot (`hourly_trend:5m:<UTC time>`).
 
+### G. Confluence (`confluence`)
+Accepted regimes: all (the nine votes include the trend and the ADX, so the regime is not a second filter). A **paper** strategy that gives a steady stream of signals of a size the owner asked for (a first target of about 10 to 16 USD, a stop beyond the structure and as far as the first target) and counts many readings instead of trusting one; it was written because the owner wanted several signals a day, not because an edge was found (see 7.7).
+
+- Context: on the close of every 5m candle, nine questions are asked for each side: the 1h trend (EMA 20 over EMA 50 and the close over EMA 200), the 15m trend (EMA 20 over EMA 50), the 5m averages (EMA 20 over EMA 50), RSI(14) on the side of 50 but not past 75 (25 for a SELL), MACD histogram on the side and moving that way, ADX(14) at 20 or more with the right directional line on top, the close on the side of the mean price of the UTC day, the close beyond the high (low) of the last six candles, and the close not further than 1.5 ATR from the 5m EMA 20.
+- Setup: at least 7 of the 9 agree for one side (and that side has more votes than the other), the candle that closes has a body of at least 0.4 ATR(5m) that way, ATR(5m) is at least 0.8 of its average of the last day, and the candle closes inside the session (07:00 to 20:30 UTC).
+- Stop: beyond the lowest low (highest high) of the last 10 candles plus 0.5 ATR(5m), and at least 3 ATR from the price. When the structure is further than 4.2 ATR, or the stop would be wider than 16 USD, there is no setup: the stop is never pulled in to where the structure says it would be taken out.
+- Exit profile `EP1_PARTIAL`: the first target is as far as the stop (1R), the runner 2R; entry valid 180 s, time stop 120 minutes (an INTRADAY trade, 9.2). In ATR(5m) the gates are 2.5 to 5 for the stop and 5 for the first target.
+- Setup key: one for each side in each 30-minute slot (`confluence:<side>:<UTC time of the slot>`), so a trend that keeps voting makes one setup for each side in a slot, and a restart cannot make a second one.
+- Quality weights (the bands of the execution and reward groups are made for stops of 0.8 to 2 ATR): trend 0.30, trigger 0.20, session and macro 0.21, volatility 0.15, structure 0.10, execution and reward 0.02 each.
+
 ### Alert policy by strategy status
-Every signal is always recorded and tracked. Whether it is also sent to Telegram is a per-strategy alert switch (Settings, `strategyAlerts`). Defaults: ON for A, B, C and F (the messages carry the `FORWARD-TEST` label until a strategy is `VALIDATED`), OFF for D and E until their first backtest report (B28) is reviewed. The owner can switch any strategy on or off at any time. A strategy whose alerts are off still runs in shadow mode, so its evidence builds up without notifications. A strategy that is added after the settings were stored takes its default switch (`settingsWithDefaults` of `packages/config`).
+Every signal is always recorded and tracked. Whether it is also sent to Telegram is a per-strategy alert switch (Settings, `strategyAlerts`). Defaults: ON for A, B, C and G (the messages carry the `FORWARD-TEST` label until a strategy is `VALIDATED`), OFF for D and E until their first backtest report (B28) is reviewed. The owner can switch any strategy on or off at any time. A strategy whose alerts are off still runs in shadow mode, so its evidence builds up without notifications. A strategy that is added after the settings were stored takes its default switch (`settingsWithDefaults` of `packages/config`).
 
 ### 7.1 Strategy A, details (B15)
 
@@ -384,6 +394,30 @@ Code: `packages/core/src/strategies/hourlyTrend` (`judgeTrend`, `trendStop`, `Ho
 **To review in the research phases.** The weights (a choice made to let signals through, not a finding), the half-hour cadence, the 2.5 x ATR(1h) stop, the 4-hour time stop (a 12-hour one left about a third of the trades out of the statistics: they met a weekend gap), and the many signals open at once in the same direction (the system has no throttles by design).
 
 **Retired (21 November 2026).** F was run live from 17 to 21 November to test the whole chain, and is no longer run (`RETIRED_STRATEGY_KEYS` in `packages/core/src/domain.ts`: the worker does not register it, the lists of strategies and the alert switches leave it out). Its key stays in `STRATEGY_KEYS` because its 154 signals are in the database for ever and must still read. What the live days showed: 154 signals, all SELL, 113 counted, 78.8 percent winners, +0.309 R on average, in a market that fell from 3853 to 3523 (about 9 percent) with nothing to lose in it: not an edge, as the replay had said. It also showed what was wrong around it, and these were fixed for every strategy: the stop of 2.5 x ATR(1h) was about 48 USD (the replay had assumed about 18), 39 signals ran into the daily break or the weekend (the time stop is now cut at the market close, section 9.1), a notice of the feed was sent at once whenever a signal was open, which with a strategy that always has signals open meant 97 notices of a stalled feed in 3 days (now 1 minute, `announceAfterOpenMs`), and about 70 messages a day were too many.
+
+### 7.7 Strategy G, details (the confluence, and the study behind it)
+
+Code: `packages/core/src/strategies/confluence` (`votesFor`, `stopPlan`, `ConfluenceStrategy`, `CONFLUENCE_DEFAULTS`) and `confluenceParamsOf` in `packages/config`. Its params (the periods, the number of votes, the body, the ATR floor, the swing, the stop band and the dollar limit, the slot and the session) are all in the strategy config. SELL is the exact mirror of BUY: every vote is a comparison in the direction of the trade, and the tests run the mirrored market.
+
+**Why it exists, and what it is not.** After F was retired the owner asked for 6 to 8 signals a day, a first target of 11 to 15 points, a stop that is not too close (the stops that everybody sees are the ones that get taken), a reward at least as big as the risk, and every indicator used. Before it was built, a study on the training years (2022 to 2024; no bar of 2025 or 2026 was read) tried the rule families that this asks for, entering at the next minute after the close of each 5m candle, with stops and targets in ATR(5m) so that the three years (ATR 0.6 to 2 USD) and today (3 to 5 USD) can be compared: a pullback in the direction of the 1h and 15m trend, a breakout of the last 12 candles with ADX, a reversion from RSI and Bollinger extremes, the breakout of the first half hour of the London and New York sessions, and the vote of nine readings in two thresholds. Each was run with two costs: 0.25 USD a trade (spread and slippage of the old years, 15 percent of an R) and 6 percent of ATR(5m) (the spread today, about 5 percent). Mean R per trade, 2022 to 2024:
+
+| Rule | Signals a day | Mean R, 0.25 USD | Mean R, 6% of ATR |
+|---|---|---|---|
+| Random entry, stop 3 ATR, target 3 ATR | 10.5 | -0.051 | -0.014 |
+| Pullback with the trend, target 2.5 / 3.5 ATR | 4.9 | -0.057 / -0.060 | -0.010 / -0.014 |
+| Breakout with ADX, target 2.5 / 3.5 ATR | 1.8 | -0.045 / -0.044 | -0.001 / -0.000 |
+| Reversion from RSI and Bollinger extremes | 0.2 | -0.101 / -0.083 | -0.069 / -0.048 |
+| Session-open breakout, target 2.5 / 3.5 ATR | 1.2 | -0.025 / -0.037 | +0.008 / -0.005 |
+| Vote of 9, 6 or more / 7 or more, target 3 ATR | 11.6 / 6.9 | -0.057 / -0.057 | -0.020 / -0.021 |
+| Vote of 7, stop 3 to 4.2 ATR beyond the swing, target 1R / 2R | 5.5 | -0.047 / -0.053 | -0.015 / -0.022 |
+
+Nothing beats a random entry: a vote of nine indicators gives -0.02 R, as the random entry does. Slicing each rule by the ADX of the hour, the session and the volatility (77 slices) found a few that were positive in all three years; about nine of 77 are, by chance, so none was used. This agrees with the yield study of 25 October (`reports/yield-study-20261025.md`): at the 5m scale the price data holds no edge that survives the cost. G is therefore a **paper** strategy, built to the shape the owner asked for; the study itself is in the history of this section, the scratch program was not kept.
+
+**What the replay of the engine says** (`reports/backtest-20261121-074657.md`, TRAIN only, 1 trial in the registry for G): 3,433 signals in 3 years (3.7 a day), win rate 46.9 percent (45 to 49), expectancy -0.038 R in scenario A, -0.034 R in B, -0.080 R in C, profit factor 0.90; no half year above +0.03 R. The gate says FAIL. The spread of the replay is 0.20 USD, 18 percent of ATR(5m) of those years, and today it is about 5 percent, so the costs of the replay are about 0.03 R a trade too large for today: the expectation is about zero, before luck. VALIDATION (2025) was not looked at: there is no result on TRAIN worth confirming, and the one look is kept. The forward test decides: the evidence line of the messages fills in as signals close, and the status stays `RESEARCH` until a gate is passed.
+
+**What the owner asked for, and what G gives.** 6 to 8 a day: about 3 to 4 (7 of 9 votes, and the quality score keeps about half of the setups); more votes would add signals and cost, not edge. A first target of 11 to 15 points: 1R, which is the stop, 3 to 4.2 ATR(5m): 10 to 16 USD at an ATR of 3 to 4; a stop wider than 16 USD is not taken. "No loss": not possible; a win rate of about 47 percent at 1:1 means that more than half of the trades lose. The messages say `FORWARD-TEST (paper)` and the style (INTRADAY, up to 2 hours).
+
+**To review in the research phases.** The number of votes and the 30-minute slot (a choice made for the number of signals, not a finding), the session, the 16 USD limit (a choice, not a finding), the MACD vote (which is about zero for a market that only trends), and the time stop of 2 hours (43 percent of the trades in the study ended by it).
 
 ## 8. Quality score
 

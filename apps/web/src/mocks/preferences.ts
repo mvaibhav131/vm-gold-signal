@@ -14,11 +14,12 @@ import { mergeSettingsPatch } from '../data/settingsPatch';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
-/** Strategies A, B and C alert by default; D and E stay in shadow mode until their backtest report (the retired F alerts no more). */
+/** Strategies A, B, C and G alert by default; D and E stay in shadow mode until their backtest report (the retired F alerts no more). */
 export const ALERTS_ON: readonly StrategyKey[] = [
   'trend_pullback',
   'sweep_reversal',
   'squeeze_retest',
+  'confluence',
 ];
 
 export function defaultSettings(): Settings {

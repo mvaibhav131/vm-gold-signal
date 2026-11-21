@@ -140,6 +140,7 @@ describe('the strategies on Postgres', () => {
       trendline_retest: 'off',
       pattern_breakout: 'off',
       hourly_trend: 'off',
+      confluence: 'on',
     });
     const other = await api.send({
       method: 'PATCH',

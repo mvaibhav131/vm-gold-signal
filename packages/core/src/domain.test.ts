@@ -10,8 +10,8 @@ describe('domain vocabularies', () => {
     }
   });
 
-  it('has one strategy per doc strategy (A to F)', () => {
-    expect(domain.STRATEGY_KEYS).toHaveLength(6);
+  it('has one strategy per doc strategy (A to E) and the two that were added later (F retired, G)', () => {
+    expect(domain.STRATEGY_KEYS).toHaveLength(7);
   });
 
   it('retires the hourly paper strategy: its key stays (old signals read), but it is not active', () => {
@@ -22,6 +22,7 @@ describe('domain vocabularies', () => {
       'squeeze_retest',
       'trendline_retest',
       'pattern_breakout',
+      'confluence',
     ]);
     expect(domain.isRetiredStrategy('hourly_trend')).toBe(true);
     expect(domain.isRetiredStrategy('trend_pullback')).toBe(false);

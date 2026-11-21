@@ -1,5 +1,6 @@
 import type { Regime, StrategyKey } from '../domain';
 import type { SetupSource } from '../explain/setupFacts';
+import { ConfluenceStrategy } from '../strategies/confluence/tracker';
 import { HourlyTrendStrategy } from '../strategies/hourlyTrend/tracker';
 import { PatternBreakoutStrategy } from '../strategies/patternBreakout/tracker';
 import { SqueezeRetestStrategy } from '../strategies/squeezeRetest/tracker';
@@ -148,6 +149,26 @@ export function runnerOf(spec: StrategySpec): StrategyRunner {
             : {
                 setup,
                 source: { strategyKey: 'hourly_trend', facts: setup.facts },
+                sweptLevelId: null,
+                structureTarget: null,
+              };
+        },
+      };
+    }
+    case 'confluence': {
+      const strategy = new ConfluenceStrategy(spec.params);
+      return {
+        key: spec.strategyKey,
+        push: (tf, candle) => {
+          strategy.update(tf, candle);
+        },
+        find: () => {
+          const setup = strategy.evaluate()?.setup ?? null;
+          return setup === null
+            ? null
+            : {
+                setup,
+                source: { strategyKey: 'confluence', facts: setup.facts },
                 sweptLevelId: null,
                 structureTarget: null,
               };

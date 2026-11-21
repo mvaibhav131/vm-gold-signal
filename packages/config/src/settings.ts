@@ -12,8 +12,13 @@ import {
   type Settings,
 } from '@vmgs/contracts';
 
-/** Strategies A, B and C alert by default; D and E run in shadow mode until their backtest report, and the retired F does not alert. */
-const ALERTS_ON: readonly StrategyKey[] = ['trend_pullback', 'sweep_reversal', 'squeeze_retest'];
+/** Strategies A, B, C and G alert by default; D and E run in shadow mode until their backtest report, and the retired F does not alert. */
+const ALERTS_ON: readonly StrategyKey[] = [
+  'trend_pullback',
+  'sweep_reversal',
+  'squeeze_retest',
+  'confluence',
+];
 
 function switches<K extends string>(
   keys: readonly K[],
@@ -28,7 +33,7 @@ function switches<K extends string>(
 /**
  * The runtime settings a fresh database starts with (app_settings). They are the documented
  * defaults: IST display, English messages, alerts from Moderate (65+), every advisory flag only
- * warns, strategy alerts on for A, B and C, news alerts from HIGH impact on every topic.
+ * warns, strategy alerts on for A, B, C and G, news alerts from HIGH impact on every topic.
  * Web Push stays off until a device subscribes.
  */
 export function defaultSettings(): Settings {

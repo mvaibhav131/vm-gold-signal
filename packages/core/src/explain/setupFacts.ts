@@ -1,4 +1,6 @@
 import type {
+  ConfluenceFacts,
+  ConfluenceVote,
   HourlyTrendFacts,
   PatternBreakoutFacts,
   PullbackFacts,
@@ -6,6 +8,7 @@ import type {
   SweepFacts,
   TrendlineRetestFacts,
 } from '../strategies';
+import { CONFLUENCE_VOTES } from '../strategies';
 import { atrText, fixedText, percentText, plainRText, priceText } from './format';
 import { PATTERN_TEXT } from './names';
 import type { ExplanationFact } from './types';
@@ -17,7 +20,20 @@ export type SetupSource =
   | { readonly strategyKey: 'squeeze_retest'; readonly facts: SqueezeFacts }
   | { readonly strategyKey: 'trendline_retest'; readonly facts: TrendlineRetestFacts }
   | { readonly strategyKey: 'pattern_breakout'; readonly facts: PatternBreakoutFacts }
-  | { readonly strategyKey: 'hourly_trend'; readonly facts: HourlyTrendFacts };
+  | { readonly strategyKey: 'hourly_trend'; readonly facts: HourlyTrendFacts }
+  | { readonly strategyKey: 'confluence'; readonly facts: ConfluenceFacts };
+
+const VOTE_TEXT: Readonly<Record<ConfluenceVote, string>> = {
+  TREND_1H: '1h trend',
+  TREND_15M: '15m trend',
+  EMA_STACK_5M: '5m EMA 20/50',
+  RSI: 'RSI',
+  MACD: 'MACD',
+  ADX: 'ADX',
+  DAY_MEAN: 'day mean',
+  BREAKOUT: '6-candle breakout',
+  NOT_STRETCHED: 'not stretched',
+};
 
 /** The lines a strategy adds to the structure group and to the trigger group (its own rules, in numbers). */
 export interface SetupFactLines {
@@ -148,6 +164,35 @@ function hourlyTrendLines(f: HourlyTrendFacts): SetupFactLines {
 }
 
 /** The strategy's own facts as explanation lines. Real prices, never mirrored. */
+function confluenceLines(f: ConfluenceFacts): SetupFactLines {
+  const trendText = (trend: 'UP' | 'DOWN' | null): string =>
+    trend === null ? 'none' : trend === 'UP' ? 'up' : 'down';
+  return {
+    structure: [
+      { label: 'Trend 1h / 15m', value: `${trendText(f.trend1h)} / ${trendText(f.trend15m)}` },
+      {
+        label: 'Stop structure',
+        value: `swing ${priceText(f.swingLevel)}, stop ${fixedText(f.stopAtr, 1)} x ATR (${priceText(f.stopUsd)} USD) from the close`,
+      },
+    ],
+    trigger: [
+      {
+        label: 'Votes',
+        value: `${String(f.votes.length)} of ${String(CONFLUENCE_VOTES.length)}: ${f.votes.map((vote) => VOTE_TEXT[vote]).join(', ')}`,
+      },
+      {
+        label: 'Momentum',
+        value: `RSI ${fixedText(f.rsi, 0)}, ADX ${fixedText(f.adx, 0)} (+DI ${fixedText(f.plusDI, 0)} / -DI ${fixedText(f.minusDI, 0)}), MACD histogram ${fixedText(f.macdHistogram, 2)}`,
+      },
+      {
+        label: 'Range of the market',
+        value: `ATR(5m) ${priceText(f.atr5m)}, ${fixedText(f.atrRatio, 2)} x its average of the day`,
+      },
+    ],
+  };
+}
+
+/** The strategy's own facts as explanation lines. Real prices, never mirrored. */
 export function setupFacts(source: SetupSource): SetupFactLines {
   switch (source.strategyKey) {
     case 'trend_pullback':
@@ -162,5 +207,7 @@ export function setupFacts(source: SetupSource): SetupFactLines {
       return patternLines(source.facts);
     case 'hourly_trend':
       return hourlyTrendLines(source.facts);
+    case 'confluence':
+      return confluenceLines(source.facts);
   }
 }

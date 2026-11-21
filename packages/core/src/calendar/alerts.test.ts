@@ -67,6 +67,7 @@ const SETTINGS: AlertSettings = {
     trendline_retest: 'off',
     pattern_breakout: 'off',
     hourly_trend: 'off',
+    confluence: 'off',
   },
   newsAlerts: NEWS_ALERTS,
 };

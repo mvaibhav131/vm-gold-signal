@@ -1,6 +1,7 @@
 import type { StrategySpec, StrategyStatus } from '@vmgs/core';
 
 import { advisoryModesOf, gateParamsOf, requiredTimeframes } from './gateParams';
+import { confluenceParamsOf } from './confluenceParams';
 import { hourlyTrendParamsOf } from './hourlyTrendParams';
 import { patternBreakoutParamsOf } from './patternBreakoutParams';
 import { qualityWeightsOf, riskParamsOf } from './riskParams';
@@ -48,5 +49,7 @@ export function strategySpecOf(config: StrategyConfig, status: StrategyStatus): 
       };
     case 'hourly_trend':
       return { ...common, strategyKey: config.strategyKey, params: hourlyTrendParamsOf(config) };
+    case 'confluence':
+      return { ...common, strategyKey: config.strategyKey, params: confluenceParamsOf(config) };
   }
 }

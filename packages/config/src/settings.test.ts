@@ -28,7 +28,7 @@ describe('defaultSettings', () => {
     ]);
   });
 
-  it('switches strategy alerts on for A, B and C and off for D, E and the retired F', () => {
+  it('switches strategy alerts on for A, B, C and G, and off for D, E and the retired F', () => {
     expect(defaultSettings().strategyAlerts).toEqual({
       trend_pullback: 'on',
       sweep_reversal: 'on',
@@ -36,6 +36,7 @@ describe('defaultSettings', () => {
       trendline_retest: 'off',
       pattern_breakout: 'off',
       hourly_trend: 'off',
+      confluence: 'on',
     });
     expect(Object.keys(defaultSettings().strategyAlerts)).toEqual([...STRATEGY_KEYS]);
   });
@@ -64,8 +65,8 @@ describe('settingsWithDefaults', () => {
   });
 
   it('gives a strategy that is not in the stored switches its default, and keeps the stored ones', () => {
-    // the row of a database that was seeded when there were five strategies, one of them switched off by the owner
-    const { hourly_trend: _new, ...before } = defaultSettings().strategyAlerts;
+    // the row of a database that was seeded before the newest strategy existed, one of the others switched off by the owner
+    const { confluence: _new, ...before } = defaultSettings().strategyAlerts;
     const stored = settingsWithDefaults([
       { key: 'strategyAlerts', value: { ...before, trend_pullback: 'off' } },
     ]);

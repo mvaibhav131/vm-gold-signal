@@ -11,6 +11,7 @@ const STRATEGY_KEYS = [
   'squeeze_retest',
   'trendline_retest',
   'pattern_breakout',
+  'confluence',
 ] as const;
 
 test('every screen of a stack that has just been set up says what is missing, with no error', async ({

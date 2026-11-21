@@ -19,6 +19,7 @@ export const STRATEGY_LABELS: Readonly<Record<StrategyKey, string>> = {
   trendline_retest: 'Trendline Break and Retest',
   pattern_breakout: 'Chart Pattern Breakout',
   hourly_trend: 'Hourly Trend',
+  confluence: 'Confluence',
 };
 
 /** The seven evidence groups of the quality score, in the order of 02_Signal_Engine section 8. */

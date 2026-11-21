@@ -223,6 +223,46 @@ const hourlyTrendSchema = z.strictObject({
     .refine((p) => p.everyMin % 5 === 0 && 60 % p.everyMin === 0, 'everyMin must divide an hour'),
 });
 
+// Strategy G: nine votes on the close of a 5m candle, a stop beyond the swing and as far as the first target. It speaks in the session only.
+const confluenceSchema = z.strictObject({
+  strategyKey: z.literal('confluence'),
+  ...commonShape,
+  params: z
+    .strictObject({
+      emaFast: candleCount,
+      emaMid: candleCount,
+      emaSlow: candleCount,
+      rsiPeriod: candleCount,
+      atrPeriod: candleCount,
+      adxPeriod: candleCount,
+      // How many of the nine votes must agree.
+      minVotes: z.int().min(1).max(9),
+      minBodyAtr: atrMultiple,
+      // ATR(5m) over its average of the last day, at least.
+      atrFloor: z.number().min(0).max(5),
+      swingCandles: candleCount,
+      stopBufferAtr,
+      minStopAtr: atrMultiple,
+      maxStopAtr: atrMultiple,
+      maxStopUsd: positive,
+      // At most one setup for each side in a slot of this many minutes.
+      slotMin: z.int().min(5).max(1440),
+      // The session in which it speaks, in minutes of the UTC day.
+      sessionFromMin: minutes,
+      sessionToMin: minutes,
+    })
+    .refine(
+      (p) => p.emaFast < p.emaMid && p.emaMid < p.emaSlow,
+      'the averages must grow from fast to middle to slow',
+    )
+    .refine((p) => p.minStopAtr < p.maxStopAtr, 'minStopAtr must be below maxStopAtr')
+    .refine(
+      (p) => p.slotMin % 5 === 0 && 1440 % p.slotMin === 0,
+      'slotMin must be a multiple of 5 that divides a day',
+    )
+    .refine((p) => p.sessionFromMin < p.sessionToMin, 'the session must end after it starts'),
+});
+
 /** The immutable config of one strategy version, stored as strategy_versions.config. */
 export const strategyConfigSchema = z.discriminatedUnion('strategyKey', [
   trendPullbackSchema,
@@ -231,6 +271,7 @@ export const strategyConfigSchema = z.discriminatedUnion('strategyKey', [
   trendlineRetestSchema,
   patternBreakoutSchema,
   hourlyTrendSchema,
+  confluenceSchema,
 ]);
 export type StrategyConfig = z.infer<typeof strategyConfigSchema>;
 
@@ -385,6 +426,60 @@ export function defaultStrategyConfig(key: StrategyKey): StrategyConfig {
           atrPeriod: 14,
           stopAtr1h: 2.5,
           everyMin: 30,
+        },
+      });
+    }
+    case 'confluence': {
+      const common = defaultCommon('EP1_PARTIAL');
+      return strategyConfigSchema.parse({
+        strategyKey: key,
+        ...common,
+        // The nine votes include the trend and the ADX, so the regime of the engine is not a second filter.
+        acceptedRegimes: [
+          'TREND_UP',
+          'TREND_DOWN',
+          'RANGE',
+          'SQUEEZE',
+          'BREAKOUT',
+          'HIGH_VOL',
+          'UNCERTAIN',
+        ],
+        // The stop is 3 to 4.2 ATR(5m) and the first target as far as the stop (1R): wider than the 5m strategies', far inside the hourly one.
+        gates: { ...common.gates, stopAtr: [2.5, 5], tp1MaxAtr: 5 },
+        // The bands of the execution and reward groups are made for stops of 0.8 to 2 ATR, so they would fail a 3 to 4 ATR stop for a
+        // reason that is not a weakness: the quality of a setup rests on the trend, the trigger, the volatility and the session.
+        quality: {
+          ...common.quality,
+          weights: {
+            trend: 0.3,
+            structure: 0.1,
+            trigger: 0.2,
+            volatility: 0.15,
+            execution: 0.02,
+            sessionMacro: 0.21,
+            reward: 0.02,
+          },
+        },
+        // The first target is 10 to 16 USD away: it takes up to two hours.
+        risk: { ...common.risk, timeStopMin: 120 },
+        params: {
+          emaFast: 20,
+          emaMid: 50,
+          emaSlow: 200,
+          rsiPeriod: 14,
+          atrPeriod: 14,
+          adxPeriod: 14,
+          minVotes: 7,
+          minBodyAtr: 0.4,
+          atrFloor: 0.8,
+          swingCandles: 10,
+          stopBufferAtr: 0.5,
+          minStopAtr: 3,
+          maxStopAtr: 4.2,
+          maxStopUsd: 16,
+          slotMin: 30,
+          sessionFromMin: 420,
+          sessionToMin: 1230,
         },
       });
     }

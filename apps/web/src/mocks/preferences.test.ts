@@ -27,7 +27,7 @@ function storage(initial?: string) {
 }
 
 describe('the default settings', () => {
-  it('show times in IST in English, alert on A, B and C only, and warn instead of block', () => {
+  it('show times in IST in English, alert on A, B, C and G only, and warn instead of block', () => {
     const settings = defaultSettings();
     expect(settings.displayTz).toBe('Asia/Kolkata');
     expect(settings.locale).toBe('en');
@@ -35,6 +35,7 @@ describe('the default settings', () => {
       'trend_pullback',
       'sweep_reversal',
       'squeeze_retest',
+      'confluence',
     ]);
     expect(Object.values(settings.advisoryGates)).toEqual(['warn', 'warn', 'warn', 'warn']);
     expect(settings.alerts.telegram.enabled).toBe(true);
@@ -115,7 +116,7 @@ describe('the saved preferences', () => {
   it('start with the default settings, every strategy enabled, the preview password and no second step', () => {
     const prefs = defaultPreferences('preview');
     expect(prefs.settings).toEqual(defaultSettings());
-    expect(Object.values(prefs.enabled)).toEqual([true, true, true, true, true, true]);
+    expect(Object.values(prefs.enabled)).toEqual([true, true, true, true, true, true, true]);
     expect([prefs.password, prefs.totpEnabled, prefs.revokedSessions]).toEqual([
       'preview',
       false,

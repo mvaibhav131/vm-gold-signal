@@ -251,7 +251,7 @@ test.describe('the news', () => {
 });
 
 test.describe('the system', () => {
-  test('lists all five strategies with their status, and the health of the worker', async ({
+  test('lists all six active strategies with their status, and the health of the worker', async ({
     page,
   }) => {
     const problems = await logIn(page);
@@ -262,6 +262,7 @@ test.describe('the system', () => {
       'squeeze_retest',
       'trendline_retest',
       'pattern_breakout',
+      'confluence',
     ]) {
       await expect(page.getByTestId(`strategy-row-${key}`)).toBeVisible();
     }

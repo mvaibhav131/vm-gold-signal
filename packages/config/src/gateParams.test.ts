@@ -13,7 +13,7 @@ import { advisoryModesOf, gateParamsOf, requiredTimeframes } from './gateParams'
 import { defaultStrategyConfig } from './strategy';
 
 describe('the gates of a strategy config, as the engine reads them', () => {
-  it.each(STRATEGY_KEYS.filter((key) => key !== 'hourly_trend'))(
+  it.each(STRATEGY_KEYS.filter((key) => key !== 'hourly_trend' && key !== 'confluence'))(
     '%s: the default config gives exactly the defaults of core',
     (key) => {
       expect(gateParamsOf(defaultStrategyConfig(key))).toEqual(GATE_DEFAULTS);
@@ -25,6 +25,14 @@ describe('the gates of a strategy config, as the engine reads them', () => {
       ...GATE_DEFAULTS,
       stopAtr: [3, 16],
       tp1MaxAtr: 20,
+    });
+  });
+
+  it('confluence: the defaults of core with the stop of 3 to 4.2 ATR(5m) and a first target as far as the stop', () => {
+    expect(gateParamsOf(defaultStrategyConfig('confluence'))).toEqual({
+      ...GATE_DEFAULTS,
+      stopAtr: [2.5, 5],
+      tp1MaxAtr: 5,
     });
   });
 

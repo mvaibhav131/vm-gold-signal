@@ -1,3 +1,4 @@
+export * from './confluence';
 export * from './hourlyTrend';
 export * from './mirror';
 export * from './patternBreakout';

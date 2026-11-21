@@ -2,7 +2,7 @@ import type { Regime, Session, StrategyKey } from '../domain';
 import type { QualityGroup } from '../domain';
 import type { PatternName } from '../patterns/types';
 
-/** The names of the six strategies, as the dashboard and the messages show them. */
+/** The names of the seven strategies, as the dashboard and the messages show them. */
 export const STRATEGY_NAMES: Readonly<Record<StrategyKey, string>> = {
   trend_pullback: 'Trend Pullback',
   sweep_reversal: 'Liquidity Sweep Reversal',
@@ -10,6 +10,7 @@ export const STRATEGY_NAMES: Readonly<Record<StrategyKey, string>> = {
   trendline_retest: 'Trendline Break and Retest',
   pattern_breakout: 'Chart Pattern Breakout',
   hourly_trend: 'Hourly Trend',
+  confluence: 'Confluence',
 };
 
 /** The seven evidence groups of the quality score, in the words of 02_Signal_Engine section 8. */

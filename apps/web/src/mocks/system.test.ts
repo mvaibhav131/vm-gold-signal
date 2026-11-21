@@ -211,7 +211,7 @@ describe('latency', () => {
 });
 
 describe('strategies', () => {
-  it('has a version and a status for every strategy: A, B and C are forward-tested, D, E and F are research', () => {
+  it('has a version and a status for every strategy: A, B and C are forward-tested, D, E, F and G are research', () => {
     expect(STRATEGY_KEYS.map((key) => [key, strategyVersion(key), strategyStatusOf(key)])).toEqual([
       ['trend_pullback', '0.1.0', 'FORWARD_TESTING'],
       ['sweep_reversal', '0.1.0', 'FORWARD_TESTING'],
@@ -219,6 +219,7 @@ describe('strategies', () => {
       ['trendline_retest', '0.0.1', 'RESEARCH'],
       ['pattern_breakout', '0.0.1', 'RESEARCH'],
       ['hourly_trend', '0.1.0', 'RESEARCH'],
+      ['confluence', '0.1.0', 'RESEARCH'],
     ]);
   });
 
