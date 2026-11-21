@@ -450,3 +450,96 @@ describe('the chart controls', () => {
     expect(body).toHaveAttribute('data-fullscreen', 'false');
   });
 });
+
+describe('folding the signal cards and hiding the signals on the chart', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  const visibilityStored = (): { show?: boolean; hidden?: number[] } =>
+    JSON.parse(window.localStorage.getItem('vmgs.chart.signals.v1') ?? '{}') as {
+      show?: boolean;
+      hidden?: number[];
+    };
+
+  it('folds a card to its top lines and unfolds it again, keeping its numbers on the page', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    const body = within(screen.getByTestId('signal-card-42')).getByTestId('signal-body');
+    expect(body).toBeVisible();
+    await user.click(card(42).getByRole('button', { name: 'Fold S-0042' }));
+    expect(body).not.toBeVisible();
+    // what stays: the state, the live R and the three levels; the rest is hidden, not removed
+    expect(card(42).getByTestId('signal-state')).toBeVisible();
+    expect(card(42).getByTestId('signal-live-r-compact')).toBeVisible();
+    expect(card(42).getByTestId('signal-compact-levels')).toHaveTextContent(
+      'Entry 4017.370 · Stop 4010.900 · TP1 4023.840',
+    );
+    expect(card(42).getByTestId('signal-entry')).toHaveTextContent('4017.370');
+    // the other card is not touched
+    expect(within(screen.getByTestId('signal-card-43')).getByTestId('signal-body')).toBeVisible();
+    await user.click(card(42).getByRole('button', { name: 'Unfold S-0042' }));
+    expect(body).toBeVisible();
+    expect(card(42).queryByTestId('signal-compact-levels')).toBeNull();
+  });
+
+  it('folds and unfolds all the cards with one button', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-43');
+    await user.click(screen.getByTestId('fold-all'));
+    for (const seq of [42, 43]) {
+      expect(
+        within(screen.getByTestId(`signal-card-${String(seq)}`)).getByTestId('signal-body'),
+      ).not.toBeVisible();
+    }
+    expect(screen.getByTestId('fold-all')).toHaveTextContent('Unfold all');
+    await user.click(screen.getByTestId('fold-all'));
+    for (const seq of [42, 43]) {
+      expect(
+        within(screen.getByTestId(`signal-card-${String(seq)}`)).getByTestId('signal-body'),
+      ).toBeVisible();
+    }
+    expect(screen.getByTestId('fold-all')).toHaveTextContent('Fold all');
+  });
+
+  it('hides one signal on the chart from its card, and shows it again; the signal itself stays', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    await screen.findByTestId('signal-card-42');
+    await user.click(card(42).getByRole('button', { name: 'Hide on chart S-0042' }));
+    expect(visibilityStored()).toEqual({ show: true, hidden: [42] });
+    expect(card(42).getByRole('button', { name: 'Show on chart S-0042' })).toBeInTheDocument();
+    // the other card still offers to hide its own, and the signal is still open
+    expect(card(43).getByRole('button', { name: 'Hide on chart S-0043' })).toBeInTheDocument();
+    expect(screen.getByTestId('open-count')).toHaveTextContent('2');
+    await user.click(card(42).getByRole('button', { name: 'Show on chart S-0042' }));
+    expect(visibilityStored().hidden).toEqual([]);
+  });
+
+  it('has a Signals switch on the chart that takes every signal off it, and brings them back', async () => {
+    const user = userEvent.setup();
+    await start('two-open');
+    const chip = await screen.findByTestId('chart-signals-toggle');
+    expect(chip).toBeChecked();
+    await user.click(chip);
+    expect(chip).not.toBeChecked();
+    expect(visibilityStored().show).toBe(false);
+    // the cards of the signals are still there, and so are their own buttons
+    expect(screen.getByTestId('signal-card-42')).toBeInTheDocument();
+    await user.click(chip);
+    expect(chip).toBeChecked();
+    expect(visibilityStored().show).toBe(true);
+  });
+
+  it('starts from what was kept in the browser', async () => {
+    window.localStorage.setItem(
+      'vmgs.chart.signals.v1',
+      JSON.stringify({ show: false, hidden: [43] }),
+    );
+    await start('two-open');
+    expect(await screen.findByTestId('chart-signals-toggle')).not.toBeChecked();
+    expect(card(43).getByRole('button', { name: 'Show on chart S-0043' })).toBeInTheDocument();
+  });
+});

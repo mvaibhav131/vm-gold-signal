@@ -1,4 +1,4 @@
-import { STRATEGY_KEYS, sessionAt, type StatsScope, type StrategyKey } from '@vmgs/core';
+import { ACTIVE_STRATEGY_KEYS, sessionAt, type StatsScope, type StrategyKey } from '@vmgs/core';
 import {
   breakdownQuerySchema,
   calibrationQuerySchema,
@@ -457,7 +457,7 @@ export function createMockClient(options: MockClientOptions = {}): ApiClient {
 
     async getStrategies(): Promise<StrategyInfo[]> {
       await wait();
-      return STRATEGY_KEYS.map(strategyInfo);
+      return ACTIVE_STRATEGY_KEYS.map(strategyInfo);
     },
 
     async getStrategyConfig(key: StrategyKey): Promise<StrategyConfigResponse> {

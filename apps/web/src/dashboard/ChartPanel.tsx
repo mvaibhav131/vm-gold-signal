@@ -43,6 +43,8 @@ import {
 import { candleRefetchDelayMs, serverClockOffsetMs } from './chart/forming';
 import type { IndicatorId } from './chart/indicatorSpecs';
 import type { ChartSignal, LiveTick } from './chart/PriceChart';
+import { isDrawn } from './chart/signalVisibility';
+import { useSignalVisibility } from './useSignalVisibility';
 
 const PriceChart = lazy(() => import('./chart/PriceChart'));
 
@@ -92,6 +94,7 @@ function ChartBody() {
   const quote = useQuote();
   const snapshot = useSnapshot();
   const open = useOpenSignals();
+  const { visibility, setShowAll } = useSignalVisibility();
   const [tf, setTf] = useState<Timeframe>('5m');
   const [shown, setShown] = useState<string[]>(DEFAULT_SHOWN);
   // What the owner chose (indicators, type of chart) and drew stays in this browser.
@@ -171,16 +174,18 @@ function ChartBody() {
 
   const signals = useMemo<ChartSignal[]>(
     () =>
-      (open.data?.items ?? []).map(({ signal }) => ({
-        label: signalLabel(signal.seq),
-        side: signal.side,
-        generatedAt: signal.generatedAt,
-        entry: signal.entry,
-        stop: signal.stopLoss,
-        tp1: signal.tp1,
-        tp2: signal.tp2,
-      })),
-    [open.data],
+      (open.data?.items ?? [])
+        .filter(({ signal }) => isDrawn(visibility, signal.seq))
+        .map(({ signal }) => ({
+          label: signalLabel(signal.seq),
+          side: signal.side,
+          generatedAt: signal.generatedAt,
+          entry: signal.entry,
+          stop: signal.stopLoss,
+          tp1: signal.tp1,
+          tp2: signal.tp2,
+        })),
+    [open.data, visibility],
   );
 
   const data = candles.data;
@@ -235,15 +240,25 @@ function ChartBody() {
         />
       </Group>
 
-      <Chip.Group multiple value={shown} onChange={setShown}>
-        <Group gap={6} role="group" aria-label="Chart overlays" data-testid="chart-overlays">
+      <Group gap={6} role="group" aria-label="Chart overlays" data-testid="chart-overlays">
+        <Chip.Group multiple value={shown} onChange={setShown}>
           {[...OVERLAY_CHOICES, ...OBJECT_CHOICES].map((choice) => (
             <Chip key={choice.value} value={choice.value} size="xs" variant="outline">
               {choice.label}
             </Chip>
           ))}
-        </Group>
-      </Chip.Group>
+        </Chip.Group>
+        {/* The signals are drawn on their own; this is how the owner takes them off the chart (and the card of each signal can hide just that one). */}
+        <Chip
+          size="xs"
+          variant="outline"
+          checked={visibility.show}
+          onChange={setShowAll}
+          data-testid="chart-signals-toggle"
+        >
+          Signals
+        </Chip>
+      </Group>
 
       <div
         className="chart-box"

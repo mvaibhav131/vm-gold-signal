@@ -35,10 +35,15 @@ export interface HealthWatcherOptions {
   /** An incident that ended longer ago than this is not announced as recovered: the news would be stale. */
   readonly recoveredWithinMs?: number;
   /**
-   * A break of the feed is told only once it has lasted this long: a reconnect takes half a minute and is not news. When a
-   * signal is open (it cannot be followed without the feed) it is told at once.
+   * A break of the feed is told only once it has lasted this long: a reconnect takes half a minute and is not news.
    */
   readonly announceAfterMs?: number;
+  /**
+   * The same, when a signal is open (it cannot be followed without the feed; a gap of more than a minute also ends its
+   * tracking). Shorter, but not zero: the feed of a free host stalls for 15 to 60 seconds many times a day, and a strategy
+   * that always has signals open would otherwise tell every one of them.
+   */
+  readonly announceAfterOpenMs?: number;
   readonly log?: (
     level: 'info' | 'error',
     message: string,
@@ -60,6 +65,7 @@ export class HealthWatcher {
   private readonly pollMs: number;
   private readonly recoveredWithinMs: number;
   private readonly announceAfterMs: number;
+  private readonly announceAfterOpenMs: number;
   private readonly log: NonNullable<HealthWatcherOptions['log']>;
   private readonly announced = new Set<string>();
   private running = false;
@@ -72,6 +78,7 @@ export class HealthWatcher {
     this.pollMs = options.pollMs ?? 5_000;
     this.recoveredWithinMs = options.recoveredWithinMs ?? 600_000;
     this.announceAfterMs = options.announceAfterMs ?? 180_000;
+    this.announceAfterOpenMs = options.announceAfterOpenMs ?? 60_000;
     this.log = options.log ?? (() => undefined);
   }
 
@@ -88,7 +95,8 @@ export class HealthWatcher {
       if (incident.endedAt === null) {
         if (this.announced.has(key(incident))) continue;
         const openSeqs = await this.options.store.openSeqs();
-        if (openSeqs.length === 0 && now - incident.startedAt < this.announceAfterMs) continue;
+        const wait = openSeqs.length === 0 ? this.announceAfterMs : this.announceAfterOpenMs;
+        if (now - incident.startedAt < wait) continue;
         const message = feedDegradedMessage(
           {
             kind: incident.kind,

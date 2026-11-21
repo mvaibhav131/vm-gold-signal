@@ -10,7 +10,7 @@ import {
   Text,
 } from '@mantine/core';
 import type { Settings, SettingsPatch } from '@vmgs/contracts';
-import { GRADES, NEWS_IMPACTS, NEWS_TOPICS, STRATEGY_KEYS, type Grade } from '@vmgs/core';
+import { ACTIVE_STRATEGY_KEYS, GRADES, NEWS_IMPACTS, NEWS_TOPICS, type Grade } from '@vmgs/core';
 import { useMutation } from '@tanstack/react-query';
 
 import { useApi } from '../api/context';
@@ -307,7 +307,7 @@ function AlertsForm({ settings, save }: { settings: Settings; save: Patch }) {
         description="The same switch as on the Strategies tab: a strategy that does not alert still records its signals and results."
       >
         <Stack gap="sm">
-          {STRATEGY_KEYS.map((key) => (
+          {ACTIVE_STRATEGY_KEYS.map((key) => (
             <Switch
               key={key}
               label={STRATEGY_LABELS[key]}

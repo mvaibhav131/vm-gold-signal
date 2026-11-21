@@ -5,6 +5,7 @@ import {
   STRATEGY_KEYS,
   TRADED_SYMBOL,
   calendarAvailable,
+  isRetiredStrategy,
   type PeriodRow,
   type Regime,
   type StoredEngine,
@@ -191,6 +192,7 @@ export class PostgresBotStore implements BotStore {
       regime: state.regime,
       waitReasons: state.waitReasons,
       strategies: strategies.rows
+        .filter((row) => !isRetiredStrategy(row.strategy_key))
         .map((row) => ({ key: row.strategy_key, version: row.version, status: row.status }))
         .sort((a, b) => STRATEGY_KEYS.indexOf(a.key) - STRATEGY_KEYS.indexOf(b.key)),
     };

@@ -1,4 +1,4 @@
-import { STRATEGY_KEYS } from '@vmgs/core';
+import { ACTIVE_STRATEGY_KEYS } from '@vmgs/core';
 import { sseEventSchema, type SseEvent } from '@vmgs/contracts';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -115,14 +115,14 @@ describe('mock client data follows the contracts', () => {
     expect(snapshot.engine.status).toBe('RUNNING');
   });
 
-  it('lists the six strategies, alerts on for A, B, C and F only, none validated', async () => {
+  it('lists the five active strategies (the retired one is left out), alerts on for A, B and C only, none validated', async () => {
     const strategies = await client().getStrategies();
-    expect(strategies.map((s) => s.key)).toEqual([...STRATEGY_KEYS]);
+    expect(strategies.map((s) => s.key)).toEqual([...ACTIVE_STRATEGY_KEYS]);
+    expect(strategies.map((s) => s.key)).not.toContain('hourly_trend');
     expect(strategies.filter((s) => s.alerts).map((s) => s.key)).toEqual([
       'trend_pullback',
       'sweep_reversal',
       'squeeze_retest',
-      'hourly_trend',
     ]);
     expect(strategies.some((s) => s.status === 'VALIDATED')).toBe(false);
   });
@@ -171,6 +171,7 @@ describe('scenarios', () => {
       'paused',
       'news-unknown',
       'system-warning',
+      'many-open',
     ]);
     expect(api.scenarios?.current()).toBe('two-open');
   });
@@ -1012,7 +1013,6 @@ describe('settings and strategies', () => {
       ['squeeze_retest', '0.1.0', 'FORWARD_TESTING'],
       ['trendline_retest', '0.0.1', 'RESEARCH'],
       ['pattern_breakout', '0.0.1', 'RESEARCH'],
-      ['hourly_trend', '0.1.0', 'RESEARCH'],
     ]);
     const rows = (await api.getSignals({ limit: 200 })).items;
     for (const key of ['trend_pullback', 'sweep_reversal', 'squeeze_retest'] as const) {

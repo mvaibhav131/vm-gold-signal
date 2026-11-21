@@ -28,7 +28,7 @@ class FakeHealth implements HealthStore {
   }
 }
 
-function rig(settings: AlertSettings = defaultSettings(), delay = 0) {
+function rig(settings: AlertSettings = defaultSettings(), delay = 0, openDelay = 0) {
   const clock = { now: NOW };
   const health = new FakeHealth();
   const outbox = new MemoryOutboxStore();
@@ -44,8 +44,9 @@ function rig(settings: AlertSettings = defaultSettings(), delay = 0) {
       },
       now: () => clock.now,
       pollMs: 5,
-      // the older tests tell a break of the feed at once; the delay has its own tests
+      // the older tests tell a break of the feed at once; the delays have their own tests
       announceAfterMs: delay,
+      announceAfterOpenMs: openDelay,
       log: (level, message) => logs.push(`${level}: ${message}`),
     });
   return { clock, health, outbox, queued, logs, watcher: make(), make };
@@ -58,8 +59,8 @@ const stale = (startedAt: number, endedAt: number | null = null): FeedIncident =
 });
 
 describe('HealthWatcher', () => {
-  it('does not tell a short break of the feed, and tells one that lasts, or at once when a signal is open', async () => {
-    const { watcher, health, outbox, clock } = rig(defaultSettings(), 3 * MINUTE);
+  it('does not tell a short break of the feed, and tells one that lasts, sooner when a signal is open', async () => {
+    const { watcher, health, outbox, clock } = rig(defaultSettings(), 3 * MINUTE, MINUTE);
     // a reconnect of 40 seconds is not news, and its end is not news either
     health.incidentList = [{ kind: 'DISCONNECT', startedAt: NOW - 40_000, endedAt: null }];
     expect(await watcher.runOnce()).toBe(0);
@@ -83,10 +84,13 @@ describe('HealthWatcher', () => {
       'SYSTEM_RECOVERED',
     ]);
 
-    // with a signal open the break is told at once: it cannot be followed
+    // with a signal open the break is told sooner (after a minute, not three): it cannot be followed.
+    // A stall of 40 seconds is still not news, even then: a strategy with signals always open would tell every one
     health.seqs = [45];
     clock.now = NOW + 10 * MINUTE;
-    health.incidentList = [{ kind: 'DISCONNECT', startedAt: clock.now - 5_000, endedAt: null }];
+    health.incidentList = [{ kind: 'DISCONNECT', startedAt: clock.now - 40_000, endedAt: null }];
+    expect(await watcher.runOnce()).toBe(0);
+    health.incidentList = [{ kind: 'DISCONNECT', startedAt: clock.now - 65_000, endedAt: null }];
     expect(await watcher.runOnce()).toBe(1);
     expect(String(outbox.entries().at(-1)?.payload.text)).toContain('#S-0045');
   });

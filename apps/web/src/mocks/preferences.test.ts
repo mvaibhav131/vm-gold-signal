@@ -27,7 +27,7 @@ function storage(initial?: string) {
 }
 
 describe('the default settings', () => {
-  it('show times in IST in English, alert on A, B, C and F only, and warn instead of block', () => {
+  it('show times in IST in English, alert on A, B and C only, and warn instead of block', () => {
     const settings = defaultSettings();
     expect(settings.displayTz).toBe('Asia/Kolkata');
     expect(settings.locale).toBe('en');
@@ -35,7 +35,6 @@ describe('the default settings', () => {
       'trend_pullback',
       'sweep_reversal',
       'squeeze_retest',
-      'hourly_trend',
     ]);
     expect(Object.values(settings.advisoryGates)).toEqual(['warn', 'warn', 'warn', 'warn']);
     expect(settings.alerts.telegram.enabled).toBe(true);

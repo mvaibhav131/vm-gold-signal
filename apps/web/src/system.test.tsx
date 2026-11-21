@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { FeedIncident, SystemStorage } from '@vmgs/contracts';
-import { STRATEGY_KEYS } from '@vmgs/core';
+import { ACTIVE_STRATEGY_KEYS, type STRATEGY_KEYS } from '@vmgs/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError, type ApiClient } from './api/client';
@@ -587,21 +587,22 @@ describe('the strategies tab', () => {
   const switchOf = (kind: 'Enabled' | 'Alerts', key: (typeof STRATEGY_KEYS)[number]) =>
     within(rowOf(key)).getByRole('switch', { name: `${kind}: ${STRATEGY_LABELS[key]}` });
 
-  it('lists the six strategies in order, with a status that is earned and the two switches', async () => {
+  it('lists the five active strategies in order, with a status that is earned and the two switches', async () => {
     await open('/system?tab=strategies');
     await screen.findByTestId('strategy-row-trend_pullback');
     expect(
       screen.getAllByTestId(/^strategy-row-/).map((card) => card.getAttribute('data-testid')),
-    ).toEqual(STRATEGY_KEYS.map((key) => `strategy-row-${key}`));
+    ).toEqual(ACTIVE_STRATEGY_KEYS.map((key) => `strategy-row-${key}`));
+    expect(screen.queryByTestId('strategy-row-hourly_trend')).toBeNull();
     for (const key of ['trend_pullback', 'sweep_reversal', 'squeeze_retest'] as const) {
       expect(screen.getByTestId(`strategy-status-${key}`), key).toHaveTextContent(
         'Forward testing',
       );
     }
-    for (const key of ['trendline_retest', 'pattern_breakout', 'hourly_trend'] as const) {
+    for (const key of ['trendline_retest', 'pattern_breakout'] as const) {
       expect(screen.getByTestId(`strategy-status-${key}`), key).toHaveTextContent('Research');
     }
-    for (const key of STRATEGY_KEYS) {
+    for (const key of ACTIVE_STRATEGY_KEYS) {
       expect(switchOf('Enabled', key), key).toBeChecked();
       if (ALERTS_ON.includes(key)) expect(switchOf('Alerts', key), key).toBeChecked();
       else expect(switchOf('Alerts', key), key).not.toBeChecked();
@@ -868,11 +869,13 @@ describe('the alerts tab', () => {
         key,
       ).toBeChecked();
     }
-    for (const key of STRATEGY_KEYS) {
+    for (const key of ACTIVE_STRATEGY_KEYS) {
       const expected = expect(screen.getByRole('switch', { name: STRATEGY_LABELS[key] }), key);
       if (ALERTS_ON.includes(key)) expected.toBeChecked();
       else expected.not.toBeChecked();
     }
+    // the retired strategy has no switch to turn on again
+    expect(screen.queryByRole('switch', { name: STRATEGY_LABELS.hourly_trend })).toBeNull();
     expect(grade('alerts-news-min-impact')).toHaveValue('High');
     expect(screen.getByRole('switch', { name: 'Risk-off moves' })).toBeChecked();
     expect(screen.getByRole('switch', { name: 'Alert for sudden moves of gold' })).toBeChecked();

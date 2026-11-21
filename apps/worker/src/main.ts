@@ -1,5 +1,5 @@
 import { defaultStrategyConfig, strategySpecOf, workerEnvSchema, parseEnv } from '@vmgs/config';
-import { STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows, unrealisedR } from '@vmgs/core';
+import { ACTIVE_STRATEGY_KEYS, TRADED_SYMBOL, mergeNewsWindows, unrealisedR } from '@vmgs/core';
 import { Feed } from '@vmgs/feed';
 import { BiquoteProvider } from '@vmgs/feed';
 import { createPool } from '@vmgs/db';
@@ -109,7 +109,8 @@ async function main(): Promise<void> {
   // The outcome tracker follows open signals on the ticks the recorder has stored. It starts first:
   // it rebuilds every open signal from the stored ticks before the live feed adds to them.
   const lifecycle = new PostgresLifecycleStore(pool);
-  const configs = STRATEGY_KEYS.map((key) => defaultStrategyConfig(key));
+  // A retired strategy is not registered and not run: its old signals stay in the database, and the tracker follows any that is still open.
+  const configs = ACTIVE_STRATEGY_KEYS.map((key) => defaultStrategyConfig(key));
   const specs = [];
   for (const config of configs) {
     const stored = await lifecycle.ensureStrategyVersion(config);
@@ -229,7 +230,7 @@ async function main(): Promise<void> {
     // news window is the widest of the strategies' defaults until the engine reads its own (B26b).
     const calendarStore = new PostgresCalendarStore(pool, TRADED_SYMBOL);
     const newsWindow = mergeNewsWindows(
-      STRATEGY_KEYS.map((key) => defaultStrategyConfig(key).gates.newsWindow),
+      ACTIVE_STRATEGY_KEYS.map((key) => defaultStrategyConfig(key).gates.newsWindow),
     );
     const calendarProvider = new BiquoteCalendarClient();
     const calendarPoller = new CalendarPoller({

@@ -54,6 +54,22 @@ export const STRATEGY_KEYS = [
 ] as const;
 export type StrategyKey = (typeof STRATEGY_KEYS)[number];
 
+/**
+ * Strategies that no longer run. Their signals stay in the database for ever (a signal is never deleted), so the key stays in
+ * `STRATEGY_KEYS` and old rows still read; but the worker does not run them, and the lists of strategies leave them out.
+ * `hourly_trend` was a half-hourly paper strategy used to test the whole chain: it showed no edge.
+ */
+export const RETIRED_STRATEGY_KEYS: readonly StrategyKey[] = ['hourly_trend'];
+
+/** The strategies that run now: every key that is not retired, in the order of `STRATEGY_KEYS`. */
+export const ACTIVE_STRATEGY_KEYS: readonly StrategyKey[] = STRATEGY_KEYS.filter(
+  (key) => !RETIRED_STRATEGY_KEYS.includes(key),
+);
+
+export function isRetiredStrategy(key: StrategyKey): boolean {
+  return RETIRED_STRATEGY_KEYS.includes(key);
+}
+
 export const STRATEGY_STATUSES = [
   'RESEARCH',
   'BACKTESTED',

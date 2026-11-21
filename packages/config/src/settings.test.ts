@@ -28,14 +28,14 @@ describe('defaultSettings', () => {
     ]);
   });
 
-  it('switches strategy alerts on for A, B, C and F and off for D and E', () => {
+  it('switches strategy alerts on for A, B and C and off for D, E and the retired F', () => {
     expect(defaultSettings().strategyAlerts).toEqual({
       trend_pullback: 'on',
       sweep_reversal: 'on',
       squeeze_retest: 'on',
       trendline_retest: 'off',
       pattern_breakout: 'off',
-      hourly_trend: 'on',
+      hourly_trend: 'off',
     });
     expect(Object.keys(defaultSettings().strategyAlerts)).toEqual([...STRATEGY_KEYS]);
   });

@@ -629,6 +629,7 @@ export default function PriceChart(props: PriceChartProps) {
   // Levels, Fibonacci levels and the lines of the open signals are horizontal price lines.
   useEffect(() => {
     const h = handle.current;
+    const element = box.current;
     if (!h) return;
     const palette = PALETTE[scheme];
     for (const line of h.priceLines) h.series.removePriceLine(line);
@@ -677,6 +678,8 @@ export default function PriceChart(props: PriceChartProps) {
       add(signal.tp1, UP, LineStyle.Dashed, `${signal.label} TP1`);
       if (signal.tp2 !== null) add(signal.tp2, UP, LineStyle.Dashed, `${signal.label} TP2`);
     }
+    // how many signals are drawn (the tests read it: the lines are on a canvas)
+    if (element) element.dataset.signals = signals.map((signal) => signal.label).join(',');
   }, [levels, objects, signals, scheme, timeZone, chartType]);
 
   // Trendlines, channels and patterns are line series; zones are shaded rectangles.

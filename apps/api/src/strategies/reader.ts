@@ -8,7 +8,12 @@ import {
   type Evidence,
   type StrategyEnabled,
 } from '@vmgs/contracts';
-import { STRATEGY_KEYS, type StrategyKey, type StrategyStatus } from '@vmgs/core';
+import {
+  STRATEGY_KEYS,
+  isRetiredStrategy,
+  type StrategyKey,
+  type StrategyStatus,
+} from '@vmgs/core';
 
 /** The newest version of a strategy, and what its newest signal said. */
 export interface StrategyRow {
@@ -105,6 +110,8 @@ export class PostgresStrategiesReader implements StrategiesReader {
     ]);
     const newest = new Map(last.rows.map((row) => [row.strategy_key, row]));
     const rows = versions.rows
+      // a retired strategy is not in the list (its signals are still in the history)
+      .filter((row) => !isRetiredStrategy(row.strategy_key))
       .map((row): StrategyRow => {
         const signal = newest.get(row.strategy_key);
         return {

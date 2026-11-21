@@ -40,7 +40,8 @@ type Strengths = Readonly<Record<QualityGroup, number>>;
 type Facts = Readonly<Record<QualityGroup, readonly { label: string; value: string | number }[]>>;
 export type { Facts, Strengths };
 
-export type TemplateKey = 'buy' | 'buy-tp1' | 'sell';
+export type MoreKey = 'more-1' | 'more-2' | 'more-3' | 'more-4' | 'more-5' | 'more-6';
+export type TemplateKey = 'buy' | 'buy-tp1' | 'sell' | MoreKey;
 
 /** What a signal needs to be built, whether it is open (a template) or in the history (mocks/trades.ts). */
 export interface SignalSpec {
@@ -289,10 +290,29 @@ const BUY_AFTER_TP1: Template = {
   maeR: -0.31,
 };
 
+/** Another open BUY, for the state with many open signals (the list of the dashboard has to scroll): newer than the two above, and a little lower each time. */
+function moreBuy(n: number): Template {
+  const entry = 4017.37 - n * 0.9;
+  return {
+    ...BUY,
+    seq: 43 + n,
+    entry,
+    stop: entry - 6.47,
+    maxValidEntry: entry + 0.18,
+    minutesAgo: 5.5 - n * 0.8,
+  };
+}
+
 export const TEMPLATES: Readonly<Record<TemplateKey, Template>> = {
   buy: BUY,
   'buy-tp1': BUY_AFTER_TP1,
   sell: SELL,
+  'more-1': moreBuy(1),
+  'more-2': moreBuy(2),
+  'more-3': moreBuy(3),
+  'more-4': moreBuy(4),
+  'more-5': moreBuy(5),
+  'more-6': moreBuy(6),
 };
 
 /** The weighted score of 02_Signal_Engine section 8, 0 to 100 with 2 decimals. */

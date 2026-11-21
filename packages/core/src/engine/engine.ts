@@ -238,6 +238,7 @@ export class DecisionEngine {
     );
     if (!planned.ok) {
       const gates = evaluateGates(now.marketInputs, null, spec.gates);
+      // a target that is too close for the measured move, or that has no time to be reached before the market closes, is a TARGET_OK failure
       const code = planned.reason === 'STOP_NOT_BEYOND_ENTRY' ? 'STOP_OK' : 'TARGET_OK';
       return reject([...gates.failed, code], null, { reason: planned.reason });
     }

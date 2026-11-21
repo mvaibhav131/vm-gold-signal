@@ -1,6 +1,7 @@
 import type { Side } from '../domain';
 import { assertFinite } from '../indicators/types';
 import { atLeast } from '../structure/types';
+import { nextMarketClose } from '../time/marketHours';
 import { assertQuote, roundPrice } from './round';
 import { EXIT_PROFILE_RULES, type PlanResult, type QuoteTick, type RiskParams } from './types';
 
@@ -24,6 +25,11 @@ export interface PlanInput {
 
 const sideSign = (side: Side): 1 | -1 => (side === 'BUY' ? 1 : -1);
 
+/** A trade is closed (time stop) this long before the market closes, while the feed still gives prices to follow it to its end. */
+export const CLOSE_GUARD_MIN = 5;
+/** With less time than this before the market closes a signal is not made: the target cannot be reached in it. */
+export const MIN_HOLD_MIN = 20;
+
 /**
  * The levels of a signal from the confirming tick (02_Signal_Engine section 9). `entry` is the
  * simulated fill, the quote plus the slippage against the trade; every other level is worked out from
@@ -38,6 +44,11 @@ const sideSign = (side: Side): 1 | -1 => (side === 'BUY' ? 1 : -1);
  *   (with the real entry), there is no trade.
  *
  * A stop that is not beyond the entry (the quote has already gone through it) is no trade.
+ *
+ * The time stop is `timeStopMin` after the decision, but never later than `CLOSE_GUARD_MIN` before the next close of the market
+ * (the daily break at 17:00 New York time, or the weekend): a trade that is open through a close cannot be followed (the feed
+ * has no price, and the gap ends the tracking as `DATA_INVALID`), so it ends before it. When that leaves it less than
+ * `MIN_HOLD_MIN` minutes to run there is no trade (`MARKET_CLOSING`).
  */
 export function planTrade(input: PlanInput, params: RiskParams): PlanResult {
   assertQuote(input.quote);
@@ -46,6 +57,16 @@ export function planTrade(input: PlanInput, params: RiskParams): PlanResult {
   if (!(input.atr5 > 0) || !Number.isFinite(input.atr5))
     throw new RangeError('atr5 must be above zero');
   const sign = sideSign(input.side);
+
+  // the trade ends at its time stop, or 5 minutes before the market closes if that comes first; a close that leaves it less than
+  // 20 minutes to run is no trade (a shorter time stop of the strategy itself is its own choice)
+  const wantedEnd = input.decidedAt + params.timeStopMin * 60_000;
+  const lastEnd = nextMarketClose(input.decidedAt) - CLOSE_GUARD_MIN * 60_000;
+  const cutByClose = lastEnd < wantedEnd;
+  if (cutByClose && lastEnd - input.decidedAt < MIN_HOLD_MIN * 60_000) {
+    return { ok: false, reason: 'MARKET_CLOSING' };
+  }
+  const timeStopAt = cutByClose ? lastEnd : wantedEnd;
 
   const entryRef = input.side === 'BUY' ? input.quote.ask : input.quote.bid;
   const entry = roundPrice(entryRef + sign * params.simSlippageUsd);
@@ -94,7 +115,7 @@ export function planTrade(input: PlanInput, params: RiskParams): PlanResult {
       entryValidUntil: input.decidedAt + params.entryValidSec * 1000,
       tp1,
       tp2,
-      timeStopAt: input.decidedAt + params.timeStopMin * 60_000,
+      timeStopAt,
       costR: params.commissionUsdPerOz / riskDistance,
       structureR,
     },

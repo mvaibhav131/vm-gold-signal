@@ -244,4 +244,5 @@ ticks of the last 14 days exist only in the database.
   It must be set on Render by hand (the same line as the others); without it the limit stays 10 GB. The ticks of 14 days
   are about 290 MB, so at 0.8 GB the guard only acts when something else (the candles, the signals) has grown a lot.
 - **Alerts for every reconnect.** A reconnect of the feed takes about half a minute and each one was announced twice
-  (down and back). A break is now told once it has lasted 3 minutes, or at once when a signal is open.
+  (down and back). A break is now told once it has lasted 3 minutes, or after 1 minute when a signal is open (it was "at once"
+  until a strategy with signals always open told every 15-second stall of the feed: 97 notices in 3 days).

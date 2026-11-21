@@ -99,7 +99,9 @@ export type PlanRejection =
   /** The stop is not beyond the entry on the losing side: there is no trade. */
   | 'STOP_NOT_BEYOND_ENTRY'
   /** The measured move to the target is below the minimum multiple of the risk (strategy E). */
-  | 'MEASURED_MOVE_TOO_SMALL';
+  | 'MEASURED_MOVE_TOO_SMALL'
+  /** The market closes (the daily break, or the weekend) before the trade would have `MIN_HOLD_MIN` minutes to run. */
+  | 'MARKET_CLOSING';
 
 export type PlanResult =
   | { readonly ok: true; readonly plan: TradePlan }

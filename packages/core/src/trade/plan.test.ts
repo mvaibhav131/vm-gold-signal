@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { planTrade, type PlanInput } from './plan';
+import { CLOSE_GUARD_MIN, MIN_HOLD_MIN, planTrade, type PlanInput } from './plan';
 import { ATR, BUY_QUOTE, BUY_STOP, DECIDED_AT, flipPrice, flipQuote, planOf } from './test-data';
 import { RISK_DEFAULTS, type RiskParams } from './types';
 
@@ -216,6 +216,57 @@ describe('the costs and the times', () => {
     expect(p.stopLoss).toBe(4010.9);
     expect(p.riskDistance).toBe(6.47);
     expect(plan({ stopLoss: 4010.9006 }).stopLoss).toBe(4010.901);
+  });
+});
+
+describe('the market closes: the daily break and the weekend', () => {
+  // Friday 23 October 2026, New York on summer time: the market closes at 21:00 UTC
+  const closeAt = Date.UTC(2026, 9, 23, 21, 0, 0);
+  const at = (minutesBeforeClose: number) => closeAt - minutesBeforeClose * 60_000;
+
+  it('ends the trade 5 minutes before the close when the time stop would fall after it', () => {
+    // 2 h of time stop from 19:30 UTC would be 21:30: after the close
+    const p = plan({ decidedAt: at(90) });
+    expect(p.timeStopAt).toBe(closeAt - CLOSE_GUARD_MIN * 60_000);
+    // and well before the close the time stop is the usual one
+    expect(plan({ decidedAt: at(300) }).timeStopAt).toBe(at(300) + 7_200_000);
+  });
+
+  it('makes no trade with less than 20 minutes to run before it must end, and one with just enough', () => {
+    // the trade must end 5 minutes before the close: 25 minutes before it leaves exactly 20 to run
+    expect(rejected({ decidedAt: at(24.9) })).toBe('MARKET_CLOSING');
+    expect(rejected({ decidedAt: at(10) })).toBe('MARKET_CLOSING');
+    expect(rejected({ decidedAt: at(1) })).toBe('MARKET_CLOSING');
+    expect(rejected({ decidedAt: at(25) })).toBeNull();
+    expect(plan({ decidedAt: at(25) }).timeStopAt - at(25)).toBe(MIN_HOLD_MIN * 60_000);
+  });
+
+  it('leaves a short time stop of the strategy alone: only the close can make a trade too short', () => {
+    // 10 minutes of its own time stop far from the close is the strategy's choice
+    expect(plan({ decidedAt: at(300) }, { timeStopMin: 10 }).timeStopAt).toBe(at(300) + 600_000);
+    // but 10 minutes of time stop 30 minutes before the close is not cut by it
+    expect(plan({ decidedAt: at(30) }, { timeStopMin: 10 }).timeStopAt).toBe(at(30) + 600_000);
+  });
+
+  it('counts the time to the close of the weekend too', () => {
+    // Friday 21:50 UTC is 10 minutes to the close of the week, Saturday has no market: the next close is Monday
+    expect(rejected({ decidedAt: Date.UTC(2026, 9, 23, 20, 50, 0) })).toBe('MARKET_CLOSING');
+  });
+
+  it('is the same for a SELL, and does not depend on the exit profile', () => {
+    for (const exitProfile of ['EP1_PARTIAL', 'EP2_SINGLE', 'EP3_STRUCTURE'] as const) {
+      expect(rejected({ decidedAt: at(10) }, { exitProfile })).toBe('MARKET_CLOSING');
+    }
+    const sell = planTrade(
+      {
+        ...input({ decidedAt: at(90) }),
+        side: 'SELL',
+        quote: flipQuote(BUY_QUOTE),
+        stopLoss: flipPrice(BUY_STOP),
+      },
+      RISK_DEFAULTS,
+    );
+    expect(sell.ok && sell.plan.timeStopAt).toBe(closeAt - CLOSE_GUARD_MIN * 60_000);
   });
 });
 

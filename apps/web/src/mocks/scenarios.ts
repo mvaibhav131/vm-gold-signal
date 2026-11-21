@@ -188,6 +188,18 @@ export const SCENARIOS: readonly Scenario[] = [
     waitReasons: NO_SETUP,
     systemWarning: true,
   },
+  {
+    id: 'many-open',
+    label: 'Many open signals (eight: the list scrolls)',
+    feedState: 'LIVE',
+    regime: 'TREND_UP',
+    signals: ['sell', 'buy', 'more-1', 'more-2', 'more-3', 'more-4', 'more-5', 'more-6'],
+    paused: false,
+    news: 'CLEAR',
+    warmup: READY,
+    tickAgeMs: null,
+    waitReasons: NO_SETUP,
+  },
 ];
 
 export const DEFAULT_SCENARIO = 'two-open';

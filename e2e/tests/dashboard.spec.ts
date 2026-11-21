@@ -662,7 +662,7 @@ test.describe('E15 responsive', () => {
     const errors = collectErrors(page);
     await logIn(page, { scenario: 'two-open' });
     await expect(page.getByTestId('price-chart')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Chart' }).click();
+    await page.getByRole('button', { name: 'Chart', exact: true }).click();
     await expect(page.getByTestId('price-chart')).toBeVisible();
     await expect(page.getByTestId('price-chart').locator('canvas').first()).toBeVisible();
     expect(errors).toEqual([]);
@@ -704,11 +704,118 @@ test.describe('E15 responsive', () => {
   });
 });
 
+test.describe('E17 many open signals, folding them, and hiding them on the chart', () => {
+  test('desktop: the list scrolls inside the height of the chart and leaves no gap under it', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(isMobile, 'desktop only');
+    await logIn(page, { scenario: 'many-open' });
+    await expect(page.getByTestId('open-count')).toHaveText('8');
+    const chart = await box(page.getByTestId('chart-section'));
+    const signals = await box(page.getByTestId('open-signals'));
+    // the signals take the height of the chart and add nothing to it
+    expect(Math.abs(signals.height - chart.height)).toBeLessThan(3);
+    // so the row under them starts right below the chart, not below the long list
+    const counters = await box(page.getByTestId('counters'));
+    expect(counters.y - (chart.y + chart.height)).toBeLessThan(40);
+    const overflowing = await page
+      .getByTestId('open-signals-scroll')
+      .evaluate((element) => element.scrollHeight > element.clientHeight);
+    expect(overflowing).toBe(true);
+  });
+
+  test('phone: the list is at most three quarters of the screen, and the chart comes after it', async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'phone only');
+    await logIn(page, { scenario: 'many-open' });
+    await expect(page.getByTestId('open-count')).toHaveText('8');
+    const list = await box(page.getByTestId('open-signals-scroll'));
+    const viewport = page.viewportSize();
+    expect(viewport).not.toBeNull();
+    expect(list.height).toBeLessThanOrEqual((viewport?.height ?? 0) * 0.76);
+    const chart = await box(page.getByTestId('chart-section'));
+    expect(chart.y).toBeGreaterThan(list.y + list.height - 1);
+  });
+
+  test('with many signals only the newest card is unfolded; one card unfolds, and all fold or unfold at once', async ({
+    page,
+  }) => {
+    await logIn(page, { scenario: 'many-open' });
+    await expect(page.getByTestId('open-count')).toHaveText('8');
+    const unfolded = page.locator('[data-testid=signal-body]:visible');
+    await expect(page.getByTestId('open-signals').getByTestId('signal-body')).toHaveCount(8);
+    await expect(unfolded).toHaveCount(1);
+    // the newest (the highest number) is the one that is open
+    await expect(card(page, 49).getByTestId('signal-body')).toBeVisible();
+    // a folded card keeps its three levels and its live R in view
+    await expect(card(page, 42).getByTestId('signal-compact-levels')).toHaveText(
+      /^Entry \d{4}\.\d{3} · Stop \d{4}\.\d{3} · TP1 \d{4}\.\d{3}$/,
+    );
+    await expect(card(page, 42).getByTestId('signal-live-r-compact')).toBeVisible();
+    await card(page, 42).getByRole('button', { name: 'Unfold S-0042' }).click();
+    await expect(card(page, 42).getByTestId('signal-body')).toBeVisible();
+    await expect(unfolded).toHaveCount(2);
+    await page.getByTestId('fold-all').click();
+    await expect(unfolded).toHaveCount(8);
+    await page.getByTestId('fold-all').click();
+    await expect(unfolded).toHaveCount(0);
+  });
+
+  test('a signal can be hidden on the chart from its card, the Signals switch hides all, and the choice is kept', async ({
+    page,
+    isMobile,
+  }) => {
+    const errors = collectErrors(page);
+    await logIn(page, { scenario: 'many-open' });
+    const openChart = async () => {
+      if (isMobile) await page.getByRole('button', { name: 'Chart', exact: true }).click();
+      await expect(page.getByTestId('price-chart')).toBeVisible();
+    };
+    const drawn = async (): Promise<string[]> =>
+      ((await page.getByTestId('price-chart').getAttribute('data-signals')) ?? '')
+        .split(',')
+        .filter((label) => label !== '');
+    await openChart();
+    await expect.poll(async () => (await drawn()).length).toBe(8);
+
+    await card(page, 42).getByRole('button', { name: 'Hide on chart S-0042' }).click();
+    await expect.poll(async () => (await drawn()).length).toBe(7);
+    expect(await drawn()).not.toContain('S-0042');
+    // the signal itself is still open and tracked
+    await expect(page.getByTestId('open-count')).toHaveText('8');
+    await expect(
+      card(page, 42).getByRole('button', { name: 'Show on chart S-0042' }),
+    ).toBeVisible();
+
+    // kept in this browser (a reload starts the preview in its first state: choose the many signals again)
+    await page.reload();
+    await page.getByTestId('preview-scenario').selectOption('many-open');
+    await expect(page.getByTestId('open-count')).toHaveText('8');
+    await openChart();
+    await expect.poll(async () => (await drawn()).length).toBe(7);
+    expect(await drawn()).not.toContain('S-0042');
+
+    await page.getByTestId('chart-overlays').getByText('Signals', { exact: true }).click();
+    await expect(page.getByTestId('chart-signals-toggle')).not.toBeChecked();
+    await expect.poll(async () => (await drawn()).length).toBe(0);
+    await page.getByTestId('chart-overlays').getByText('Signals', { exact: true }).click();
+    await expect.poll(async () => (await drawn()).length).toBe(7);
+
+    await card(page, 42).getByRole('button', { name: 'Show on chart S-0042' }).click();
+    await expect.poll(async () => (await drawn()).length).toBe(8);
+    expect(errors).toEqual([]);
+  });
+});
+
 test.describe('E16 accessibility of every state', () => {
   // an axe run on a busy machine can take long: 60 s instead of 30 s
   test.describe.configure({ timeout: 60_000 });
   const scenarios = [
     'two-open',
+    'many-open',
     'open-buy',
     'tp1-hit',
     'wait',

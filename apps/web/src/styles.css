@@ -422,6 +422,20 @@ body {
   min-width: 0;
 }
 
+.dash-signals-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+/* The list of signals scrolls in a box of its own: with many signals it never makes the page longer than the chart. */
+.dash-signals-scroll {
+  overflow-y: auto;
+  max-height: min(75vh, 640px);
+  padding-right: 4px;
+}
+
 .dash-chart {
   grid-area: chart;
   min-width: 0;
@@ -453,6 +467,24 @@ body {
       'counters counters'
       'bottom bottom';
     align-items: start;
+  }
+
+  /* The signals take the height of the chart (they add nothing to it) and scroll inside it. */
+  .dash-signals {
+    position: relative;
+    align-self: stretch;
+    min-height: 420px;
+  }
+
+  .dash-signals-inner {
+    position: absolute;
+    inset: 0;
+  }
+
+  .dash-signals-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
   }
 
   .dash-bottom {
