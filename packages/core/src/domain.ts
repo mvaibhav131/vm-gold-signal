@@ -102,6 +102,8 @@ export const ADVISORY_FLAGS = [
   'OFF_HOURS',
   'NEAR_LEVEL',
   'OPPOSES_OPEN',
+  'OPEN_RISK',
+  'DAILY_LOSS',
   'UNVALIDATED_STRATEGY',
   'NEWS_UNKNOWN',
 ] as const;

@@ -93,6 +93,20 @@ export function warningText(result: FlagResult, context: WarningContext = {}): s
       return nearLevelText(detail);
     case 'OPPOSES_OPEN':
       return opposesText(detail, context);
+    case 'OPEN_RISK': {
+      const risk = numberOf(detail, 'openRiskR');
+      const limit = numberOf(detail, 'limitR');
+      return `Open risk is already ${risk === null ? 'high' : `${fixedText(risk, 1)}R`}${
+        limit === null ? '' : ` (the limit is ${fixedText(limit, 1)}R)`
+      }: this signal adds 1R more`;
+    }
+    case 'DAILY_LOSS': {
+      const result = numberOf(detail, 'dayResultR');
+      const limit = numberOf(detail, 'limitR');
+      return `Today's result is ${result === null ? 'a loss' : `${fixedText(result, 1)}R`}${
+        limit === null ? '' : ` (a bad day starts at -${fixedText(limit, 1)}R)`
+      }: think about stopping for today`;
+    }
     case 'UNVALIDATED_STRATEGY':
       return 'FORWARD-TEST: this strategy is not validated yet (paper signal)';
     case 'NEWS_UNKNOWN':

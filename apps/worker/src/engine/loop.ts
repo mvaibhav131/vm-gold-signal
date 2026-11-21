@@ -208,11 +208,18 @@ export class DecisionLoop {
     }
 
     // What is read from the database before the decision may fail: the candle then stays pending and is tried again.
-    const [controls, calendar, news, open] = await Promise.all([
+    // The result of the day is only a warning: without it the decision goes on, and the flag is simply not there.
+    const [controls, calendar, news, open, dayResultR] = await Promise.all([
       store.controls(now),
       this.options.calendar(now),
       this.options.news.read(now),
       store.openSignals(),
+      store.dayResultR(now).catch((error: unknown): null => {
+        this.log('error', 'the result of the day could not be read: no DAILY_LOSS warning', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }),
     ]);
     const feed = this.options.feed();
     const evidence = new Map<string, ExplanationEvidence>();
@@ -228,6 +235,7 @@ export class DecisionLoop {
       calendar: { available: calendar.available, events: calendar.events, names: calendar.names },
       news,
       open: open.map(({ id, side, riskR }) => ({ id, side, riskR })),
+      dayResultR,
       modes: controls.modes,
       openLabels: Object.fromEntries(open.map((item) => [item.id, item.label])),
     };

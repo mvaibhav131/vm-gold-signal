@@ -60,6 +60,8 @@ export interface OpenSignalFacts extends OpenSignalInput {
 export interface EngineStore extends CandleSource, QuoteSource {
   controls(now: number): Promise<EngineControls>;
   openSignals(): Promise<OpenSignalFacts[]>;
+  /** The net R of the live signals closed since the market last closed (the trading day), at `now`. */
+  dayResultR(now: number): Promise<number>;
   /** The evidence of a kind of setup: the rollups of the forward test, then of the backtest, as the signal shows them. */
   evidence(dims: BucketDims): Promise<ExplanationEvidence>;
   /** A setup that satisfied its strategy but may not become a signal (`rejections`, "WAIT: reason"). */

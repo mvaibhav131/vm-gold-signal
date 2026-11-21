@@ -31,3 +31,8 @@ export function distanceNote(entry: number, level: number, riskDistance: number)
   const distance = Math.abs(level - entry);
   return `${distance.toFixed(3)} USD, ${(distance / riskDistance).toFixed(1)}R`;
 }
+
+/** How far the first target is from the entry, in times the risk. */
+export function rewardOfTp1(signal: { entry: number; tp1: number; riskDistance: number }): number {
+  return Math.abs(signal.tp1 - signal.entry) / signal.riskDistance;
+}

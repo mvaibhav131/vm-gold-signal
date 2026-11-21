@@ -295,6 +295,7 @@ export class DecisionEngine {
           spreadBaseline: view.spreadBaseline,
         }),
         lastHighHeadlineAt: ctx.news.lastHighHeadlineAt,
+        dayResultR: ctx.dayResultR ?? null,
       },
       { side, strategyStatus: spec.status, nearLevel, openSignals: now.open },
     );

@@ -818,6 +818,13 @@ test.describe('E18 the style of the trade and the size of the position', () => {
     await logIn(page, { scenario: 'two-open' });
     await expect(card(page, 42).getByTestId('signal-style')).toHaveText('INTRADAY, up to 2 h');
     await expect(card(page, 42).getByText('+6.470 USD, 1.0R')).toBeVisible();
+    // what the first target needs to break even, next to the evidence: a rate with 64 trades, a count with 18
+    await expect(card(page, 42).getByTestId('evidence-break-even')).toContainText(
+      '50% needed to break even at TP1 (1.0R, before costs) is inside the interval',
+    );
+    await expect(card(page, 43).getByTestId('evidence-break-even')).toContainText(
+      'A setup must win 1 trade in 2 to break even at TP1',
+    );
     await expect(card(page, 42).getByTestId('position-size-account')).toContainText(
       '10,000.00 USD, risking 0.5% (50.00 USD)',
     );

@@ -293,6 +293,7 @@ const BUY_AFTER_TP1: Template = {
 /** Another open BUY, for the state with many open signals (the list of the dashboard has to scroll): newer than the two above, and a little lower each time. */
 function moreBuy(n: number): Template {
   const entry = 4017.37 - n * 0.9;
+  const crowded = n === 6;
   return {
     ...BUY,
     seq: 43 + n,
@@ -300,6 +301,22 @@ function moreBuy(n: number): Template {
     stop: entry - 6.47,
     maxValidEntry: entry + 0.18,
     minutesAgo: 5.5 - n * 0.8,
+    // the newest of the many comes when the open risk is already high and the day has lost: both are warnings, never a stop
+    ...(crowded
+      ? {
+          warnings: [
+            {
+              code: 'OPEN_RISK',
+              text: 'Open risk is already 7.0R (the limit is 3.0R): this signal adds 1R more',
+            },
+            {
+              code: 'DAILY_LOSS',
+              text: "Today's result is -3.4R (a bad day starts at -3.0R): think about stopping for today",
+            },
+            UNVALIDATED,
+          ],
+        }
+      : {}),
   };
 }
 

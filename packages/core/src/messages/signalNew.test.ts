@@ -66,7 +66,7 @@ describe('the entry alert of the example, golden', () => {
         `${ICON.warning} <b>Warnings</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         '',
-        `${ICON.evidence} Track record of this setup: 58% wins (n=64), +0.31R per trade.`,
+        `${ICON.evidence} Track record of this setup: 58% wins (n=64), +0.31R per trade; it needs 50% to break even at TP1.`,
         '<i>This is a historical frequency, not a guarantee. 1R = 6.470 USD per 0.01 lot (1 oz).</i>',
         '',
         `<blockquote expandable><b>DETAILS (tap to open)</b>`,
@@ -107,7 +107,7 @@ describe('the entry alert of the example, golden', () => {
         `${ICON.warning} <b>Chetavni</b>:`,
         '- FORWARD-TEST: this strategy is not validated yet (paper signal)',
         '',
-        `${ICON.evidence} Is setup ka record: 58% jeet (n=64), +0.31R per trade.`,
+        `${ICON.evidence} Is setup ka record: 58% jeet (n=64), +0.31R per trade; TP1 par break-even ke liye 50% chahiye.`,
         '<i>Ye pichhle records ki frequency hai, guarantee nahi. 1R = 6.470 USD per 0.01 lot (1 oz).</i>',
         '',
         `<blockquote expandable><b>DETAIL (kholne ke liye dabao)</b>`,
@@ -347,14 +347,39 @@ describe('the groups', () => {
     expect(folded).toContain('Trend STRONG');
   });
 
-  it('says in one plain line how much is known of this setup, and the full figures are folded', () => {
+  it('says in one plain line how much is known of this setup and what the first target needs, and the full figures are folded', () => {
     const start = html().indexOf('<blockquote expandable>');
     expect(html().slice(0, start)).toContain(
-      'Track record of this setup: 58% wins (n=64), +0.31R per trade.',
+      'Track record of this setup: 58% wins (n=64), +0.31R per trade; it needs 50% to break even at TP1.',
     );
     const none = html(withDoc({ evidence: EVIDENCE_INSUFFICIENT }));
     expect(none.slice(0, none.indexOf('<blockquote expandable>'))).toMatch(
-      /Track record of this setup: not enough trades yet \(n=\d+\)\./,
+      /Track record of this setup: not enough trades yet \(n=\d+\); it must win 1 trade in 2 to break even at TP1\./,
+    );
+  });
+
+  it('needs more wins to break even when the first target is closer than the stop, and fewer when it is further', () => {
+    const withTp1 = (tp1: number) => {
+      const signal: SignalRef = { ...BUY_SIGNAL, tp1 };
+      const explanation = buildExplanation(
+        explanationInputOf({
+          plan: {
+            entry: signal.entry,
+            maxValidEntry: signal.maxValidEntry,
+            stopLoss: signal.stopLoss,
+            tp1,
+            tp2: signal.tp2,
+            riskDistance: signal.riskDistance,
+          },
+        }),
+      );
+      return text(newSignal(signal, explanation));
+    };
+    expect(withTp1(BUY_SIGNAL.entry + BUY_SIGNAL.riskDistance / 2)).toContain(
+      'it needs 67% to break even at TP1',
+    );
+    expect(withTp1(BUY_SIGNAL.entry + 2 * BUY_SIGNAL.riskDistance)).toContain(
+      'it needs 33% to break even at TP1',
     );
   });
 
@@ -687,6 +712,10 @@ describe('length (04 section 4: under 3500 characters, optional parts go first)'
     [3, 2, 40, 200],
     [4, 4, 100, 200],
     [3, 2, 40, 600],
+    [4, 10, 120, 35],
+    [4, 12, 150, 35],
+    [5, 11, 150, 35],
+    [3, 12, 100, 35],
   ] as const;
 
   it('chooses the first level of detail whose text is within the limit', () => {

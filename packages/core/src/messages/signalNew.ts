@@ -12,8 +12,10 @@ import {
 import { matchLevelText } from '../explain/names';
 import type { ExplanationDoc, ExplanationEvidence, ExplanationHeadline } from '../explain/types';
 import { TRADED_SYMBOL } from '../symbol';
-import { assertLevels, labelLine, rewardR, signalTag, strategyText } from './common';
+import { breakEvenWinRate } from '../trade/sizing';
+import { oneWinIn } from '../stats/breakEven';
 import { tradeStyleOfTimes } from '../trade/style';
+import { assertLevels, labelLine, rewardR, signalTag, strategyText } from './common';
 import { bold, clean, fold, italic, mono } from './markup';
 import { ICON, STATE_ICON, sideIcon } from './style';
 import { clockText } from './time';
@@ -101,14 +103,16 @@ function levelLines(data: NewSignalData, w: Words, at: (ms: number) => string): 
   return lines;
 }
 
-/** One line of the track record for the plain part of the alert; the full figures are folded. */
-function trackLine(e: ExplanationEvidence, w: Words): string {
+/** One line of the track record for the plain part of the alert; the full figures are folded. It says what the first target needs to break even. */
+function trackLine(e: ExplanationEvidence, w: Words, rewardOfTp1: number): string {
+  const needed = breakEvenWinRate(rewardOfTp1);
   if (e.sampleLabel === 'INSUFFICIENT' || e.winRate === null || e.ci === null)
-    return w.trackNone(e.n);
+    return w.trackNone(e.n, oneWinIn(needed));
   return w.trackShort(
     percentText(e.winRate),
     e.n,
     e.expectancyR === null ? null : signedRText(e.expectancyR),
+    percentText(needed),
   );
 }
 
@@ -221,7 +225,7 @@ function render(data: NewSignalData, options: DisplayOptions, level: number): Re
     ...levelLines(data, w, at),
     ...(e.warnings.length === 0 ? [] : ['', ...warnings]),
     '',
-    `${ICON.evidence} ${trackLine(e.evidence, w)}`,
+    `${ICON.evidence} ${trackLine(e.evidence, w, rewardR(signal, signal.tp1))}`,
     italic(`${w.disclaimer} ${w.oneR(priceText(signal.riskDistance))}`),
     '',
     fold(details.join('\n')),

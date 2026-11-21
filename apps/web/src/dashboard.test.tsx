@@ -142,6 +142,10 @@ describe('evidence below the minimum sample (scenario E6)', () => {
     expect(evidence).toHaveTextContent('10 wins');
     expect(evidence.textContent).not.toMatch(/%/);
     expect(within(evidence).queryByTestId('evidence-win-rate')).toBeNull();
+    // what the first target needs is said as a count of trades, not as a rate
+    expect(within(evidence).getByTestId('evidence-break-even')).toHaveTextContent(
+      'A setup must win 1 trade in 2 to break even at TP1 (1.0R, before costs).',
+    );
   });
 
   it('the month counter shows no win rate under 30 results either', async () => {
@@ -547,6 +551,22 @@ describe('folding the signal cards and hiding the signals on the chart', () => {
 describe('the style of the trade and the size of the position on a card', () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  it('shows the warnings about the open risk and a bad day in full, next to the others, and the signal is still there', async () => {
+    await start('many-open');
+    await screen.findByTestId('signal-card-49');
+    const open = card(49).getByTestId('signal-warning-OPEN_RISK');
+    expect(open).toHaveTextContent(
+      'Open risk is already 7.0R (the limit is 3.0R): this signal adds 1R more',
+    );
+    expect(card(49).getByTestId('signal-warning-DAILY_LOSS')).toHaveTextContent(
+      "Today's result is -3.4R",
+    );
+    expect(card(49).getByTestId('signal-warning-UNVALIDATED_STRATEGY')).toHaveTextContent(
+      'FORWARD-TEST',
+    );
+    expect(screen.getByTestId('open-count')).toHaveTextContent('8');
   });
 
   it('names the style with the longest time the trade may take, even when the card is folded', async () => {

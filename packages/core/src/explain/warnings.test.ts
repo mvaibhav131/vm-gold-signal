@@ -112,6 +112,22 @@ describe('the other flags', () => {
     expect(warningText(flagOf('OPPOSES_OPEN', { signalIds: ['a'] }))).toBe('Opposes 1 open signal');
   });
 
+  it('the open risk and a bad day say the numbers, and what to think of', () => {
+    expect(warningText(flagOf('OPEN_RISK', { openRiskR: 3, openCount: 3, limitR: 3 }))).toBe(
+      'Open risk is already 3.0R (the limit is 3.0R): this signal adds 1R more',
+    );
+    expect(warningText(flagOf('DAILY_LOSS', { dayResultR: -3.46, limitR: 3 }))).toBe(
+      "Today's result is -3.5R (a bad day starts at -3.0R): think about stopping for today",
+    );
+    // without the numbers the sentence still makes sense
+    expect(warningText(flagOf('OPEN_RISK'))).toBe(
+      'Open risk is already high: this signal adds 1R more',
+    );
+    expect(warningText(flagOf('DAILY_LOSS'))).toBe(
+      "Today's result is a loss: think about stopping for today",
+    );
+  });
+
   it('an unvalidated strategy and an unknown calendar', () => {
     expect(warningText(flagOf('UNVALIDATED_STRATEGY', { status: 'FORWARD_TESTING' }))).toBe(
       'FORWARD-TEST: this strategy is not validated yet (paper signal)',

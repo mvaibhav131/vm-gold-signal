@@ -130,6 +130,6 @@ describe('the gates of a strategy config, as the engine reads them', () => {
     ]);
     expect(
       evaluateFlags({ now: last, calendar: null, newsShock: null, lastHighHeadlineAt: null }, null),
-    ).toHaveLength(9);
+    ).toHaveLength(11);
   });
 });

@@ -5,7 +5,7 @@ import { ToneBadge } from '../components/ToneBadge';
 import { formatPrice } from '../format/format';
 import { STRATEGY_LABELS, formatR, formatScore, signalLabel } from '../format/signal';
 import { formatCountdown } from '../format/time';
-import { STYLE_HINT, distanceNote, styleOf } from '../format/tradeStyle';
+import { STYLE_HINT, distanceNote, rewardOfTp1, styleOf } from '../format/tradeStyle';
 import { useNow } from '../hooks';
 import type { Tone } from '../format/format';
 import { EvidenceBlock } from './EvidenceBlock';
@@ -258,7 +258,7 @@ export function SignalCard({
             </Group>
 
             <WhyPanel explanation={signal.explanation} signalSeq={signal.seq} />
-            <EvidenceBlock evidence={signal.evidence} />
+            <EvidenceBlock evidence={signal.evidence} rewardR={rewardOfTp1(signal)} />
           </Stack>
         </div>
       </Stack>

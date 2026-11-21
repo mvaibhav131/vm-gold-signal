@@ -15,15 +15,24 @@ import type { GateEvaluation } from './types';
 
 const MINUTE_MS = 60_000;
 
-/** The two time windows of the flags (docs/02 section 6). */
+/** The time windows and the two risk limits of the flags (docs/02 section 6). */
 export interface FlagParams {
   /** HEADLINE_RECENT: a HIGH headline cluster published at most this many minutes ago. */
   readonly headlineMinutes: number;
   /** OFF_HOURS: every open market closes within this many minutes. */
   readonly offHoursMinutes: number;
+  /** OPEN_RISK: the open signals already risk this many R or more (the new one would add 1R). */
+  readonly maxOpenRiskR: number;
+  /** DAILY_LOSS: the signals closed today have lost this many R or more. */
+  readonly maxDailyLossR: number;
 }
 
-export const FLAG_DEFAULTS: FlagParams = { headlineMinutes: 30, offHoursMinutes: 30 };
+export const FLAG_DEFAULTS: FlagParams = {
+  headlineMinutes: 30,
+  offHoursMinutes: 30,
+  maxOpenRiskR: 3,
+  maxDailyLossR: 3,
+};
 
 /** The numbers behind a flag that is present, for the warning line and the stored snapshot. Empty when it is not. */
 export type FlagDetail = Readonly<
@@ -46,6 +55,8 @@ export interface FlagMarketInputs {
   readonly newsShock: NewsShockResult | null;
   /** When the newest HIGH-impact headline cluster was published, null if there is none. */
   readonly lastHighHeadlineAt: number | null;
+  /** The net R of the signals closed since the market last closed (the trading day); null when it is not known. */
+  readonly dayResultR?: number | null;
 }
 
 /** The flags that look at the setup. */
@@ -54,15 +65,19 @@ export interface FlagSetupInputs {
   readonly strategyStatus: StrategyStatus;
   /** `nearOpposingLevel` for this entry. */
   readonly nearLevel: NearLevel | null;
-  /** The open signals, with their sides. */
-  readonly openSignals: readonly { readonly id: string; readonly side: Side }[];
+  /** The open signals, with their sides and what each still risks in R (1 when it is not given). */
+  readonly openSignals: readonly {
+    readonly id: string;
+    readonly side: Side;
+    readonly riskR?: number;
+  }[];
 }
 
 const NONE: FlagDetail = {};
 
 /**
- * All nine advisory flags (docs/02 section 6), in the order of `ADVISORY_FLAGS`. Without a setup
- * the three flags that look at one (NEAR_LEVEL, OPPOSES_OPEN, UNVALIDATED_STRATEGY) are not present.
+ * All eleven advisory flags (docs/02 section 6), in the order of `ADVISORY_FLAGS`. Without a setup
+ * the four flags that look at one (NEAR_LEVEL, OPPOSES_OPEN, OPEN_RISK, UNVALIDATED_STRATEGY) are not present.
  * A flag only describes a condition: whether it blocks is the owner's switch (`decide`).
  */
 export function evaluateFlags(
@@ -82,6 +97,9 @@ export function evaluateFlags(
       : (market.now - market.lastHighHeadlineAt) / MINUTE_MS;
   const opposing =
     setup === null ? [] : setup.openSignals.filter((signal) => signal.side !== setup.side);
+  const openRiskR =
+    setup === null ? 0 : setup.openSignals.reduce((sum, signal) => sum + (signal.riskR ?? 1), 0);
+  const dayResultR = market.dayResultR ?? null;
 
   const present: Record<AdvisoryFlag, FlagDetail | null> = {
     NEWS_WINDOW:
@@ -121,6 +139,14 @@ export function evaluateFlags(
         }
       : null,
     OPPOSES_OPEN: opposing.length > 0 ? { signalIds: opposing.map((signal) => signal.id) } : null,
+    OPEN_RISK:
+      setup !== null && openRiskR >= params.maxOpenRiskR
+        ? { openRiskR, openCount: setup.openSignals.length, limitR: params.maxOpenRiskR }
+        : null,
+    DAILY_LOSS:
+      dayResultR !== null && dayResultR <= -params.maxDailyLossR
+        ? { dayResultR, limitR: params.maxDailyLossR }
+        : null,
     UNVALIDATED_STRATEGY:
       setup !== null && setup.strategyStatus !== 'VALIDATED'
         ? { status: setup.strategyStatus }
@@ -138,7 +164,7 @@ export const ADVISORY_SWITCHES = ['newsWindow', 'rollover', 'offHours', 'nearLev
 export type AdvisorySwitch = (typeof ADVISORY_SWITCHES)[number];
 export type AdvisoryModes = Readonly<Record<AdvisorySwitch, GateMode>>;
 
-/** Which switch belongs to which flag. The other five flags have none: they always warn. */
+/** Which switch belongs to which flag. The other seven flags have none: they always warn. */
 export const FLAG_SWITCH = {
   NEWS_WINDOW: 'newsWindow',
   ROLLOVER: 'rollover',

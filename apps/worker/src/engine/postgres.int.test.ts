@@ -303,6 +303,43 @@ describe('the open signals and the evidence', () => {
     );
   });
 
+  it('adds up the net R of the live signals closed in the trading day, and nothing else', async () => {
+    const strategy = await world.store.ensureStrategyVersion(
+      defaultStrategyConfig('trend_pullback'),
+    );
+    const outcome = async (
+      setupKey: string,
+      mode: 'LIVE' | 'SIMULATED',
+      closedAt: string,
+      result: 'WIN' | 'LOSS' | 'DATA_INVALID',
+      net: number | null,
+    ) => {
+      const created = await world.store.createSignal(
+        buyDraft({ setupKey, mode }),
+        strategy,
+        () => [],
+        Date.now(),
+      );
+      if (created.status !== 'CREATED') throw new Error('not created');
+      await run(
+        `INSERT INTO signal_outcomes (signal_id, result, counts_in_stats, closed_at, exit_reason, realized_r_gross, cost_r, realized_r_net, duration_s)
+         VALUES ($1, $2, $3, $4, 'TEST', $5, 0, $5, 600)`,
+        [created.created.id, result, net !== null, closedAt, net],
+      );
+    };
+    // Tuesday 7 January 2031, 12:00 UTC: the trading day began at 17:00 New York time on Monday, 22:00 UTC
+    const now = Date.UTC(2031, 0, 7, 12, 0, 0);
+    await outcome('day-before', 'LIVE', '2031-01-06T20:00:00Z', 'LOSS', -1);
+    await outcome('day-loss', 'LIVE', '2031-01-07T08:00:00Z', 'LOSS', -1.04);
+    await outcome('day-win', 'LIVE', '2031-01-07T10:00:00Z', 'WIN', 0.5);
+    await outcome('day-sim', 'SIMULATED', '2031-01-07T09:00:00Z', 'LOSS', -1);
+    await outcome('day-invalid', 'LIVE', '2031-01-07T09:30:00Z', 'DATA_INVALID', null);
+    await outcome('day-later', 'LIVE', '2031-01-07T13:00:00Z', 'LOSS', -1);
+    expect(await store.dayResultR(now)).toBeCloseTo(-0.54, 9);
+    // before any signal of that day closed, the day is at nothing
+    expect(await store.dayResultR(Date.UTC(2031, 0, 6, 22, 30, 0))).toBe(0);
+  });
+
   const dims: BucketDims = {
     strategyKey: 'trend_pullback',
     strategyVersion: '9.9.9',

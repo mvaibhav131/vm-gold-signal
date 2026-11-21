@@ -6,6 +6,7 @@ import { EvidenceBlock } from '../dashboard/EvidenceBlock';
 import { WhyPanel } from '../dashboard/WhyPanel';
 import { useSignalDetail } from '../data/queries';
 import { signalLabel } from '../format/signal';
+import { rewardOfTp1 } from '../format/tradeStyle';
 import { usePageTitle } from '../hooks';
 import { LevelsBlock } from './LevelsBlock';
 import { ResultBlock } from './ResultBlock';
@@ -139,7 +140,7 @@ export default function SignalDetailPage() {
               <Title order={2} size="h4" id="detail-evidence-title">
                 Evidence at creation
               </Title>
-              <EvidenceBlock evidence={signal.evidence} />
+              <EvidenceBlock evidence={signal.evidence} rewardR={rewardOfTp1(signal)} />
             </Stack>
           </Paper>
           <ReviewBlock autopsy={autopsy} outcome={outcome} />

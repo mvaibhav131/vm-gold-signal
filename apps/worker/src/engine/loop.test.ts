@@ -278,6 +278,40 @@ describe('DecisionLoop: a decision', () => {
     expect(r.signals()[0]?.explanation.open).toEqual({ count: 1, riskR: 1 });
   });
 
+  it('warns of a heavy open risk and of a bad day, and never stops the signal for them', async () => {
+    const r = await rig();
+    r.store.open = [1, 2, 3].map((n) => ({
+      id: `buy-${String(n)}`,
+      side: 'BUY' as const,
+      riskR: 1,
+      label: `#S-004${String(n)}`,
+    }));
+    r.store.dayR = -3.5;
+    await r.loop.warmUp();
+    r.arrive();
+    await r.loop.runOnce();
+    const warnings = r.signals()[0]?.explanation.warnings;
+    expect(warnings?.map((w) => w.code)).toEqual(
+      expect.arrayContaining(['OPEN_RISK', 'DAILY_LOSS']),
+    );
+    expect(warnings?.find((w) => w.code === 'DAILY_LOSS')?.text).toContain('-3.5R');
+    expect(r.signals()).toHaveLength(1);
+  });
+
+  it('goes on without the DAILY_LOSS warning when the result of the day cannot be read, and says so', async () => {
+    const r = await rig();
+    r.store.dayR = -9;
+    r.store.failDayResult = true;
+    await r.loop.warmUp();
+    r.arrive();
+    await r.loop.runOnce();
+    expect(r.signals()).toHaveLength(1);
+    expect(r.signals()[0]?.explanation.warnings.map((w) => w.code)).not.toContain('DAILY_LOSS');
+    expect(r.logs.some((line) => line.includes('the result of the day could not be read'))).toBe(
+      true,
+    );
+  });
+
   it('warns that the news is unknown when the calendar is down', async () => {
     const r = await rig({ calendar: { available: false, events: [], names: {} } });
     await r.loop.warmUp();

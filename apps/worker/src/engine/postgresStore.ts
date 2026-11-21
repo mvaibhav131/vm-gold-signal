@@ -12,6 +12,7 @@ import {
   bucketKeys,
   isPaused,
   pickEvidence,
+  tradingDayStart,
   type AdvisoryModes,
   type BucketCounts,
   type BucketDims,
@@ -171,6 +172,17 @@ export class PostgresEngineStore implements EngineStore {
       riskR: row.status === 'TP1_HIT' ? 0 : 1,
       label: `#S-${String(num(row.seq)).padStart(4, '0')}`,
     }));
+  }
+
+  async dayResultR(now: number): Promise<number> {
+    const { rows } = await this.pool.query<{ total: Num }>(
+      `SELECT COALESCE(SUM(o.realized_r_net), 0) AS total
+         FROM signal_outcomes o JOIN signals s ON s.id = o.signal_id
+        WHERE s.mode = 'LIVE' AND o.counts_in_stats
+          AND o.closed_at >= $1 AND o.closed_at <= $2`,
+      [new Date(tradingDayStart(now)).toISOString(), new Date(now).toISOString()],
+    );
+    return num(rows[0]?.total ?? 0);
   }
 
   async evidence(dims: BucketDims): Promise<ExplanationEvidence> {

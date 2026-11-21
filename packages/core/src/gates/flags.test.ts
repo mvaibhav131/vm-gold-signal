@@ -15,6 +15,7 @@ import {
   resolveModes,
   type AdvisoryModes,
   type FlagMarketInputs,
+  type FlagParams,
   type FlagResult,
   type FlagSetupInputs,
 } from './flags';
@@ -55,18 +56,20 @@ const flagsAt = (iso: string, change: Partial<FlagMarketInputs> = {}) => {
 };
 
 describe('the list of flags', () => {
-  it('has all nine flags in the order of ADVISORY_FLAGS, with nothing present in a quiet market', () => {
+  it('has all eleven flags in the order of ADVISORY_FLAGS, with nothing present in a quiet market', () => {
     const results = evaluateFlags(QUIET, SETUP);
     expect(results.map((r) => r.flag)).toEqual([...ADVISORY_FLAGS]);
     expect(presentFlags(results)).toEqual([]);
     expect(results.every((r) => Object.keys(r.detail).length === 0)).toBe(true);
   });
 
-  it('without a setup the three setup flags are never present', () => {
+  it('without a setup the four setup flags are never present', () => {
     const results = evaluateFlags(QUIET, null);
-    expect(results).toHaveLength(9);
+    expect(results).toHaveLength(11);
     const noisy = evaluateFlags({ ...QUIET, calendar: null }, null);
     expect(presentFlags(noisy)).toEqual(['NEWS_UNKNOWN']);
+    // open signals belong to a setup: with none, there is no open risk to judge
+    expect(presentFlags(evaluateFlags(QUIET, null))).toEqual([]);
   });
 
   it('refuses a time that is not a number', () => {
@@ -307,6 +310,77 @@ describe('OPPOSES_OPEN', () => {
   });
 });
 
+describe('OPEN_RISK', () => {
+  const open = (...risks: number[]) =>
+    risks.map((riskR, i) => ({ id: `S-${String(i + 1)}`, side: 'BUY' as const, riskR }));
+  const result = (setup: FlagSetupInputs, params?: Partial<FlagParams>) =>
+    evaluateFlags(QUIET, setup, { ...FLAG_DEFAULTS, ...params }).find(
+      (r) => r.flag === 'OPEN_RISK',
+    );
+
+  it('is present when the open signals already risk 3R or more, with the risk and the limit', () => {
+    expect(result({ ...SETUP, openSignals: open(1, 1, 1) })).toEqual({
+      flag: 'OPEN_RISK',
+      present: true,
+      detail: { openRiskR: 3, openCount: 3, limitR: 3 },
+    });
+    expect(result({ ...SETUP, openSignals: open(1, 1, 1, 1) })?.detail).toMatchObject({
+      openRiskR: 4,
+      openCount: 4,
+    });
+  });
+
+  it('counts what each signal still risks: a signal at TP1 has its stop at the entry and risks nothing', () => {
+    expect(result({ ...SETUP, openSignals: open(1, 1, 0, 0, 0) })?.present).toBe(false);
+    expect(result({ ...SETUP, openSignals: open(1, 1, 1, 0) })?.present).toBe(true);
+  });
+
+  it('counts 1R for a signal that does not say, and is not present below the limit', () => {
+    const plain = [1, 2, 3].map((i) => ({ id: `S-${String(i)}`, side: 'SELL' as const }));
+    expect(result({ ...SETUP, openSignals: plain })?.present).toBe(true);
+    expect(result({ ...SETUP, openSignals: plain.slice(0, 2) })?.present).toBe(false);
+    expect(result({ ...SETUP, openSignals: [] })?.present).toBe(false);
+  });
+
+  it('takes the limit from the parameters, whichever side the open signals go', () => {
+    expect(result({ ...SETUP, openSignals: open(1, 1) }, { maxOpenRiskR: 2 })?.present).toBe(true);
+    expect(result({ ...SETUP, openSignals: open(1, 1) }, { maxOpenRiskR: 2.5 })?.present).toBe(
+      false,
+    );
+  });
+});
+
+describe('DAILY_LOSS', () => {
+  const result = (dayResultR: number | null | undefined, params?: Partial<FlagParams>) =>
+    evaluateFlags({ ...QUIET, ...(dayResultR === undefined ? {} : { dayResultR }) }, SETUP, {
+      ...FLAG_DEFAULTS,
+      ...params,
+    }).find((r) => r.flag === 'DAILY_LOSS');
+
+  it('is present when the day has lost 3R or more, with the result and the limit', () => {
+    expect(result(-3)).toEqual({
+      flag: 'DAILY_LOSS',
+      present: true,
+      detail: { dayResultR: -3, limitR: 3 },
+    });
+    expect(result(-5.4)?.detail).toEqual({ dayResultR: -5.4, limitR: 3 });
+  });
+
+  it('is not present for a smaller loss, a gain, or a day that is not known', () => {
+    expect(result(-2.99)?.present).toBe(false);
+    expect(result(0)?.present).toBe(false);
+    expect(result(4)?.present).toBe(false);
+    expect(result(null)?.present).toBe(false);
+    expect(result(undefined)?.present).toBe(false);
+  });
+
+  it('does not need a setup, and takes the limit from the parameters', () => {
+    const market = { ...QUIET, dayResultR: -3.5 };
+    expect(presentFlags(evaluateFlags(market, null))).toEqual(['DAILY_LOSS']);
+    expect(result(-3.5, { maxDailyLossR: 4 })?.present).toBe(false);
+  });
+});
+
 describe('UNVALIDATED_STRATEGY', () => {
   it.each(STRATEGY_STATUSES)('%s', (status) => {
     const result = evaluateFlags(QUIET, { ...SETUP, strategyStatus: status }).find(
@@ -372,7 +446,7 @@ describe('the owner switches', () => {
     expect(modeOf('OFF_HOURS', modes)).toBe('warn');
   });
 
-  it('five flags have no switch: they warn even when every switch says block', () => {
+  it('seven flags have no switch: they warn even when every switch says block', () => {
     const all: AdvisoryModes = {
       newsWindow: 'block',
       rollover: 'block',
@@ -383,6 +457,8 @@ describe('the owner switches', () => {
       'NEWS_SHOCK',
       'HEADLINE_RECENT',
       'OPPOSES_OPEN',
+      'OPEN_RISK',
+      'DAILY_LOSS',
       'UNVALIDATED_STRATEGY',
       'NEWS_UNKNOWN',
     ] as const) {
@@ -498,7 +574,12 @@ describe('the decision', () => {
 });
 
 describe('the defaults', () => {
-  it('are the windows of docs/02 section 6', () => {
-    expect(FLAG_DEFAULTS).toEqual({ headlineMinutes: 30, offHoursMinutes: 30 });
+  it('are the windows of docs/02 section 6 and the two risk limits of 3R', () => {
+    expect(FLAG_DEFAULTS).toEqual({
+      headlineMinutes: 30,
+      offHoursMinutes: 30,
+      maxOpenRiskR: 3,
+      maxDailyLossR: 3,
+    });
   });
 });

@@ -139,7 +139,7 @@ A scope switch (Forward paper, Backtest out-of-sample) applies to every block of
 8. Drift panel: rolling 50-trade win rate against the strategy's evidence interval, strategy status and any pause.
 9. News impact: per topic, how often headlines were followed by a gold move of 1 ATR or more within 10 minutes, compared with ordinary windows, with sample sizes.
 
-Rules: a percentage is shown only when n >= 30; below that the raw counts and "Insufficient evidence" are shown. n between 30 and 99 carries a "Low sample" label.
+Rules: a percentage is shown only when n >= 30; below that the raw counts and "Insufficient evidence" are shown. n between 30 and 99 carries a "Low sample" label. The block also says what the first target needs to break even (`evidence-break-even`): a percentage with the verdict against the interval from 30 trades, and below that a count (`1 trade in 2`), never a percentage (`02` section 13.1, "The bar of the reward").
 
 ## 7. News and macro (`/news`)
 
@@ -187,7 +187,7 @@ Risky actions (pause engine, disable a strategy, revoke sessions) use a confirma
 | Area | Test ids |
 |---|---|
 | Status bar | `status-price`, `status-spread`, `status-freshness`, `status-session`, `status-regime`, `status-engine`, `status-mode`, `status-strategy` |
-| Signal cards (one per open signal) | `open-signals`, `open-signals-scroll`, `open-risk`, `fold-all`, `signal-card-<seq>`, `signal-body`, `signal-fold-toggle`, `signal-chart-toggle`, `signal-compact-levels`, `signal-live-r-compact`, `chart-signals-toggle`, `signal-warning-<code>`, `signal-side`, `signal-id`, `signal-grade`, `signal-style`, `signal-entry`, `signal-stop`, `signal-tp1`, `signal-tp2`, `position-size`, `position-size-account`, `position-size-lots`, `position-size-edit`, `position-size-balance`, `position-size-risk`, `signal-live-r`, `signal-state`, `signal-why-group-<key>`, `signal-evidence`, `wait-reasons` |
+| Signal cards (one per open signal) | `open-signals`, `open-signals-scroll`, `open-risk`, `fold-all`, `signal-card-<seq>`, `signal-body`, `signal-fold-toggle`, `signal-chart-toggle`, `signal-compact-levels`, `signal-live-r-compact`, `chart-signals-toggle`, `signal-warning-<code>`, `signal-side`, `signal-id`, `signal-grade`, `signal-style`, `signal-entry`, `signal-stop`, `signal-tp1`, `signal-tp2`, `position-size`, `position-size-account`, `position-size-lots`, `position-size-edit`, `position-size-balance`, `position-size-risk`, `signal-live-r`, `signal-state`, `signal-why-group-<key>`, `signal-evidence`, `evidence-break-even`, `wait-reasons` |
 | History | `history-table`, `history-row-<seq>`, `history-filter-<name>`, `history-summary` |
 | Detail | `detail-result`, `detail-timeline`, `detail-autopsy`, `detail-autopsy-cause`, `detail-autopsy-category`, `detail-evidence`, `detail-snapshot` |
 | Analytics | `kpi-<name>`, `monthly-table`, `monthly-row-<yyyy-mm>`, `breakdown-<by>`, `failure-causes`, `group-effectiveness`, `calibration`, `equity-curve`, `drift-panel`, `news-impact`, `scope-switch` |

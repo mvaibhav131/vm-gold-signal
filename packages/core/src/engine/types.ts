@@ -106,6 +106,8 @@ export interface DecisionContext {
     readonly lastHighHeadlineAt: number | null;
   };
   readonly open: readonly OpenSignalInput[];
+  /** The net R of the signals closed in the trading day so far (since the market last closed); null or absent when it is not known. */
+  readonly dayResultR?: number | null;
   /** The owner's switches over the strategy config's modes. */
   readonly modes?: Partial<AdvisoryModes>;
   /** Names of open signals for the warning lines (`#S-0042`), by id. */

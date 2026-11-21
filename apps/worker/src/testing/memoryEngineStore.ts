@@ -38,6 +38,10 @@ export class MemoryEngineStore implements EngineStore {
   };
   readonly quotes: StoredQuote[] = [];
   open: OpenSignalFacts[] = [];
+  /** The net R of the signals closed today (`dayResultR`). */
+  dayR = 0;
+  /** Makes the read of the day's result fail. */
+  failDayResult = false;
   controlsNow: EngineControls = { paused: false, modes: {}, disabled: [] };
   evidenceOf: (dims: BucketDims) => ExplanationEvidence = () => EMPTY;
   readonly rejections: { at: number; rejection: Rejection }[] = [];
@@ -84,6 +88,12 @@ export class MemoryEngineStore implements EngineStore {
 
   openSignals(): Promise<OpenSignalFacts[]> {
     return Promise.resolve(this.open);
+  }
+
+  dayResultR(_now: number): Promise<number> {
+    return this.failDayResult
+      ? Promise.reject(new Error('the database is not available'))
+      : Promise.resolve(this.dayR);
   }
 
   evidence(dims: BucketDims): Promise<ExplanationEvidence> {
