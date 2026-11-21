@@ -253,6 +253,7 @@ export function storageOf(
     tables,
     retention: retentionRules(facts.tickRetentionDays),
     budgetPct: budgetPctOf(facts.dbSizeBytes, limitBytes),
+    budgetBytes: limitBytes,
     lastMaintenanceRun:
       facts.lastRun === null
         ? null

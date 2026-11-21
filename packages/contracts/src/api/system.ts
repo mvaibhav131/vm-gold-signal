@@ -54,6 +54,8 @@ export const systemStorageSchema = z.strictObject({
   tables: z.array(z.strictObject({ name: z.string().min(1), sizeBytes: countSchema })),
   retention: z.array(z.strictObject({ item: z.string().min(1), rule: z.string().min(1) })),
   budgetPct: z.number().nonnegative(),
+  /** The soft limit the percent is measured against: 10 GB, or the limit of the host (`DB_SOFT_LIMIT_GB`, 0.8 GB on the free Aiven plan). */
+  budgetBytes: z.number().positive(),
   lastMaintenanceRun: z
     .strictObject({
       job: z.string().min(1),

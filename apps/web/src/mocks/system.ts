@@ -207,6 +207,7 @@ export function storageAt(nowMs: number, warning: boolean): SystemStorage {
     tables: [...tables].sort((a, b) => b.sizeBytes - a.sizeBytes),
     retention: RETENTION_RULES,
     budgetPct: Math.round((dbSizeBytes / DB_BUDGET_BYTES) * 100),
+    budgetBytes: DB_BUDGET_BYTES,
     lastMaintenanceRun: {
       job: 'retention',
       finishedAt: ago(nowMs, 11 * HOUR_MS),

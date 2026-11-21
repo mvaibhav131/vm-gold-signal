@@ -533,6 +533,7 @@ describe('the storage tab', () => {
       tables: [{ name: 'ticks', sizeBytes: 800_000 }],
       retention: [{ item: 'Raw ticks', rule: '14 days' }],
       budgetPct: 1,
+      budgetBytes: 10_000_000_000,
       lastMaintenanceRun: null,
     };
     const show = (storage: SystemStorage, backupAt: string | null) =>
@@ -541,6 +542,14 @@ describe('the storage tab', () => {
           <StorageView storage={storage} backupAt={backupAt} nowMs={NOW} />
         </AppProviders>,
       );
+
+    it('names the limit that the percent is measured against: 10 GB, or the lower limit of a small host', () => {
+      const view = show(base, null);
+      expect(screen.getByText(/soft limit of 10\.00 GB/)).toBeInTheDocument();
+      view.unmount();
+      show({ ...base, budgetBytes: 800_000_000 }, null);
+      expect(screen.getByText(/soft limit of 800 MB/)).toBeInTheDocument();
+    });
 
     it('says that no run and no backup were recorded, when none was', () => {
       show(base, null);

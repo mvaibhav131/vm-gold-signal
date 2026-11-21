@@ -456,7 +456,9 @@ describe('storageOf', () => {
   it('measures the budget on the limit of the host when it is given', () => {
     expect(budgetPctOf(820_000_000, 800_000_000)).toBe(102.5);
     expect(storageOf(facts(), 800_000_000).budgetPct).toBe(102.5);
+    expect(storageOf(facts(), 800_000_000).budgetBytes).toBe(800_000_000);
     expect(storageOf(facts()).budgetPct).toBe(8.2);
+    expect(storageOf(facts()).budgetBytes).toBe(DB_SOFT_LIMIT_BYTES);
   });
 });
 

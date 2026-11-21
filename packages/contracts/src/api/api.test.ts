@@ -929,11 +929,13 @@ describe('system pages', () => {
       tables: [{ name: 'ticks', sizeBytes: 900_000_000 }],
       retention: [{ item: 'Raw ticks', rule: '14 days' }],
       budgetPct: 11,
+      budgetBytes: 10_000_000_000,
       lastMaintenanceRun: { job: 'retention', finishedAt: '2026-10-23T01:15:00Z', rowsDeleted: 0 },
     };
     expect(roundTrip(systemStorageSchema, storage)).toEqual(storage);
     expect(ok(systemStorageSchema, { ...storage, lastMaintenanceRun: null })).toBe(true);
     expect(ok(systemStorageSchema, { ...storage, budgetPct: -1 })).toBe(false);
+    expect(ok(systemStorageSchema, { ...storage, budgetBytes: 0 })).toBe(false);
     expect(ok(systemStorageSchema, { ...storage, dbSizeBytes: 1.5 })).toBe(false);
   });
 

@@ -67,7 +67,7 @@ export function StorageView({
     <Stack gap="md">
       <Section
         title="Size"
-        description="The database against its soft limit of 10 GB (01_HLD, data retention)."
+        description={`The database against its soft limit of ${formatBytes(storage.budgetBytes)} (01_HLD, data retention). A host with a small database has a lower limit: the free Aiven plan holds 1 GB, so its limit is 0.8 GB.`}
       >
         <Group gap="xl" align="flex-start">
           <div>
